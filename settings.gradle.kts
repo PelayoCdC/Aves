@@ -40,6 +40,10 @@ include(":core:audio")
 
 // Room aislado en su propio modulo: KSP es lento, y asi un cambio en los
 // repositorios no vuelve a disparar la generacion de codigo.
+// Solo GBIF: sin API key y sin clausula no comercial, a diferencia de eBird y
+// xeno-canto, que se quedan fuera de la app a proposito.
+include(":core:network")
+
 include(":core:database")
 
 // Repositorios: une base de datos y red. Es lo que consumen las features.

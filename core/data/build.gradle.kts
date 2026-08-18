@@ -11,6 +11,7 @@ android {
 dependencies {
     api(projects.core.model)
     api(projects.core.database)
+    implementation(projects.core.network)
     api(projects.core.ml.api)
     implementation(projects.core.common)
     implementation(libs.kotlinx.coroutines.android)

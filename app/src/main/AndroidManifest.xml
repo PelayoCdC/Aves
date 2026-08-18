@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+        Ubicacion aproximada, no precisa: el filtro de contexto trabaja con celdas
+        de 40x20 km. Pedir precision de metros para eso seria injustificable, y
+        es exactamente el tipo de permiso que Play Store mira con lupa.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <application
         android:name=".AvesApplication"
         android:allowBackup="true"

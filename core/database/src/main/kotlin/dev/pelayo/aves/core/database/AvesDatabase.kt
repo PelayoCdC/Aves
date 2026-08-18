@@ -8,6 +8,7 @@ import androidx.room.TypeConverters
 import dev.pelayo.aves.core.database.dao.ListeningSessionDao
 import dev.pelayo.aves.core.database.dao.ModelLabelDao
 import dev.pelayo.aves.core.database.dao.ObservationDao
+import dev.pelayo.aves.core.database.dao.RegionDao
 import dev.pelayo.aves.core.database.dao.SpeciesDao
 import dev.pelayo.aves.core.database.entity.ListeningSessionEntity
 import dev.pelayo.aves.core.database.entity.ModelLabelEntity
@@ -39,6 +40,7 @@ abstract class AvesDatabase : RoomDatabase() {
     abstract fun modelLabelDao(): ModelLabelDao
     abstract fun listeningSessionDao(): ListeningSessionDao
     abstract fun observationDao(): ObservationDao
+    abstract fun regionDao(): RegionDao
 
     companion object {
         const val NAME = "aves.db"

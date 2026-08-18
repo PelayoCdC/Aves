@@ -3,8 +3,9 @@
 App Android de identificación de aves por **canto** y por **foto**, con una
 **Pokédex** cuyas rarezas se calculan a partir de datos reales de ocurrencia.
 
-Estado: **Fase 2** — identificación por canto, catálogo de 6.419 especies y
-colección persistida por sesiones.
+Estado: **Fase 4** — identificación por canto con filtro geo-temporal, catálogo
+de 6.419 especies, colección persistida por sesiones y rarezas calculadas sobre
+datos reales de ocurrencia.
 
 ---
 
@@ -225,6 +226,63 @@ filas del mismo mirlo y la colección no significaría nada.
 
 Y las decisiones del usuario mandan sobre el modelo: una detección mejor
 actualiza la puntuación pero **no resucita** algo que ya habías descartado.
+
+---
+
+## El filtro de contexto y las rarezas
+
+En un sitio y una fecha concretos solo unos cientos de las 6.419 especies del
+catálogo son plausibles. Filtrar por ahí es la mayor mejora de precisión
+disponible sin tocar el modelo.
+
+Hay **dos priors** tras la misma interfaz `ContextPriorProvider`:
+
+- **`personal`** usa el meta-modelo `MData` de BirdNET. Se prefiere porque se
+  entrenó *junto* al clasificador: sus probabilidades están en la misma escala
+  que las predicciones que va a filtrar.
+- **`open`** usa el derivado de GBIF, que es el único distribuible.
+
+### Verificado ejecutando el modelo, no asumido
+
+El riesgo era que la salida del meta-modelo fuesen **logits** en vez de
+probabilidades. En ese caso todos los valores rondarían 0,5, todas las especies
+caerían en el multiplicador 1,0 y el prior **no filtraría nada** — sin
+excepción, sin log, sin síntoma. La mejora que justifica toda la fase
+simplemente no existiría.
+
+`BirdNetContextPriorTest` lo zanja con comprobaciones ornitológicas: el número
+de especies plausibles en Asturias en junio son cientos y no miles, Asturias y
+el Amazonas comparten menos del 50% de especies, y el petirrojo europeo es
+plausible donde debe serlo mientras que un tucán no.
+
+### El cruce con GBIF
+
+GBIF devuelve `"Turdus merula Linnaeus, 1758"`; quitando la autoría queda el
+binomio, que es exactamente nuestro `speciesId`. Eso evita tener que poblar
+`gbifSpeciesKey` en las 6.419 especies, que habría costado miles de llamadas.
+
+La contrapartida está asumida: las revisiones taxonómicas hacen que algunas
+especies no crucen. Esas caen al suelo del prior y se tratan como raras, que es
+el **fallo seguro** — peor sería darlas por comunes y ocultar una rareza real.
+
+**Comprobado end-to-end en emulador**: 448 especies cacheadas en una celda del
+norte de California, y las más comunes salen siendo el colibrí de Anna, el
+carpintero bellotero y la chara californiana. Es exactamente la avifauna de esa
+zona.
+
+### Dos reglas que no se pueden romper
+
+- **Ningún prior vale cero.** Con un cero una especie deja de ser detectable por
+  construcción, y las primeras víctimas serían las rarezas: lo más interesante
+  que puede pasar con esta app. Se usa un suelo de 0,05.
+- **La influencia del contexto es 0,5, no 1.** El prior es una estadística, no
+  una verdad. Si mandara del todo, un divagante auténtico quedaría sepultado
+  bajo lo que "debería" haber en la zona.
+
+Un fallo de red **no** se cachea como "aquí no hay aves":
+`GbifUnavailableException` es deliberadamente distinta de un resumen vacío.
+Confundirlas dejaría toda una zona con las especies marcadas como excepcionales
+por haber tenido mala cobertura un momento.
 
 ---
 

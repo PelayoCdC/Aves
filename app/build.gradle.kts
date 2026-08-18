@@ -29,6 +29,10 @@ dependencies {
     implementation(projects.core.model)
     implementation(projects.core.common)
     implementation(projects.core.data)
+    // :app es el punto de composicion: conocer las implementaciones concretas es
+    // literalmente su trabajo, igual que conoce BirdNetAudioClassifier en el
+    // flavor personal.
+    implementation(projects.core.network)
     implementation(projects.core.ml.api)
 
     // Solo el flavor `personal` enlaza BirdNET. El flavor `open` se compila sin

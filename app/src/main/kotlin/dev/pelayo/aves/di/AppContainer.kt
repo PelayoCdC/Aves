@@ -5,7 +5,11 @@ import dev.pelayo.aves.core.data.ObservationRepository
 import dev.pelayo.aves.core.data.SpeciesRepository
 import dev.pelayo.aves.core.data.SpeciesResolver
 import dev.pelayo.aves.core.database.AvesDatabase
+import dev.pelayo.aves.core.data.GbifOccurrenceSource
+import dev.pelayo.aves.core.data.RegionRepository
 import dev.pelayo.aves.core.database.CatalogSeeder
+import dev.pelayo.aves.core.network.GbifClient
+import dev.pelayo.aves.location.LocationProvider
 import java.io.File
 
 /**
@@ -36,6 +40,22 @@ class AppContainer(private val context: Context) {
     val observationRepository: ObservationRepository by lazy {
         ObservationRepository(database, speciesResolver)
     }
+
+    private val gbifClient: GbifClient by lazy { GbifClient() }
+
+    /**
+     * Rareza y prior derivados de ocurrencias reales de GBIF.
+     *
+     * Funciona en los dos flavors: GBIF no pide clave ni tiene clausula no
+     * comercial. El flavor `personal` tiene ademas el meta-modelo de BirdNET,
+     * que es mas fino porque se entreno junto al clasificador, pero la rareza
+     * de la coleccion sale siempre de aqui.
+     */
+    val regionRepository: RegionRepository by lazy {
+        RegionRepository(database.regionDao(), GbifOccurrenceSource(gbifClient))
+    }
+
+    val locationProvider: LocationProvider by lazy { LocationProvider(context) }
 
     /**
      * Donde viven los recortes de audio de las detecciones.

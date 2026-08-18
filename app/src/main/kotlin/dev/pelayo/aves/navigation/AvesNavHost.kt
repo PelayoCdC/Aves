@@ -19,6 +19,7 @@ import dev.pelayo.aves.feature.review.ReviewScreen
 import dev.pelayo.aves.feature.review.ReviewViewModel
 import dev.pelayo.aves.feature.settings.SettingsScreen
 import dev.pelayo.aves.ml.createAudioClassifier
+import dev.pelayo.aves.ml.createContextPrior
 
 /** Ruta de la ficha de especie. Es un destino de detalle, no de primer nivel. */
 private const val SPECIES_DETAIL_ROUTE = "species"
@@ -34,8 +35,14 @@ fun AvesNavHost(
     // repositorios, asi que es quien inyecta hacia abajo. Las features reciben
     // fabricas y no saben de donde salen sus dependencias.
     val appContext = LocalContext.current.applicationContext
-    val classifierProvider = remember(appContext) {
-        { createAudioClassifier(appContext) }
+    // El prior se elige por flavor: `personal` usa el meta-modelo de BirdNET,
+    // que se entreno junto al clasificador; `open` usa el derivado de GBIF, que
+    // es el unico distribuible.
+    val contextPrior = remember(appContext, container) {
+        createContextPrior(appContext, container.regionRepository)
+    }
+    val classifierProvider = remember(appContext, contextPrior) {
+        { createAudioClassifier(appContext, contextPrior) }
     }
 
     NavHost(
@@ -48,6 +55,8 @@ fun AvesNavHost(
                 classifierProvider = classifierProvider,
                 observationRepository = container.observationRepository,
                 clipsDirectory = container.clipsDirectory,
+                regionRepository = container.regionRepository,
+                locationProvider = { container.locationProvider.lastKnown() },
             )
         }
 

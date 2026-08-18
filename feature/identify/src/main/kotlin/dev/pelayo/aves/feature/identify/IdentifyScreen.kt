@@ -44,6 +44,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.pelayo.aves.core.data.ObservationRepository
+import dev.pelayo.aves.core.data.RegionRepository
+import dev.pelayo.aves.core.model.Coordinates
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import java.io.File
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
@@ -61,10 +63,18 @@ fun IdentifyScreen(
     classifierProvider: () -> AudioBirdClassifier?,
     observationRepository: ObservationRepository? = null,
     clipsDirectory: File? = null,
+    regionRepository: RegionRepository? = null,
+    locationProvider: (() -> Coordinates?)? = null,
     modifier: Modifier = Modifier,
 ) {
     val viewModel: IdentifyViewModel = viewModel {
-        IdentifyViewModel(classifierProvider, observationRepository, clipsDirectory)
+        IdentifyViewModel(
+            classifierFactory = classifierProvider,
+            observationRepository = observationRepository,
+            clipsDirectory = clipsDirectory,
+            regionRepository = regionRepository,
+            locationProvider = locationProvider,
+        )
     }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current

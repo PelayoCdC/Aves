@@ -14,6 +14,9 @@ import dev.pelayo.aves.core.audio.WavDecoder
 import dev.pelayo.aves.core.audio.WavFormatException
 import dev.pelayo.aves.core.audio.audioWindows
 import dev.pelayo.aves.core.data.ObservationRepository
+import dev.pelayo.aves.core.data.RegionRepository
+import dev.pelayo.aves.core.model.Coordinates
+import dev.pelayo.aves.core.model.RarityTier
 import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
 import dev.pelayo.aves.core.ml.api.ClassificationResult
 import dev.pelayo.aves.core.ml.api.ObservationContext
@@ -87,6 +90,14 @@ class IdentifyViewModel(
      * identificando y coleccionando, solo que sin audio que escuchar despues.
      */
     private val clipsDirectory: File? = null,
+    /** Rarezas y prior de respaldo. Nulo desactiva el filtro de contexto. */
+    private val regionRepository: RegionRepository? = null,
+    /**
+     * Ubicacion aproximada. Se consulta UNA vez al abrir la sesion, no por
+     * ventana: el usuario no se mueve 40 km mientras escucha, y consultarla
+     * cada 800 ms seria gasto puro.
+     */
+    private val locationProvider: (() -> Coordinates?)? = null,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(IdentifyUiState())
@@ -96,6 +107,7 @@ class IdentifyViewModel(
     private var classifier: AudioBirdClassifier? = null
 
     private var sessionId: Long? = null
+    private var sessionLocation: Coordinates? = null
 
     /**
      * Mejor puntuacion ya escrita para cada especie de la sesion.
@@ -145,12 +157,31 @@ class IdentifyViewModel(
                 active.warmUp()
                 _uiState.update { it.copy(isWarmingUp = false) }
 
+                sessionLocation = locationProvider?.invoke()
+
                 // La sesion se abre DESPUES de calentar el modelo: si el .tflite
                 // no esta, no queremos dejar una sesion huerfana en la base.
                 sessionId = observationRepository?.startSession(
                     modelId = active.descriptor.modelId,
                     startedAt = System.currentTimeMillis(),
+                    latitude = sessionLocation?.latitude,
+                    longitude = sessionLocation?.longitude,
                 )
+
+                // Descargar las ocurrencias de la celda puede tardar; no debe
+                // retrasar la primera identificacion. Si llega tarde, las
+                // primeras detecciones se guardan sin rareza y ya esta.
+                sessionLocation?.let { where ->
+                    launch {
+                        runCatching {
+                            regionRepository?.ensureCellCached(
+                                where.latitude,
+                                where.longitude,
+                                System.currentTimeMillis(),
+                            )
+                        }.onFailure { Log.w(TAG, "No se pudo cachear la celda", it) }
+                    }
+                }
 
                 val engine = AudioCaptureEngine(
                     // Los parametros los manda el MODELO. Si manana se cambia a
@@ -183,9 +214,10 @@ class IdentifyViewModel(
                     val results = active.classify(
                         samples = frame.samples,
                         context = ObservationContext(
+                            latitude = sessionLocation?.latitude,
+                            longitude = sessionLocation?.longitude,
                             epochMillis = frame.endTimestampMillis,
-                            // Fase 1 no tiene ubicacion ni prior. Llega en Fase 4.
-                            contextInfluence = 0f,
+                            contextInfluence = DEFAULT_CONTEXT_INFLUENCE,
                         ),
                     )
                     val elapsedMillis = (System.nanoTime() - started) / 1_000_000
@@ -386,6 +418,8 @@ class IdentifyViewModel(
             // usar de verdad en vez de pedir un acto de fe.
             val clipPath = writeClip(clipWriter, session, detection.speciesId, samples)
 
+            val rarity = rarityOf(detection.speciesId, timestamp)
+
             repository.recordDetection(
                 sessionId = session,
                 modelId = modelId,
@@ -397,10 +431,37 @@ class IdentifyViewModel(
                     adjustedScore = detection.score,
                 ),
                 timestamp = timestamp,
+                latitude = sessionLocation?.latitude,
+                longitude = sessionLocation?.longitude,
                 mediaPath = clipPath,
+                rarityTier = rarity,
             )
             recordedScores[detection.speciesId] = detection.score
         }
+    }
+
+    /**
+     * Rareza de la especie aqui y ahora.
+     *
+     * Se congela en la observacion: si el usuario se muda, sus capturas
+     * antiguas no deben cambiar de valor retroactivamente. Aquel mirlo en
+     * Islandia fue notable de verdad.
+     *
+     * Sin ubicacion o sin datos cacheados se marca como excepcional, que es el
+     * fallo seguro: es preferible sobrevalorar una captura que ocultar una
+     * rareza autentica.
+     */
+    private suspend fun rarityOf(speciesId: String, timestamp: Long): RarityTier {
+        val where = sessionLocation ?: return RarityTier.EXCEPTIONAL
+        val repository = regionRepository ?: return RarityTier.EXCEPTIONAL
+        return runCatching {
+            repository.rarityOf(
+                speciesId = speciesId,
+                latitude = where.latitude,
+                longitude = where.longitude,
+                month = RegionRepository.monthOf(timestamp),
+            )
+        }.getOrNull() ?: RarityTier.EXCEPTIONAL
     }
 
     /**
@@ -480,5 +541,15 @@ class IdentifyViewModel(
          * segundo que no aportan nada.
          */
         val INPUT_SCALING = PcmScaling.RAW
+
+        /**
+         * Cuanto pesa el contexto frente a la salida cruda del modelo.
+         *
+         * A la mitad y no al maximo a proposito: el prior es una estadistica,
+         * no una verdad. Si mandara del todo, un divagante de verdad quedaria
+         * sepultado por lo que "deberia" haber en la zona, y detectar eso es
+         * justo lo mas emocionante que puede pasar con esta app.
+         */
+        const val DEFAULT_CONTEXT_INFLUENCE = 0.5f
     }
 }
