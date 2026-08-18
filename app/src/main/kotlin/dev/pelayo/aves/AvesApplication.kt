@@ -2,7 +2,9 @@ package dev.pelayo.aves
 
 import android.app.Application
 import android.util.Log
+import dev.pelayo.aves.core.listening.ListeningService
 import dev.pelayo.aves.di.AppContainer
+import dev.pelayo.aves.di.ListeningDependenciesAdapter
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +28,11 @@ class AvesApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+
+        // El servicio de escucha no puede recibir sus dependencias por
+        // constructor: lo instancia el sistema. Este punto de inyeccion estatico
+        // desaparece cuando entre Hilt.
+        ListeningService.dependencies = ListeningDependenciesAdapter(this, container)
 
         // El catalogo se siembra en segundo plano nada mas arrancar, no la
         // primera vez que se necesita: asi la espera cae en el arranque, donde

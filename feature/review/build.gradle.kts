@@ -15,6 +15,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.android)
+    // Para escuchar el recorte de cada deteccion antes de darle un veredicto.
+    implementation(libs.media3.exoplayer)
 
     testImplementation(libs.kotlinx.coroutines.test)
 }

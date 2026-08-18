@@ -15,17 +15,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -137,6 +135,10 @@ internal fun SpeciesDetailContent(
 ) {
     val species = state.species
 
+    // Uno para toda la ficha: dos cantos solapados no se pueden comparar, y asi
+    // solo hay un reproductor que liberar al salir.
+    val clipPlayer = rememberClipPlayer()
+
     if (species == null) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (state.isLoading) {
@@ -180,7 +182,19 @@ internal fun SpeciesDetailContent(
         }
 
         items(state.sightings, key = { it.id }) { sighting ->
-            SightingRow(sighting)
+            // Comprobar si el recorte sigue en disco toca el sistema de
+            // ficheros: se hace una vez por avistamiento, no en cada
+            // recomposicion de la lista.
+            val canPlay = remember(clipPlayer, sighting.mediaPath) {
+                clipPlayer.canPlay(sighting.mediaPath)
+            }
+
+            SightingRow(
+                sighting = sighting,
+                canPlayClip = canPlay,
+                isPlaying = clipPlayer.isPlaying(sighting.id),
+                onTogglePlay = { clipPlayer.toggle(sighting.id, sighting.mediaPath) },
+            )
         }
     }
 }
@@ -243,8 +257,21 @@ private fun TaxonomyRow(label: String, value: String, modifier: Modifier = Modif
     }
 }
 
+/**
+ * Una fila de avistamiento, con su grabacion si la hay.
+ *
+ * @param canPlayClip false cuando el recorte ya no esta en disco (datos
+ *   borrados, retencion). El boton se sigue viendo, desactivado: saber que hubo
+ *   una grabacion es informacion util aunque ya no se pueda oir.
+ */
 @Composable
-private fun SightingRow(sighting: Sighting, modifier: Modifier = Modifier) {
+private fun SightingRow(
+    sighting: Sighting,
+    modifier: Modifier = Modifier,
+    canPlayClip: Boolean = false,
+    isPlaying: Boolean = false,
+    onTogglePlay: () -> Unit = {},
+) {
     Card(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -266,15 +293,14 @@ private fun SightingRow(sighting: Sighting, modifier: Modifier = Modifier) {
             }
 
             if (sighting.mediaPath != null) {
-                // TODO: Fase 3b. Reproducir el recorte con Media3 (ExoPlayer ya
-                // esta como dependencia del modulo). Hasta entonces el boton se
-                // deja visible pero desactivado: enterarse de que existe una
-                // grabacion guardada es informacion util aunque todavia no se
-                // pueda escuchar.
-                IconButton(onClick = {}, enabled = false) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = "Reproducir la grabación (aún no disponible)",
+                IconButton(onClick = onTogglePlay, enabled = canPlayClip) {
+                    ClipPlayIcon(
+                        isPlaying = isPlaying,
+                        contentDescription = when {
+                            !canPlayClip -> "La grabación ya no está en el dispositivo"
+                            isPlaying -> "Parar la grabación"
+                            else -> "Reproducir la grabación"
+                        },
                     )
                 }
             }

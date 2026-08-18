@@ -46,6 +46,9 @@ coil = "3.5.0"
 litert = "1.4.2"
 litertNext = "2.1.6"
 iirj = "1.7"
+# ONNX Runtime: los pesos de BirdNET con licencia Apache 2.0 se publican en ONNX,
+# no en TFLite, asi que el flavor publicable necesita otro runtime.
+onnxruntime = "1.29.0"
 
 # --- Test ---
 junit = "4.13.2"
@@ -94,6 +97,7 @@ litert-gpu = { module = "com.google.ai.edge.litert:litert-gpu", version.ref = "l
 litert-support = { module = "com.google.ai.edge.litert:litert-support", version.ref = "litert" }
 litert-metadata = { module = "com.google.ai.edge.litert:litert-metadata", version.ref = "litert" }
 iirj = { module = "uk.me.berndporr:iirj", version.ref = "iirj" }
+onnxruntime-android = { module = "com.microsoft.onnxruntime:onnxruntime-android", version.ref = "onnxruntime" }
 
 # --- Datos y features (Fase 2+) ---
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }

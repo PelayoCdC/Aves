@@ -70,6 +70,23 @@ class AiyBirdImageClassifier(
      */
     private var quantized = false
 
+    /**
+     * Igual que la entrada, la SALIDA puede venir cuantizada.
+     *
+     * Se descubrio ejecutando el modelo real: detectar el tipo de la entrada y
+     * dar por hecho que la salida era float32 hace que LiteRT lance
+     * "Cannot convert between a TensorFlowLite tensor with type UINT8 and a
+     * Java object of type [[F". Aplicar el principio de "leer el tipo, no
+     * asumirlo" solo a la mitad del grafo no sirve de nada.
+     */
+    private var quantizedOutput = false
+
+    /** real = scale * (cuantizado - zeroPoint). Los publica el propio tensor. */
+    private var outputScale = 1f
+    private var outputZeroPoint = 0
+
+    private var outputBuffer: ByteBuffer? = null
+
     private var inputBuffer: ByteBuffer? = null
     private val pixels = IntArray(INPUT_SIZE * INPUT_SIZE)
     private var scores = FloatArray(AiyBirdLabels.EXPECTED_COUNT)
@@ -92,12 +109,24 @@ class AiyBirdImageClassifier(
                     .allocateDirect(INPUT_SIZE * INPUT_SIZE * CHANNELS * bytesPerChannel)
                     .order(ByteOrder.nativeOrder())
 
-                val outputCount = created.getOutputTensor(0).shape().last()
+                val outputTensor = created.getOutputTensor(0)
+                val outputCount = outputTensor.shape().last()
                 check(outputCount == AiyBirdLabels.EXPECTED_COUNT) {
                     "El modelo devuelve $outputCount clases y el labelmap tiene " +
                         "${AiyBirdLabels.EXPECTED_COUNT}. No corresponden."
                 }
                 scores = FloatArray(outputCount)
+
+                quantizedOutput = outputTensor.dataType() == DataType.UINT8
+                if (quantizedOutput) {
+                    val params = outputTensor.quantizationParams()
+                    // Un scale de 0 significa "sin cuantizar de verdad"; se cae
+                    // al reparto uniforme de uint8 para no dividir por cero.
+                    outputScale = if (params.scale > 0f) params.scale else 1f / 255f
+                    outputZeroPoint = params.zeroPoint
+                    outputBuffer = ByteBuffer.allocateDirect(outputCount)
+                        .order(ByteOrder.nativeOrder())
+                }
 
                 interpreter = created
                 Log.i(
@@ -120,11 +149,26 @@ class AiyBirdImageClassifier(
             val active = checkNotNull(interpreter) { "El clasificador ya se ha cerrado" }
             withContext(Dispatchers.Default) {
                 writeInput(bitmap)
-                val output = Array(1) { FloatArray(scores.size) }
-                active.run(inputBuffer, output)
-                output[0].copyInto(scores)
+                runInference(active)
                 buildResults(prior, context.contextInfluence)
             }
+        }
+    }
+
+    private fun runInference(interpreter: Interpreter) {
+        if (quantizedOutput) {
+            val buffer = checkNotNull(outputBuffer)
+            buffer.rewind()
+            interpreter.run(inputBuffer, buffer)
+            buffer.rewind()
+            for (index in scores.indices) {
+                val raw = buffer.get(index).toInt() and 0xFF
+                scores[index] = outputScale * (raw - outputZeroPoint)
+            }
+        } else {
+            val output = Array(1) { FloatArray(scores.size) }
+            interpreter.run(inputBuffer, output)
+            output[0].copyInto(scores)
         }
     }
 
@@ -196,13 +240,24 @@ class AiyBirdImageClassifier(
         return candidates.sortedByDescending { it.adjustedScore }.take(topK)
     }
 
+    /**
+     * Localiza el modelo en assets.
+     *
+     * Se prefieren los nombres conocidos, pero si no aparece ninguno se acepta
+     * CUALQUIER `.tflite` del directorio. El motivo es practico: la descarga de
+     * Kaggle no garantiza el nombre del fichero —llega a llamarse `3.tflite`,
+     * por el numero de variacion— y obligar a renombrarlo a mano es justo el
+     * tipo de paso que se olvida y produce un fallo confuso.
+     */
     private fun loadModel(): MappedByteBuffer {
-        val available = context.assets.list("").orEmpty().toSet()
+        val available = context.assets.list("").orEmpty()
         val asset = MODEL_ASSET_CANDIDATES.firstOrNull { it in available }
+            ?: available.firstOrNull { it.endsWith(MODEL_EXTENSION, ignoreCase = true) }
             ?: throw FileNotFoundException(
-                "No hay modelo de imagen en assets. Ejecuta scripts/fetch-models.ps1 " +
-                    "(necesita cuenta de Kaggle). Se buscaron: " +
-                    MODEL_ASSET_CANDIDATES.joinToString(),
+                "No hay ningun  en los assets del modulo de imagen. " +
+                    "Descargalo de kaggle.com/models/google/aiy/tfLite/" +
+                    "vision-classifier-birds-v1 (variacion 3) y dejalo en " +
+                    "core/ml/vision/src/main/assets/.",
             )
 
         return context.assets.openFd(asset).use { descriptor ->
@@ -221,6 +276,7 @@ class AiyBirdImageClassifier(
         interpreter = null
         labels = emptyList()
         inputBuffer = null
+        outputBuffer = null
     }
 
     companion object {
@@ -242,6 +298,7 @@ class AiyBirdImageClassifier(
         )
 
         const val LABELS_ASSET = "aiy_birds_labelmap.csv"
+        private const val MODEL_EXTENSION = ".tflite"
 
         private const val DEFAULT_THREAD_COUNT = 2
         private const val DEFAULT_TOP_K = 3

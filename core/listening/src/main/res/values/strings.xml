@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Textos de la notificacion del servicio. Viven en el modulo que los usa, no
+    en :app, para que sacar la escucha de la app se lleve tambien sus cadenas.
+
+    Prefijo `listening_` en todas: los recursos de las librerias se fusionan en
+    un unico espacio de nombres y una colision se resuelve en silencio, ganando
+    la del modulo equivocado.
+-->
+<resources>
+
+    <string name="listening_channel_name">Escucha en segundo plano</string>
+    <string name="listening_channel_description">Aviso permanente mientras la app identifica aves con el micrófono.</string>
+
+    <string name="listening_notification_title">Escuchando aves</string>
+    <string name="listening_notification_warming_up">Preparando el modelo…</string>
+    <string name="listening_notification_empty">Sin detecciones todavía</string>
+    <string name="listening_notification_error">La escucha se detuvo</string>
+    <!-- %1$s es una hora ya formateada segun la configuracion del dispositivo. -->
+    <string name="listening_notification_until">Hasta las %1$s</string>
+    <string name="listening_notification_stop">Parar</string>
+
+    <plurals name="listening_notification_species">
+        <item quantity="one">%1$d especie detectada</item>
+        <item quantity="other">%1$d especies detectadas</item>
+    </plurals>
+
+</resources>

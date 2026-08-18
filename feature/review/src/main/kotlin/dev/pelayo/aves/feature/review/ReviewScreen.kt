@@ -68,6 +68,10 @@ internal fun ReviewContent(
     val snackbarHostState = remember { SnackbarHostState() }
     val undoable = state.undoable
 
+    // Uno para toda la pantalla, no uno por tarjeta: asi solo puede sonar un
+    // recorte a la vez y solo hay un reproductor que liberar al salir.
+    val clipPlayer = rememberClipPlayer()
+
     // El aviso se dispara al cambiar la accion reversible: si el usuario despacha
     // dos tarjetas seguidas, esta corrutina se reinicia y el segundo aviso
     // sustituye al primero en vez de encolarse detras.
@@ -102,10 +106,31 @@ internal fun ReviewContent(
                     Header(count = state.pending.size)
                 }
                 items(state.pending, key = { it.observationId }) { observation ->
+                    // Comprobar si el recorte existe toca disco, y la lista se
+                    // recompone con cada decision: se resuelve una vez por
+                    // tarjeta en lugar de en cada recomposicion.
+                    val canPlay = remember(clipPlayer, observation.mediaPath) {
+                        clipPlayer.canPlay(observation.mediaPath)
+                    }
+
                     ReviewCard(
                         observation = observation,
-                        onConfirm = { onConfirm(observation.observationId) },
-                        onReject = { onReject(observation.observationId) },
+                        // La tarjeta desaparece de la lista al decidir. Si seguia
+                        // sonando, el canto se quedaria sin nada en pantalla que
+                        // lo pudiera parar.
+                        onConfirm = {
+                            clipPlayer.stopIfPlaying(observation.observationId)
+                            onConfirm(observation.observationId)
+                        },
+                        onReject = {
+                            clipPlayer.stopIfPlaying(observation.observationId)
+                            onReject(observation.observationId)
+                        },
+                        canPlayClip = canPlay,
+                        isPlaying = clipPlayer.isPlaying(observation.observationId),
+                        onTogglePlay = {
+                            clipPlayer.toggle(observation.observationId, observation.mediaPath)
+                        },
                     )
                 }
             }

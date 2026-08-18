@@ -19,6 +19,8 @@ import dev.pelayo.aves.feature.pokedex.SpeciesDetailViewModel
 import dev.pelayo.aves.feature.review.ReviewScreen
 import dev.pelayo.aves.feature.review.ReviewViewModel
 import dev.pelayo.aves.feature.settings.SettingsScreen
+import dev.pelayo.aves.feature.settings.SettingsViewModel
+import dev.pelayo.aves.feature.settings.settingsStore
 import dev.pelayo.aves.ml.createAudioClassifier
 import dev.pelayo.aves.ml.createContextPrior
 import dev.pelayo.aves.ml.createImageClassifier
@@ -102,7 +104,26 @@ fun AvesNavHost(
             )
         }
 
-        composable(AvesDestination.SETTINGS.route) { SettingsScreen() }
+        composable(AvesDestination.SETTINGS.route) {
+            SettingsScreen(
+                viewModelFactory = {
+                    SettingsViewModel(
+                        store = settingsStore(appContext),
+                        observationRepository = container.observationRepository,
+                        clipsDirectory = container.clipsDirectory,
+                    )
+                },
+                // Los descriptores salen del flavor compilado: :app es el unico
+                // que sabe si BirdNET esta enlazado. La atribucion no es
+                // decorativa, es requisito de la licencia CC BY-NC-SA.
+                modelDescriptors = remember(appContext, contextPrior) {
+                    listOfNotNull(
+                        createAudioClassifier(appContext, contextPrior)?.use { it.descriptor },
+                        createImageClassifier(appContext, contextPrior).use { it.descriptor },
+                    )
+                },
+            )
+        }
 
         composable(
             route = "$SPECIES_DETAIL_ROUTE/{$SPECIES_ID_ARG}",

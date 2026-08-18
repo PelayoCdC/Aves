@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        Permite tener un servicio en primer plano. Desde Android 9 es obligatorio
+        declararlo: sin el, startForeground lanza SecurityException y el proceso
+        se cae en cuanto el usuario apaga la pantalla, que es justo el caso que
+        este modulo existe para cubrir.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!--
+        Permiso por TIPO de servicio, obligatorio desde Android 14. Android 14
+        partio el permiso generico anterior en uno por cada uso, precisamente
+        para que capturar audio de fondo tenga que declararse como tal y se vea
+        en la ficha de la app. Sin el, arrancar el servicio con
+        foregroundServiceType="microphone" lanza SecurityException.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
+    <!--
+        RECORD_AUDIO NO se declara aqui: ya viaja con :core:audio, que es el
+        modulo que de verdad abre el microfono, y el manifiesto fusionado lo
+        hereda por la dependencia.
+
+        POST_NOTIFICATIONS si, y no es opcional pese a no aparecer en la lista de
+        permisos "de servicio": desde Android 13 una notificacion sin este
+        permiso concedido simplemente no se pinta. El servicio seguiria vivo,
+        pero el usuario tendria el microfono abierto sin ningun aviso visible y
+        sin forma de pararlo desde fuera de la app. Quien lo pida en tiempo de
+        ejecucion es la UI; declararlo es cosa de este modulo, que es el unico
+        que publica una notificacion.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+
+        <!--
+            exported="false": lo arranca la propia app y nadie mas. Un servicio
+            que abre el microfono y es exportable es una puerta abierta a que
+            otra aplicacion grabe usando nuestros permisos.
+
+            El tipo `microphone` es obligatorio desde Android 14 para capturar
+            audio en segundo plano, y ademas es el que hace que el sistema
+            muestre el indicador de microfono activo.
+        -->
+        <service
+            android:name="dev.pelayo.aves.core.listening.ListeningService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+    </application>
+
+</manifest>

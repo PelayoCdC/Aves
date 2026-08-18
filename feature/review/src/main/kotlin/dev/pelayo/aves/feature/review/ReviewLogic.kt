@@ -61,6 +61,12 @@ data class PendingObservation(
     val rawConfidence: Float,
     val timestamp: Long,
     /**
+     * Ruta del recorte de audio que provoco la deteccion, o null si no se
+     * guardo. Viaja hasta aqui porque es la prueba: sin ella, la bandeja pide un
+     * veredicto sobre algo que el usuario no puede oir.
+     */
+    val mediaPath: String? = null,
+    /**
      * false cuando el catalogo no conoce el speciesId. Se muestra igualmente,
      * ver [mergePendingWithSpecies].
      */
@@ -102,6 +108,7 @@ fun mergePendingWithSpecies(
                 confidence = observation.adjustedConfidence,
                 rawConfidence = observation.rawConfidence,
                 timestamp = observation.timestamp,
+                mediaPath = observation.mediaPath,
                 isResolved = match != null,
             )
         }

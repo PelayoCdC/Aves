@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +39,14 @@ import java.util.Date
  * Las dos acciones se muestran siempre las dos, sin gestos de deslizar ocultos:
  * descartar es destructivo y no puede depender de que el usuario adivine que
  * existe un gesto.
+ *
+ * El estado de la escucha entra por parametros sueltos y no como un
+ * `ClipPlayerState`: asi la tarjeta no sabe nada de ExoPlayer y se puede
+ * previsualizar y probar sin montar un reproductor.
+ *
+ * @param canPlayClip false cuando el recorte ya no esta en disco. El boton se
+ *   sigue viendo, desactivado: que existio una grabacion es informacion util
+ *   aunque ya no se pueda oir.
  */
 @Composable
 fun ReviewCard(
@@ -45,6 +54,9 @@ fun ReviewCard(
     onConfirm: () -> Unit,
     onReject: () -> Unit,
     modifier: Modifier = Modifier,
+    canPlayClip: Boolean = false,
+    isPlaying: Boolean = false,
+    onTogglePlay: () -> Unit = {},
 ) {
     val accent = accentFor(observation.level)
 
@@ -121,9 +133,22 @@ fun ReviewCard(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Escuchar va a la izquierda, separado del veredicto: es el paso
+                // previo, no una tercera opcion al mismo nivel que confirmar o
+                // descartar.
+                if (observation.mediaPath != null) {
+                    ClipButton(
+                        isPlaying = isPlaying,
+                        enabled = canPlayClip,
+                        onClick = onTogglePlay,
+                    )
+                }
+
+                Spacer(Modifier.weight(1f))
+
                 TextButton(onClick = onReject) {
                     Text("Descartar")
                 }
@@ -138,6 +163,40 @@ fun ReviewCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * El boton que hace utilizable la bandeja: oir la deteccion antes de juzgarla.
+ *
+ * Lleva texto y no solo icono porque es la accion que da sentido a la pantalla y
+ * no puede depender de que se reconozca un triangulito; ademas el texto es lo
+ * unico que puede decir que la grabacion ya no esta sin anadir otra linea a la
+ * tarjeta.
+ */
+@Composable
+private fun ClipButton(
+    isPlaying: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedButton(onClick = onClick, modifier = modifier, enabled = enabled) {
+        ClipPlayIcon(
+            isPlaying = isPlaying,
+            // El texto del propio boton ya lo describe; duplicarlo haria que el
+            // lector de pantalla lo dijera dos veces.
+            contentDescription = null,
+            size = ButtonDefaults.IconSize,
+        )
+        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+        Text(
+            text = when {
+                !enabled -> "Sin grabación"
+                isPlaying -> "Parar"
+                else -> "Escuchar"
+            },
+        )
     }
 }
 
@@ -206,13 +265,25 @@ private fun ReviewCardPreview() {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             SampleObservations.forEach { observation ->
-                ReviewCard(observation = observation, onConfirm = {}, onReject = {})
+                ReviewCard(
+                    observation = observation,
+                    onConfirm = {},
+                    onReject = {},
+                    // En la previsualizacion no hay reproductor ni ficheros, asi
+                    // que los estados se fuerzan a mano para poder ver los tres:
+                    // sonando, listo para sonar y sin grabacion.
+                    canPlayClip = observation.observationId != 3L,
+                    isPlaying = observation.observationId == 1L,
+                )
             }
         }
     }
 }
 
-/** Datos de ejemplo para las previsualizaciones. Uno de cada nivel a proposito. */
+/**
+ * Datos de ejemplo para las previsualizaciones. Uno de cada nivel a proposito, y
+ * uno sin recorte para ver la tarjeta cuando no hay nada que escuchar.
+ */
 internal val SampleObservations = listOf(
     PendingObservation(
         observationId = 1L,
@@ -222,6 +293,7 @@ internal val SampleObservations = listOf(
         confidence = 0.95f,
         rawConfidence = 0.91f,
         timestamp = 1_755_500_000_000L,
+        mediaPath = "clips/session_12/turmer.m4a",
     ),
     PendingObservation(
         observationId = 2L,
@@ -240,5 +312,6 @@ internal val SampleObservations = listOf(
         confidence = 0.41f,
         rawConfidence = 0.55f,
         timestamp = 1_755_300_000_000L,
+        mediaPath = "clips/session_12/sedwar.m4a",
     ),
 )

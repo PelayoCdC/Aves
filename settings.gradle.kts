@@ -62,6 +62,9 @@ include(":core:ml:birdnet")
 // Clasificador de imagen. Apache 2.0, asi que entra en los DOS flavors.
 include(":core:ml:vision")
 
+// BirdNET+ V3 con pesos Apache 2.0: es lo que permite publicar el flavor `open`.
+include(":core:ml:birdnetplus")
+
 include(":feature:identify")
 
 // Bandeja de revision: confirmar o descartar lo que el modelo cree haber oido.
