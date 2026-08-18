@@ -92,6 +92,14 @@ class CameraViewModel(
     private var classifyJob: Job? = null
 
     /**
+     * La precarga va en su propio Job y no comparte el de clasificar porque las
+     * dos pueden solaparse: el usuario puede disparar antes de que el modelo
+     * termine de cargar. Con un unico campo, la segunda pisaria la referencia a
+     * la primera y `warmUp` acabaria ejecutandose dos veces en paralelo.
+     */
+    private var warmUpJob: Job? = null
+
+    /**
      * Calentar cuesta cientos de milisegundos y solo hace falta una vez. Se
      * recuerda aqui y no en el estado porque es un detalle del ciclo de vida del
      * interprete, no algo que la pantalla deba saber.
@@ -107,10 +115,10 @@ class CameraViewModel(
      * espera se nota.
      */
     fun prepare() {
-        if (warmedUp || classifyJob?.isActive == true) return
+        if (warmedUp || warmUpJob?.isActive == true) return
         val active = obtainClassifier() ?: return
 
-        classifyJob = viewModelScope.launch {
+        warmUpJob = viewModelScope.launch {
             _uiState.update { it.copy(isWarmingUp = true, error = null, errorDetail = null) }
             try {
                 active.warmUp()
@@ -139,7 +147,7 @@ class CameraViewModel(
     fun classify(bitmap: Bitmap, context: ObservationContext) {
         // Un disparo a la vez. El boton se deshabilita mientras tanto, pero un
         // doble toque rapido llegaria igual hasta aqui.
-        if (classifyJob?.isActive == true && _uiState.value.isClassifying) return
+        if (_uiState.value.isClassifying) return
 
         val active = obtainClassifier() ?: return
 
@@ -154,6 +162,11 @@ class CameraViewModel(
 
         classifyJob = viewModelScope.launch {
             try {
+                // Si la precarga sigue en marcha se espera en vez de lanzar otra:
+                // dos warmUp simultaneos sobre el mismo interprete no estan
+                // definidos y el segundo solo puede empeorar las cosas.
+                warmUpJob?.join()
+
                 if (!warmedUp) {
                     _uiState.update { it.copy(isWarmingUp = true) }
                     active.warmUp()
@@ -185,10 +198,14 @@ class CameraViewModel(
     }
 
     /** La pantalla no pudo abrir o enlazar la camara. */
-    fun reportCameraFailure(cause: Throwable) = fail(CameraError.CAMERA_UNAVAILABLE, cause)
+    fun reportCameraFailure(cause: Throwable) {
+        fail(CameraError.CAMERA_UNAVAILABLE, cause)
+    }
 
     /** El disparo fallo o la foto no se pudo decodificar. */
-    fun reportCaptureFailure(cause: Throwable) = fail(CameraError.CAPTURE_FAILED, cause)
+    fun reportCaptureFailure(cause: Throwable) {
+        fail(CameraError.CAPTURE_FAILED, cause)
+    }
 
     /** Vuelve al estado de encuadre, sin candidatos ni error en pantalla. */
     fun dismissResults() {
@@ -254,6 +271,8 @@ class CameraViewModel(
     override fun onCleared() {
         classifyJob?.cancel()
         classifyJob = null
+        warmUpJob?.cancel()
+        warmUpJob = null
         // Sin esto se queda vivo el modelo mapeado en memoria.
         classifier?.close()
         classifier = null

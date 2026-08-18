@@ -52,6 +52,35 @@ fun centerSquareCrop(width: Int, height: Int): SquareCrop {
 }
 
 /**
+ * Factor de submuestreo para decodificar el JPEG, siempre potencia de dos.
+ *
+ * La foto sale de la camara a doce megapixeles y el modelo solo quiere 224 de
+ * lado. Decodificarla entera son unos 48 MB de una tacada en cada disparo, y en
+ * un telefono modesto eso es un OutOfMemory esperando su turno.
+ *
+ * Se queda deliberadamente CORTO: si la imagen ya supera [targetSize], no la
+ * baja por debajo, para que el escalado final siga siendo una reduccion y no un
+ * estirado. Perder detalle antes de tiempo empeoraria la clasificacion, que es
+ * justo lo que no puede pasar por ahorrar memoria. Con una imagen que de
+ * entrada ya es mas pequena devuelve 1: ahi no hay nada que ahorrar.
+ *
+ * Potencia de dos porque es lo unico que `BitmapFactory.Options.inSampleSize`
+ * respeta: cualquier otro valor lo redondea el por su cuenta.
+ */
+fun inSampleSizeFor(width: Int, height: Int, targetSize: Int): Int {
+    require(width > 0 && height > 0) { "La imagen no puede medir ${width}x$height" }
+    require(targetSize > 0) { "El lado de entrada del modelo no puede ser $targetSize" }
+
+    var shortestSide = minOf(width, height)
+    var sampleSize = 1
+    while (shortestSide / 2 >= targetSize) {
+        shortestSide /= 2
+        sampleSize *= 2
+    }
+    return sampleSize
+}
+
+/**
  * Cuartos de vuelta en sentido horario que hay que aplicar, de 0 a 3.
  *
  * `ImageProxy.imageInfo.rotationDegrees` documenta devolver 0, 90, 180 o 270,

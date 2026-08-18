@@ -34,6 +34,8 @@ dependencies {
     // flavor personal.
     implementation(projects.core.network)
     implementation(projects.core.ml.api)
+    // Apache 2.0: entra en los DOS flavors, a diferencia de BirdNET.
+    implementation(projects.core.ml.vision)
 
     // Solo el flavor `personal` enlaza BirdNET. El flavor `open` se compila sin
     // el, y por eso puede publicarse: el modelo CC BY-NC-SA ni siquiera esta en
@@ -43,6 +45,7 @@ dependencies {
     implementation(projects.feature.identify)
     implementation(projects.feature.pokedex)
     implementation(projects.feature.review)
+    implementation(projects.feature.camera)
     implementation(projects.feature.settings)
 
     implementation(libs.androidx.core.ktx)

@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
@@ -65,6 +66,8 @@ fun IdentifyScreen(
     clipsDirectory: File? = null,
     regionRepository: RegionRepository? = null,
     locationProvider: (() -> Coordinates?)? = null,
+    /** Abre la camara. La foto es la via secundaria: se usa cuando ves el ave pero no la oyes. */
+    onOpenCamera: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val viewModel: IdentifyViewModel = viewModel {
@@ -198,6 +201,20 @@ fun IdentifyScreen(
                     imageVector = Icons.Filled.AudioFile,
                     contentDescription = "Analizar un fichero de audio",
                 )
+            }
+
+            // La camara vive aqui y no en la barra inferior a proposito: es una
+            // tercera forma de identificar, no una seccion aparte de la app.
+            onOpenCamera?.let { openCamera ->
+                SmallFloatingActionButton(
+                    onClick = openCamera,
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PhotoCamera,
+                        contentDescription = "Identificar con una foto",
+                    )
+                }
             }
         }
 

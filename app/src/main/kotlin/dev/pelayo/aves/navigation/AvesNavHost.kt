@@ -10,6 +10,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import dev.pelayo.aves.di.AppContainer
+import dev.pelayo.aves.feature.camera.CameraScreen
 import dev.pelayo.aves.feature.identify.IdentifyScreen
 import dev.pelayo.aves.feature.pokedex.PokedexScreen
 import dev.pelayo.aves.feature.pokedex.PokedexViewModel
@@ -20,10 +21,21 @@ import dev.pelayo.aves.feature.review.ReviewViewModel
 import dev.pelayo.aves.feature.settings.SettingsScreen
 import dev.pelayo.aves.ml.createAudioClassifier
 import dev.pelayo.aves.ml.createContextPrior
+import dev.pelayo.aves.ml.createImageClassifier
 
 /** Ruta de la ficha de especie. Es un destino de detalle, no de primer nivel. */
 private const val SPECIES_DETAIL_ROUTE = "species"
 private const val SPECIES_ID_ARG = "speciesId"
+
+/**
+ * La camara NO es un destino de la barra inferior.
+ *
+ * La foto es la via secundaria de identificacion: los pajaros se oyen mucho mas
+ * de lo que se dejan fotografiar. Darle una pestana propia la pondria al mismo
+ * nivel que la escucha y sugeriria que son alternativas equivalentes, cuando en
+ * la practica no lo son.
+ */
+private const val CAMERA_ROUTE = "camera"
 
 @Composable
 fun AvesNavHost(
@@ -57,6 +69,7 @@ fun AvesNavHost(
                 clipsDirectory = container.clipsDirectory,
                 regionRepository = container.regionRepository,
                 locationProvider = { container.locationProvider.lastKnown() },
+                onOpenCamera = { navController.navigate(CAMERA_ROUTE) },
             )
         }
 
@@ -75,6 +88,16 @@ fun AvesNavHost(
             ReviewScreen(
                 viewModelFactory = {
                     ReviewViewModel(container.observationRepository, container.speciesRepository)
+                },
+            )
+        }
+
+        composable(CAMERA_ROUTE) {
+            CameraScreen(
+                classifierProvider = { createImageClassifier(appContext, contextPrior) },
+                locationProvider = { container.locationProvider.lastKnown() },
+                onIdentified = { speciesId, _ ->
+                    navController.navigate("$SPECIES_DETAIL_ROUTE/$speciesId")
                 },
             )
         }
