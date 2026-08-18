@@ -12,6 +12,24 @@ android {
         versionName = "0.1.0"
     }
 
+    // Un APK por arquitectura en vez de uno con las cuatro dentro.
+    //
+    // Las librerias nativas de LiteRT pesan ~19 MB repetidas cuatro veces, y
+    // ningun movil usa mas de una. Dividir por ABI es la mitigacion mas barata
+    // del tamano: no toca ni una linea de codigo y quita ~14 MB del APK que
+    // acaba en el telefono.
+    //
+    // `isUniversalApk` sigue produciendo el APK completo, que es el que se
+    // instala a mano cuando no se sabe la arquitectura del destino.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true

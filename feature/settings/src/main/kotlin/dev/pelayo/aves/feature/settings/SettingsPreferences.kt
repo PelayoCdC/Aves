@@ -1,0 +1,94 @@
+package dev.pelayo.aves.feature.settings
+
+import kotlin.math.roundToInt
+
+/**
+ * Los ajustes que el usuario puede tocar, ya validados.
+ *
+ * Es un unico objeto y no cuatro valores sueltos porque la pantalla los lee
+ * juntos y porque asi la validacion tiene un solo punto de entrada
+ * ([sanitized]). Todo lo que entre desde disco pasa por ahi: un valor guardado
+ * por una version anterior, o corrompido, no puede colarse hasta el modelo.
+ */
+data class AvesSettings(
+    /** Cuanto pesa el prior geo-temporal frente a la salida cruda del modelo. */
+    val contextInfluence: Float = DEFAULT_CONTEXT_INFLUENCE,
+    /** Desactiva el uso de ubicacion por completo. */
+    val locationDisabled: Boolean = false,
+    /** Por debajo de esto una deteccion no se muestra. */
+    val confidenceThreshold: Float = DEFAULT_CONFIDENCE_THRESHOLD,
+    /** Minutos hasta que la escucha se para sola. [NO_CUTOFF] la deja indefinida. */
+    val listeningCutoffMinutes: Int = DEFAULT_LISTENING_CUTOFF_MINUTES,
+) {
+
+    /** Version de este objeto con todos los valores dentro de rango. */
+    fun sanitized(): AvesSettings = copy(
+        contextInfluence = sanitizeContextInfluence(contextInfluence),
+        confidenceThreshold = sanitizeConfidenceThreshold(confidenceThreshold),
+        listeningCutoffMinutes = sanitizeListeningCutoff(listeningCutoffMinutes),
+    )
+
+    companion object {
+        val CONTEXT_INFLUENCE_RANGE = 0f..1f
+
+        /**
+         * A la mitad y no al maximo a proposito: el prior es una estadistica, no
+         * una verdad. Si mandara del todo, un divagante autentico quedaria
+         * sepultado bajo lo que "deberia" haber en la zona, que es justo lo mas
+         * emocionante que puede pasar con esta app. Mismo valor que
+         * `IdentifyViewModel.DEFAULT_CONTEXT_INFLUENCE`.
+         */
+        const val DEFAULT_CONTEXT_INFLUENCE = 0.5f
+
+        /**
+         * Ni 0 ni 1 son alcanzables: a 0 la lista serian 6.419 especies de ruido,
+         * y a 1 no pasaria nunca nada. Un extremo inutil en un control deslizante
+         * solo sirve para que alguien lo pruebe y crea que la app esta rota.
+         */
+        val CONFIDENCE_THRESHOLD_RANGE = 0.05f..0.95f
+        const val DEFAULT_CONFIDENCE_THRESHOLD = 0.5f
+
+        val LISTENING_CUTOFF_RANGE = 0..120
+        const val LISTENING_CUTOFF_STEP_MINUTES = 5
+
+        /** Escucha sin limite. Solo la para el usuario. */
+        const val NO_CUTOFF = 0
+
+        /**
+         * Media hora: mas de lo que dura una salida corta al jardin y bastante
+         * menos de lo que tarda el microfono en agotar la bateria si la app se
+         * queda escuchando olvidada en un bolsillo.
+         */
+        const val DEFAULT_LISTENING_CUTOFF_MINUTES = 30
+
+        fun sanitizeContextInfluence(value: Float): Float =
+            if (value.isNaN()) DEFAULT_CONTEXT_INFLUENCE else value.coerceIn(CONTEXT_INFLUENCE_RANGE)
+
+        fun sanitizeConfidenceThreshold(value: Float): Float =
+            if (value.isNaN()) {
+                DEFAULT_CONFIDENCE_THRESHOLD
+            } else {
+                value.coerceIn(CONFIDENCE_THRESHOLD_RANGE)
+            }
+
+        /**
+         * Ajusta el corte al escalon mas cercano.
+         *
+         * Un valor negativo NO se interpreta como "sin corte" aunque saturar
+         * hacia abajo llevaria ahi: eso convertiria un dato corrupto en una
+         * escucha indefinida, y el fallo seguro es el contrario. Se vuelve al
+         * valor por defecto.
+         */
+        fun sanitizeListeningCutoff(minutes: Int): Int {
+            if (minutes < 0) return DEFAULT_LISTENING_CUTOFF_MINUTES
+            if (minutes == NO_CUTOFF) return NO_CUTOFF
+
+            val bounded = minutes.coerceIn(LISTENING_CUTOFF_RANGE)
+            val step = LISTENING_CUTOFF_STEP_MINUTES
+            val snapped = (bounded.toFloat() / step).roundToInt() * step
+            // Redondear 1 o 2 minutos hacia abajo daria 0, que aqui significa
+            // justo lo contrario de lo que el usuario pidio.
+            return snapped.coerceIn(step, LISTENING_CUTOFF_RANGE.last)
+        }
+    }
+}

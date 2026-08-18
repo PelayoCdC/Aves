@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Un push que cancela al anterior: no tiene sentido gastar minutos en verificar
+# un commit que ya ha quedado obsoleto.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    name: Compilar y probar
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Los modelos y el catalogo NO estan en el repositorio: los de BirdNET son
+      # CC BY-NC-SA y el catalogo deriva de ellos y de eBird. La compilacion y
+      # los tests unitarios no los necesitan, porque son assets que solo hacen
+      # falta en tiempo de ejecucion. Los tests instrumentados si, y por eso no
+      # se ejecutan aqui todavia (ver el TODO de abajo).
+
+      - name: Compilar ambos flavors
+        run: ./gradlew assemblePersonalDebug assembleOpenDebug --no-daemon
+
+      - name: Tests unitarios
+        run: ./gradlew test --no-daemon
+
+      - name: Resumen de tests
+        if: always()
+        run: |
+          total=0; fallos=0
+          for f in $(find . -path "*/test-results/*" -name "TEST-*.xml"); do
+            t=$(grep -o 'tests="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
+            fl=$(grep -o 'failures="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
+            er=$(grep -o 'errors="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
+            total=$((total+t)); fallos=$((fallos+fl+er))
+          done
+          echo "### $total tests, $fallos fallos" >> $GITHUB_STEP_SUMMARY
+
+      - name: Informes de test
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: informes-de-test
+          path: '**/build/reports/tests/'
+          retention-days: 7
+
+  licencias:
+    name: Guardia de licencias
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # ESTE ES EL TRABAJO QUE MAS IMPORTA DE TODA LA CI.
+      #
+      # Los modelos de BirdNET son CC BY-NC-SA 4.0: no se pueden distribuir. El
+      # flavor `open` existe para poder publicar algun dia, y basta que alguien
+      # escriba `implementation` en vez de `personalImplementation` en una linea
+      # del build para que un modelo no comercial acabe dentro de un APK
+      # publicable. Nada lo avisaria.
+      #
+      # `testOpenDebugUnitTest` comprueba por reflexion que las clases de los
+      # modelos restringidos NO estan en el classpath del flavor publicable.
+      # `testPersonalDebugUnitTest` comprueba lo contrario, para que el primero
+      # no pueda pasar por la razon equivocada (que alguien rompiera el enlace
+      # en los dos flavors a la vez).
+      - name: El flavor publicable no puede contener modelos no comerciales
+        run: ./gradlew :app:testOpenDebugUnitTest --no-daemon
+
+      - name: El flavor personal si debe traer BirdNET
+        run: ./gradlew :app:testPersonalDebugUnitTest --no-daemon
+
+  # TODO: tests instrumentados. Necesitan emulador y, sobre todo, los modelos y
+  # el catalogo, que no estan en el repositorio. Habria que descargarlos en el
+  # runner (BirdNET si es publico; el clasificador de imagen requiere cuenta de
+  # Kaggle y por tanto un secreto). Son 29 tests que hoy solo corren en local.

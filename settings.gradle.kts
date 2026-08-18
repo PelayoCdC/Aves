@@ -44,6 +44,9 @@ include(":core:audio")
 // xeno-canto, que se quedan fuera de la app a proposito.
 include(":core:network")
 
+// El bucle de escucha, para que pueda correr en un servicio en primer plano.
+include(":core:listening")
+
 include(":core:database")
 
 // Repositorios: une base de datos y red. Es lo que consumen las features.
