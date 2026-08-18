@@ -10,17 +10,30 @@ colección persistida por sesiones.
 
 ## Arranque rápido
 
+En un clon limpio hacen falta **tres pasos, en este orden**:
+
 ```bash
-scripts/fetch-models.ps1
+powershell -File scripts/fetch-models.ps1
+```
+
+```bash
+powershell -File scripts/build-catalog.ps1
 ```
 
 ```bash
 gradlew.bat :app:installPersonalDebug
 ```
 
-Los modelos no están en el repositorio (ver [Licencias](#licencias)), así que el
-primer paso es obligatorio. Sin ellos la app compila e instala, pero al pulsar
-"escuchar" avisa de que faltan.
+Ni los modelos ni el catálogo están en el repositorio, y no es solo por tamaño:
+los modelos de BirdNET son CC BY-NC-SA 4.0 y el catálogo deriva de ellos y de la
+taxonomía de eBird (ver [Licencias](#licencias)).
+
+El orden importa: `build-catalog.ps1` lee `taxo_code.txt` y `labels_es.txt`, que
+los trae el primer script.
+
+Si falta algo, la app **no se rompe en silencio**. Sin modelos, al pulsar
+"escuchar" avisa de que hay que ejecutar `fetch-models.ps1`. Sin catálogo, la
+resolución de especies falla con un mensaje que dice exactamente eso.
 
 ---
 

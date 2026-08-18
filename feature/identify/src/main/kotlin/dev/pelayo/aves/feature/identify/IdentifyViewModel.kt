@@ -6,6 +6,8 @@ import androidx.annotation.RequiresPermission
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.pelayo.aves.core.audio.AudioCaptureEngine
+import dev.pelayo.aves.core.audio.AudioClipWriter
+import dev.pelayo.aves.core.audio.ClipStorage
 import dev.pelayo.aves.core.audio.EnergyGate
 import dev.pelayo.aves.core.audio.PcmScaling
 import dev.pelayo.aves.core.audio.WavDecoder
@@ -28,6 +30,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.FileNotFoundException
+import java.io.File
 import java.io.IOException
 
 /** Por que no se puede escuchar. Se distinguen porque cada una se arregla distinto. */
@@ -79,6 +82,11 @@ class IdentifyViewModel(
      * a exigir una base de datos para poder ver una pantalla.
      */
     private val observationRepository: ObservationRepository? = null,
+    /**
+     * Donde guardar los recortes. Nulo desactiva la grabacion: la app sigue
+     * identificando y coleccionando, solo que sin audio que escuchar despues.
+     */
+    private val clipsDirectory: File? = null,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(IdentifyUiState())
@@ -152,6 +160,14 @@ class IdentifyViewModel(
                     scaling = INPUT_SCALING,
                 )
                 val gate = EnergyGate(INPUT_SCALING)
+                // El codificador se configura con el formato que pide el modelo,
+                // igual que la captura: nada de constantes cableadas aqui.
+                val clipWriter = clipsDirectory?.let {
+                    AudioClipWriter(
+                        sampleRate = active.requiredSampleRate,
+                        scaling = INPUT_SCALING,
+                    )
+                }
 
                 engine.frames().collect { frame ->
                     // Calcular la energia cuesta microsegundos; la inferencia
@@ -175,7 +191,13 @@ class IdentifyViewModel(
                     val elapsedMillis = (System.nanoTime() - started) / 1_000_000
 
                     val stable = stabilizer.update(results)
-                    persist(stable, active.descriptor.modelId, frame.endTimestampMillis)
+                    persist(
+                        detections = stable,
+                        modelId = active.descriptor.modelId,
+                        timestamp = frame.endTimestampMillis,
+                        samples = frame.samples,
+                        clipWriter = clipWriter,
+                    )
 
                     _uiState.update {
                         it.copy(
@@ -348,6 +370,8 @@ class IdentifyViewModel(
         detections: List<StableDetection>,
         modelId: String,
         timestamp: Long,
+        samples: FloatArray,
+        clipWriter: AudioClipWriter?,
     ) {
         val repository = observationRepository ?: return
         val session = sessionId ?: return
@@ -355,6 +379,12 @@ class IdentifyViewModel(
         for (detection in detections) {
             val alreadyWritten = recordedScores[detection.speciesId]
             if (alreadyWritten != null && detection.score <= alreadyWritten) continue
+
+            // El recorte se escribe con la ventana que PRODUJO esta deteccion,
+            // no con una posterior: es la prueba de por que el modelo dijo lo
+            // que dijo, y es lo que hace que la bandeja de revision se pueda
+            // usar de verdad en vez de pedir un acto de fe.
+            val clipPath = writeClip(clipWriter, session, detection.speciesId, samples)
 
             repository.recordDetection(
                 sessionId = session,
@@ -367,8 +397,34 @@ class IdentifyViewModel(
                     adjustedScore = detection.score,
                 ),
                 timestamp = timestamp,
+                mediaPath = clipPath,
             )
             recordedScores[detection.speciesId] = detection.score
+        }
+    }
+
+    /**
+     * Codifica el recorte a AAC. Devuelve null si falla.
+     *
+     * Un fallo al guardar el audio NO puede tumbar la escucha: es preferible
+     * una observacion sin recorte que perder la identificacion entera.
+     */
+    private suspend fun writeClip(
+        clipWriter: AudioClipWriter?,
+        session: Long,
+        speciesId: String,
+        samples: FloatArray,
+    ): String? {
+        val writer = clipWriter ?: return null
+        val baseDir = clipsDirectory ?: return null
+        return try {
+            val target = ClipStorage.clipFile(baseDir, session, speciesId)
+            writer.write(samples, target).file.absolutePath
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo guardar el recorte de $speciesId", e)
+            null
         }
     }
 

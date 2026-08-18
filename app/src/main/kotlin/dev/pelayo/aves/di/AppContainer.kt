@@ -6,6 +6,7 @@ import dev.pelayo.aves.core.data.SpeciesRepository
 import dev.pelayo.aves.core.data.SpeciesResolver
 import dev.pelayo.aves.core.database.AvesDatabase
 import dev.pelayo.aves.core.database.CatalogSeeder
+import java.io.File
 
 /**
  * Contenedor de dependencias hecho a mano.
@@ -34,5 +35,16 @@ class AppContainer(private val context: Context) {
 
     val observationRepository: ObservationRepository by lazy {
         ObservationRepository(database, speciesResolver)
+    }
+
+    /**
+     * Donde viven los recortes de audio de las detecciones.
+     *
+     * En `filesDir` y no en la cache: el sistema puede vaciar la cache cuando
+     * quiera, y un recorte perdido deja una observacion de la coleccion sin la
+     * prueba que la justifica.
+     */
+    val clipsDirectory: File by lazy {
+        File(context.filesDir, "clips").apply { mkdirs() }
     }
 }

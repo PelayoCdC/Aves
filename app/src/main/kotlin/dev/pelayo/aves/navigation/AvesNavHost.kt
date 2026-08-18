@@ -47,6 +47,7 @@ fun AvesNavHost(
             IdentifyScreen(
                 classifierProvider = classifierProvider,
                 observationRepository = container.observationRepository,
+                clipsDirectory = container.clipsDirectory,
             )
         }
 
