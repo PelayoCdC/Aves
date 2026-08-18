@@ -1,0 +1,17 @@
+# Normaliza los finales de linea en el repositorio a LF.
+#
+# El proyecto se desarrolla en Windows pero los ficheros de Gradle y los scripts
+# se leen tambien en CI y en Linux. Sin esto, cada commit desde Windows
+# reescribiria ficheros enteros solo por los CRLF y los diffs serian inutiles.
+* text=auto eol=lf
+
+# El wrapper de Gradle: el .bat necesita CRLF para funcionar en Windows y el
+# script sh necesita LF.
+*.bat text eol=crlf
+gradlew text eol=lf
+*.ps1 text eol=crlf
+
+# Binarios: que git no los toque.
+*.jar binary
+*.png binary
+*.tflite binary

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Tema minimo del sistema: todo lo pinta Compose (ver AvesTheme).
+        Se hereda de android:Theme.Material.*.NoActionBar y no de un tema de
+        AppCompat/Material Components para no arrastrar esas librerias solo por
+        el tema de arranque.
+    -->
+    <style name="Theme.Aves" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

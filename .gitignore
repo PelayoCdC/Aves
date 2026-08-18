@@ -1,0 +1,33 @@
+*.iml
+.gradle/
+**/build/
+local.properties
+.idea/
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+
+# Modelos ML: no se versionan (50 MB+ y, en el caso de BirdNET, licencia CC BY-NC-SA).
+# Se descargan con scripts/fetch-models.ps1
+**/src/main/assets/*.tflite
+**/src/main/assets/*.txt
+
+# Catalogo generado: NO se versiona, y no es solo por tamano.
+#
+# species.tsv deriva de la taxonomia de eBird (terminos no comerciales) y
+# model_labels_*.tsv contiene las etiquetas crudas de BirdNET, que son
+# CC BY-NC-SA 4.0. Redistribuirlos en un repositorio publico seria publicar una
+# obra derivada de material con clausula share-alike y no comercial.
+#
+# Mismo criterio que con los modelos: se regenera con scripts/build-catalog.ps1
+**/src/main/assets/catalog/*.tsv
+
+# Volcados de fallo de la JVM. Aparecen cuando el daemon de Gradle se queda sin
+# memoria (pasa si el emulador esta abierto a la vez) y pesan varios MB.
+hs_err_pid*.log
+replay_pid*.log

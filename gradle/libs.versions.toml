@@ -1,0 +1,131 @@
+## Version catalog — Aves
+##
+## Todas las versiones de esta seccion se verificaron contra maven-metadata.xml
+## (dl.google.com/dl/android/maven2 y repo1.maven.org) el 2026-07-28.
+## No subas una version "a ojo": si no existe, el build falla al resolver.
+
+[versions]
+# --- Build ---
+# AGP 9.3.1 es el ultimo estable (9.4.0 esta en alpha). Requiere Gradle 9.1+ y JDK 17+.
+# OJO: AGP 9 lleva Kotlin INTEGRADO. NO apliques org.jetbrains.kotlin.android: rompe el build.
+agp = "9.3.1"
+# Kotlin solo para modulos JVM puros (:core:common, :core:model). Los modulos Android
+# usan el compilador integrado de AGP.
+kotlin = "2.3.10"
+compileSdk = "36"
+minSdk = "26"
+targetSdk = "36"
+
+# --- UI ---
+composeBom = "2026.06.01"
+activityCompose = "1.13.0"
+navigationCompose = "2.9.8"
+coreKtx = "1.18.0"
+lifecycle = "2.10.0"
+
+# --- Pendiente de Fase 2+: NO usar todavia ---
+# KSP cambio de esquema de versiones en la 2.3.0 (ahora espeja la de Kotlin).
+# La matriz de compatibilidad de AGP 9 pide KSP 2.3.1+, pero AGP 9.3.1 arrastra
+# KGP 2.2.10 en su POM. Ese emparejamiento hay que resolverlo EMPIRICAMENTE al
+# introducir Room, no adivinarlo. Ver tarea de Fase 2.
+ksp = "2.3.10"
+room = "2.8.4"
+hilt = "2.60.1"
+hiltNavigationCompose = "1.4.0"
+camerax = "1.6.1"
+work = "2.11.2"
+datastore = "1.2.1"
+media3 = "1.10.1"
+coroutines = "1.11.0"
+ktor = "3.5.1"
+coil = "3.5.0"
+# LiteRT sustituye a org.tensorflow:tensorflow-lite (congelado en 2.17.0).
+# Linea V1 (1.4.2, API Interpreter): es la que usa toda la referencia existente
+# y la unica con delegado GPU hoy. La V2 (litert 2.1.6, API CompiledModel) se
+# evaluara en Fase 5, con el modelo de imagen, que es donde la GPU aporta.
+litert = "1.4.2"
+litertNext = "2.1.6"
+iirj = "1.7"
+
+# --- Test ---
+junit = "4.13.2"
+androidxTestExt = "1.3.0"
+androidxTestRunner = "1.7.0"
+espresso = "3.7.0"
+
+[libraries]
+# --- Convention plugins (build-logic) ---
+android-gradlePlugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+kotlin-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+# Sigue haciendo falta con AGP 9: el Kotlin integrado NO trae el plugin del
+# compilador de Compose, y sin el la build falla en cuanto activas
+# buildFeatures.compose. La guia de migracion oficial no lo menciona.
+kotlin-composeCompilerGradlePlugin = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
+
+# --- AndroidX base ---
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
+androidx-lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
+androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
+
+# --- Compose (versiones gobernadas por el BOM) ---
+androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
+androidx-compose-ui = { module = "androidx.compose.ui:ui" }
+androidx-compose-ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
+androidx-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
+androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+
+# --- Coroutines ---
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+
+# --- ML (Fase 1+) ---
+# OJO: el artefacto `litert` publica DOS lineas incompatibles bajo el mismo
+# nombre. 1.4.2 es la V1 (API Interpreter, la que usa toda la referencia
+# existente y la unica con delegado GPU); 2.1.6 es la V2 (API CompiledModel).
+# Aqui se usa la V1 a proposito: el tflite de BirdNET es solo-CPU de todos modos.
+litert = { module = "com.google.ai.edge.litert:litert", version.ref = "litert" }
+litert-next = { module = "com.google.ai.edge.litert:litert", version.ref = "litertNext" }
+litert-gpu = { module = "com.google.ai.edge.litert:litert-gpu", version.ref = "litert" }
+litert-support = { module = "com.google.ai.edge.litert:litert-support", version.ref = "litert" }
+litert-metadata = { module = "com.google.ai.edge.litert:litert-metadata", version.ref = "litert" }
+iirj = { module = "uk.me.berndporr:iirj", version.ref = "iirj" }
+
+# --- Datos y features (Fase 2+) ---
+room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
+hilt-compiler = { module = "com.google.dagger:hilt-android-compiler", version.ref = "hilt" }
+hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "hiltNavigationCompose" }
+androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+androidx-camera-core = { module = "androidx.camera:camera-core", version.ref = "camerax" }
+androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
+androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
+androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
+media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+
+# --- Test ---
+junit = { module = "junit:junit", version.ref = "junit" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestExt" }
+# androidx.test.ext:junit NO trae la clase AndroidJUnitRunner: va en este otro
+# artefacto. Sin el, la instrumentacion revienta con ClassNotFoundException.
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
+androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

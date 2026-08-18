@@ -1,0 +1,599 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "84f7d4d973d1b7c50764248e5ae63d94",
+    "entities": [
+      {
+        "tableName": "species",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`speciesId` TEXT NOT NULL, `scientificName` TEXT NOT NULL, `genus` TEXT NOT NULL, `family` TEXT NOT NULL, `order` TEXT NOT NULL, `defaultCommonName` TEXT NOT NULL, `ebirdCode` TEXT, `gbifSpeciesKey` INTEGER, `imageUrl` TEXT, `wikipediaUrl` TEXT, PRIMARY KEY(`speciesId`))",
+        "fields": [
+          {
+            "fieldPath": "speciesId",
+            "columnName": "speciesId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scientificName",
+            "columnName": "scientificName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "genus",
+            "columnName": "genus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "family",
+            "columnName": "family",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "order",
+            "columnName": "order",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "defaultCommonName",
+            "columnName": "defaultCommonName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ebirdCode",
+            "columnName": "ebirdCode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "gbifSpeciesKey",
+            "columnName": "gbifSpeciesKey",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "imageUrl",
+            "columnName": "imageUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "wikipediaUrl",
+            "columnName": "wikipediaUrl",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "speciesId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_species_scientificName",
+            "unique": true,
+            "columnNames": [
+              "scientificName"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_species_scientificName` ON `${TABLE_NAME}` (`scientificName`)"
+          },
+          {
+            "name": "index_species_ebirdCode",
+            "unique": false,
+            "columnNames": [
+              "ebirdCode"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_species_ebirdCode` ON `${TABLE_NAME}` (`ebirdCode`)"
+          },
+          {
+            "name": "index_species_family",
+            "unique": false,
+            "columnNames": [
+              "family"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_species_family` ON `${TABLE_NAME}` (`family`)"
+          }
+        ]
+      },
+      {
+        "tableName": "species_names",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`speciesId` TEXT NOT NULL, `languageTag` TEXT NOT NULL, `commonName` TEXT NOT NULL, PRIMARY KEY(`speciesId`, `languageTag`))",
+        "fields": [
+          {
+            "fieldPath": "speciesId",
+            "columnName": "speciesId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "languageTag",
+            "columnName": "languageTag",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "commonName",
+            "columnName": "commonName",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "speciesId",
+            "languageTag"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_species_names_commonName",
+            "unique": false,
+            "columnNames": [
+              "commonName"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_species_names_commonName` ON `${TABLE_NAME}` (`commonName`)"
+          }
+        ]
+      },
+      {
+        "tableName": "model_labels",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`modelId` TEXT NOT NULL, `labelIndex` INTEGER NOT NULL, `speciesId` TEXT, `rawLabel` TEXT NOT NULL, PRIMARY KEY(`modelId`, `labelIndex`))",
+        "fields": [
+          {
+            "fieldPath": "modelId",
+            "columnName": "modelId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "labelIndex",
+            "columnName": "labelIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "speciesId",
+            "columnName": "speciesId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rawLabel",
+            "columnName": "rawLabel",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "modelId",
+            "labelIndex"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_model_labels_speciesId",
+            "unique": false,
+            "columnNames": [
+              "speciesId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_model_labels_speciesId` ON `${TABLE_NAME}` (`speciesId`)"
+          },
+          {
+            "name": "index_model_labels_modelId",
+            "unique": false,
+            "columnNames": [
+              "modelId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_model_labels_modelId` ON `${TABLE_NAME}` (`modelId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "listening_sessions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `startedAt` INTEGER NOT NULL, `endedAt` INTEGER, `latitude` REAL, `longitude` REAL, `cellId` TEXT, `windowsProcessed` INTEGER NOT NULL, `windowsSkipped` INTEGER NOT NULL, `modelId` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endedAt",
+            "columnName": "endedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "cellId",
+            "columnName": "cellId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "windowsProcessed",
+            "columnName": "windowsProcessed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "windowsSkipped",
+            "columnName": "windowsSkipped",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modelId",
+            "columnName": "modelId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_listening_sessions_startedAt",
+            "unique": false,
+            "columnNames": [
+              "startedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_listening_sessions_startedAt` ON `${TABLE_NAME}` (`startedAt`)"
+          }
+        ]
+      },
+      {
+        "tableName": "observations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `speciesId` TEXT NOT NULL, `sessionId` INTEGER, `timestamp` INTEGER NOT NULL, `latitude` REAL, `longitude` REAL, `source` TEXT NOT NULL, `rawConfidence` REAL NOT NULL, `adjustedConfidence` REAL NOT NULL, `modelId` TEXT NOT NULL, `mediaPath` TEXT, `userConfirmed` INTEGER NOT NULL, `userRejected` INTEGER NOT NULL, `notes` TEXT, `rarityTierAtCapture` INTEGER NOT NULL, FOREIGN KEY(`sessionId`) REFERENCES `listening_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "speciesId",
+            "columnName": "speciesId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rawConfidence",
+            "columnName": "rawConfidence",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "adjustedConfidence",
+            "columnName": "adjustedConfidence",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modelId",
+            "columnName": "modelId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mediaPath",
+            "columnName": "mediaPath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "userConfirmed",
+            "columnName": "userConfirmed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userRejected",
+            "columnName": "userRejected",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rarityTierAtCapture",
+            "columnName": "rarityTierAtCapture",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_observations_speciesId",
+            "unique": false,
+            "columnNames": [
+              "speciesId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_observations_speciesId` ON `${TABLE_NAME}` (`speciesId`)"
+          },
+          {
+            "name": "index_observations_timestamp",
+            "unique": false,
+            "columnNames": [
+              "timestamp"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_observations_timestamp` ON `${TABLE_NAME}` (`timestamp`)"
+          },
+          {
+            "name": "index_observations_userConfirmed",
+            "unique": false,
+            "columnNames": [
+              "userConfirmed"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_observations_userConfirmed` ON `${TABLE_NAME}` (`userConfirmed`)"
+          },
+          {
+            "name": "index_observations_sessionId_speciesId",
+            "unique": true,
+            "columnNames": [
+              "sessionId",
+              "speciesId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_observations_sessionId_speciesId` ON `${TABLE_NAME}` (`sessionId`, `speciesId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "listening_sessions",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sessionId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "observation_candidates",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `observationId` INTEGER NOT NULL, `speciesId` TEXT NOT NULL, `rank` INTEGER NOT NULL, `score` REAL NOT NULL, FOREIGN KEY(`observationId`) REFERENCES `observations`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "observationId",
+            "columnName": "observationId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "speciesId",
+            "columnName": "speciesId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rank",
+            "columnName": "rank",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "score",
+            "columnName": "score",
+            "affinity": "REAL",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_observation_candidates_observationId",
+            "unique": false,
+            "columnNames": [
+              "observationId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_observation_candidates_observationId` ON `${TABLE_NAME}` (`observationId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "observations",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "observationId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "region_cells",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`cellId` TEXT NOT NULL, `centerLat` REAL NOT NULL, `centerLon` REAL NOT NULL, `totalObservations` INTEGER NOT NULL, `lastRefreshed` INTEGER NOT NULL, PRIMARY KEY(`cellId`))",
+        "fields": [
+          {
+            "fieldPath": "cellId",
+            "columnName": "cellId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "centerLat",
+            "columnName": "centerLat",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "centerLon",
+            "columnName": "centerLon",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalObservations",
+            "columnName": "totalObservations",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastRefreshed",
+            "columnName": "lastRefreshed",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "cellId"
+          ]
+        }
+      },
+      {
+        "tableName": "species_frequency",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`cellId` TEXT NOT NULL, `speciesId` TEXT NOT NULL, `month` INTEGER NOT NULL, `occurrenceCount` INTEGER NOT NULL, `share` REAL NOT NULL, `rarityTier` INTEGER NOT NULL, PRIMARY KEY(`cellId`, `speciesId`, `month`))",
+        "fields": [
+          {
+            "fieldPath": "cellId",
+            "columnName": "cellId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "speciesId",
+            "columnName": "speciesId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "month",
+            "columnName": "month",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "occurrenceCount",
+            "columnName": "occurrenceCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "share",
+            "columnName": "share",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rarityTier",
+            "columnName": "rarityTier",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "cellId",
+            "speciesId",
+            "month"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_species_frequency_speciesId",
+            "unique": false,
+            "columnNames": [
+              "speciesId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_species_frequency_speciesId` ON `${TABLE_NAME}` (`speciesId`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '84f7d4d973d1b7c50764248e5ae63d94')"
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        Se declara aqui y no en :app para que el permiso viaje con el modulo que
+        de verdad lo necesita: si algun dia se saca la captura de audio, el
+        permiso desaparece del manifiesto fusionado solo.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="true" />
+
+</manifest>
