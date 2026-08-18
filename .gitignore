@@ -35,3 +35,7 @@ replay_pid*.log
 # Diagnosticos del compilador de Kotlin. Aparecen cuando una entrada de la cache
 # de transformaciones de Gradle se corrompe y no aportan nada al repositorio.
 .kotlin/
+
+# Labelmap del clasificador de imagen: es metadato del modelo de Google, se
+# descarga con scripts/fetch-models.ps1
+**/src/main/assets/*.csv

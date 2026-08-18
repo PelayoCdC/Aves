@@ -56,11 +56,15 @@ include(":core:ml:api")
 // Implementacion CC BY-NC-SA. Solo entra en el flavor `personal`.
 include(":core:ml:birdnet")
 
+// Clasificador de imagen. Apache 2.0, asi que entra en los DOS flavors.
+include(":core:ml:vision")
+
 include(":feature:identify")
 
 // Bandeja de revision: confirmar o descartar lo que el modelo cree haber oido.
 // Es lo que separa "la maquina cree" de "yo lo vi", y sin ella la coleccion no
 // significa nada para un observador de aves.
 include(":feature:review")
+include(":feature:camera")
 include(":feature:pokedex")
 include(":feature:settings")

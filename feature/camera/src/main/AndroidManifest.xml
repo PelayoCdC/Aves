@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        El permiso viaja con el modulo que lo necesita, igual que RECORD_AUDIO en
+        :core:audio. Si algun dia se saca la identificacion por foto, el permiso
+        desaparece del manifiesto fusionado sin tocar :app.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!--
+        A diferencia del microfono, la camara NO es obligatoria: la via principal
+        de la app es el canto. Un dispositivo sin camara debe poder instalarla y
+        usarla entera menos esta pantalla.
+    -->
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+
+</manifest>

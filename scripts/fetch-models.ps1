@@ -111,6 +111,35 @@ if (Test-Path $labelsPath) {
     }
 }
 
+# --- Clasificador de imagen (Fase 5) ----------------------------------------
+# El labelmap se publica aparte y es accesible sin cuenta; el .tflite no.
+$visionDir = Join-Path $repoRoot (Join-Path "core" (Join-Path "ml" (Join-Path "vision" (Join-Path "src" (Join-Path "main" "assets")))))
+New-Item -ItemType Directory -Force -Path $visionDir | Out-Null
+$labelmapPath = Join-Path $visionDir 'aiy_birds_labelmap.csv'
+
+if ((-not (Test-Path $labelmapPath)) -or $Force) {
+    Write-Host ''
+    Write-Host '  descargando aiy_birds_labelmap.csv ...' -NoNewline
+    Invoke-WebRequest -UseBasicParsing -TimeoutSec 120 `
+        -Uri 'https://www.gstatic.com/aihub/tfhub/labelmaps/aiy_birds_V1_labelmap.csv' `
+        -OutFile $labelmapPath
+    Write-Host (' {0} KB' -f [math]::Round((Get-Item $labelmapPath).Length / 1KB)) -ForegroundColor Green
+}
+
+$visionModel = Get-ChildItem $visionDir -Filter '*.tflite' -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($null -eq $visionModel) {
+    Write-Host ''
+    Write-Host 'FALTA EL MODELO DE IMAGEN (hay que descargarlo a mano)' -ForegroundColor Yellow
+    Write-Host '  kaggle.com/models/google/aiy/tfLite/vision-classifier-birds-v1'
+    Write-Host '  Variacion 3, y SOLO la 3: su changelog dice que corrige un'
+    Write-Host '  "out-of-order logit to labelmap mapping". Las versiones 1 y 2'
+    Write-Host '  devuelven la especie equivocada sin dar ningun sintoma.' -ForegroundColor Yellow
+    Write-Host '  Apache 2.0, 3,4 MB. Requiere cuenta de Kaggle.'
+    Write-Host ('  Dejalo en: {0}' -f $visionDir)
+} else {
+    Write-Host ('  [ya esta]  {0}  ({1} MB)' -f $visionModel.Name, [math]::Round($visionModel.Length / 1MB, 2)) -ForegroundColor DarkGray
+}
+
 Write-Host ''
-Write-Host 'Listo. Construye con: .\gradlew.bat :app:assemblePersonalDebug'
+Write-Host "Listo. Construye con: gradlew.bat :app:assemblePersonalDebug"
 Write-Host ''
