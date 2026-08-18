@@ -67,10 +67,6 @@ fun AvesNavHost(
         composable(AvesDestination.IDENTIFY.route) {
             IdentifyScreen(
                 classifierProvider = classifierProvider,
-                observationRepository = container.observationRepository,
-                clipsDirectory = container.clipsDirectory,
-                regionRepository = container.regionRepository,
-                locationProvider = { container.locationProvider.lastKnown() },
                 onOpenCamera = { navController.navigate(CAMERA_ROUTE) },
             )
         }

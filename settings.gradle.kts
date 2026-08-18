@@ -35,6 +35,10 @@ include(":core:model")
 
 include(":core:designsystem")
 
+// Reproduccion de recortes. Modulo aparte para no arrastrar ExoPlayer a todas
+// las features via :core:designsystem.
+include(":core:media")
+
 // Captura de audio. No sabe nada de ML: se parametriza con lo que el modelo pide.
 include(":core:audio")
 

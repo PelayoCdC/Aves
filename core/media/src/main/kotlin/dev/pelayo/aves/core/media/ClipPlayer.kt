@@ -1,4 +1,4 @@
-package dev.pelayo.aves.feature.review
+package dev.pelayo.aves.core.media
 
 import android.net.Uri
 import androidx.compose.foundation.background

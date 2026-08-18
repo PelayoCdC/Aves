@@ -21,6 +21,10 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import dev.pelayo.aves.core.media.ClipPlayIcon
+import dev.pelayo.aves.core.media.ClipPlayerState
+import dev.pelayo.aves.core.media.hasPlayableClip
+import dev.pelayo.aves.core.media.rememberClipPlayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember

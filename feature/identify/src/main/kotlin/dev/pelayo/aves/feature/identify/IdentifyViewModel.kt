@@ -1,39 +1,33 @@
 package dev.pelayo.aves.feature.identify
 
-import android.Manifest
+import android.content.Context
 import android.util.Log
-import androidx.annotation.RequiresPermission
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dev.pelayo.aves.core.audio.AudioCaptureEngine
-import dev.pelayo.aves.core.audio.AudioClipWriter
-import dev.pelayo.aves.core.audio.ClipStorage
-import dev.pelayo.aves.core.audio.EnergyGate
 import dev.pelayo.aves.core.audio.PcmScaling
 import dev.pelayo.aves.core.audio.WavDecoder
 import dev.pelayo.aves.core.audio.WavFormatException
 import dev.pelayo.aves.core.audio.audioWindows
-import dev.pelayo.aves.core.data.ObservationRepository
-import dev.pelayo.aves.core.data.RegionRepository
-import dev.pelayo.aves.core.model.Coordinates
-import dev.pelayo.aves.core.model.RarityTier
+import dev.pelayo.aves.core.audio.EnergyGate
+import dev.pelayo.aves.core.listening.ListeningFailure
+import dev.pelayo.aves.core.listening.ListeningService
+import dev.pelayo.aves.core.listening.StableDetection
 import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
-import dev.pelayo.aves.core.ml.api.ClassificationResult
 import dev.pelayo.aves.core.ml.api.ObservationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.FileNotFoundException
-import java.io.File
 import java.io.IOException
 
 /** Por que no se puede escuchar. Se distinguen porque cada una se arregla distinto. */
@@ -61,252 +55,125 @@ data class IdentifyUiState(
     val lastInferenceMillis: Long = 0L,
     val error: IdentifyError? = null,
     val errorDetail: String? = null,
-    /** Texto de atribucion del modelo. CC BY-NC-SA lo exige, no es opcional. */
-    val attribution: String? = null,
+    /** Instante en el que la escucha se cortara sola. 0 si no hay ninguna en curso. */
+    val stopsAtMillis: Long = 0L,
+    /** La ultima escucha termino por agotar el limite de tiempo, no porque nadie lo pidiera. */
+    val stoppedByTimeout: Boolean = false,
     /** Nombre del fichero analizado, o null si la fuente es el microfono. */
     val analyzedFileName: String? = null,
     val isAnalyzingFile: Boolean = false,
-    /** Especies distintas guardadas en la sesion actual. */
-    val speciesRecorded: Int = 0,
 )
 
 /**
- * Orquesta el bucle de Fase 1: microfono -> ventana -> BirdNET -> histeresis ->
- * pantalla.
+ * Pantalla de identificacion.
  *
- * El clasificador se recibe como fabrica y no como instancia porque solo debe
- * existir mientras se escucha: retiene un modelo de ~25 MB mapeado en memoria.
+ * **La escucha en directo NO vive aqui.** Corre en [ListeningService], y este
+ * ViewModel solo observa su estado y le manda arrancar o parar.
+ *
+ * El motivo es de producto antes que de arquitectura: con el bucle dentro del
+ * ViewModel, apagar la pantalla o cambiar de app cortaba la identificacion, y
+ * eso rompe el caso de uso mas interesante que tiene la app, que es dejar el
+ * movil escuchando un rato largo mientras haces otra cosa.
+ *
+ * Como efecto secundario desaparece la duplicacion: antes habia dos bucles con
+ * su propia histeresis, su propio gate de energia y su propia politica de
+ * escritura, que podian divergir sin que nadie se enterase.
+ *
+ * El analisis de FICHERO si se queda aqui: es puntual, acotado y no tiene
+ * sentido sacarlo a un servicio en primer plano.
  */
 class IdentifyViewModel(
+    private val appContext: Context,
     private val classifierFactory: () -> AudioBirdClassifier?,
-    /**
-     * Nulo en previews y en tests que solo ejercitan el pipeline de audio. Si
-     * falta, la app identifica pero no guarda nada: degradar asi es preferible
-     * a exigir una base de datos para poder ver una pantalla.
-     */
-    private val observationRepository: ObservationRepository? = null,
-    /**
-     * Donde guardar los recortes. Nulo desactiva la grabacion: la app sigue
-     * identificando y coleccionando, solo que sin audio que escuchar despues.
-     */
-    private val clipsDirectory: File? = null,
-    /** Rarezas y prior de respaldo. Nulo desactiva el filtro de contexto. */
-    private val regionRepository: RegionRepository? = null,
-    /**
-     * Ubicacion aproximada. Se consulta UNA vez al abrir la sesion, no por
-     * ventana: el usuario no se mueve 40 km mientras escucha, y consultarla
-     * cada 800 ms seria gasto puro.
-     */
-    private val locationProvider: (() -> Coordinates?)? = null,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(IdentifyUiState())
-    val uiState: StateFlow<IdentifyUiState> = _uiState.asStateFlow()
+    /** Estado propio del analisis de fichero, que no pasa por el servicio. */
+    private val fileState = MutableStateFlow(IdentifyUiState())
 
-    private var listenJob: Job? = null
-    private var classifier: AudioBirdClassifier? = null
+    private var analyzeJob: Job? = null
+    private var fileClassifier: AudioBirdClassifier? = null
 
-    private var sessionId: Long? = null
-    private var sessionLocation: Coordinates? = null
+    val uiState: StateFlow<IdentifyUiState> =
+        combine(ListeningService.state, fileState) { service, file ->
+            // Mientras se analiza un fichero manda ese estado; si no, el del
+            // servicio. Nunca se solapan: analizar un fichero para la escucha.
+            if (file.isAnalyzingFile || file.analyzedFileName != null) {
+                file
+            } else {
+                IdentifyUiState(
+                    isListening = service.isRunning,
+                    isWarmingUp = service.isWarmingUp,
+                    detections = service.detections,
+                    windowsProcessed = service.windowsProcessed,
+                    windowsSkipped = service.windowsSkipped,
+                    lastInferenceMillis = service.lastInferenceMillis,
+                    stopsAtMillis = service.stopsAtMillis,
+                    stoppedByTimeout = service.stoppedByTimeout,
+                    error = service.failure?.toIdentifyError(),
+                    errorDetail = service.failureDetail,
+                )
+            }
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            initialValue = IdentifyUiState(),
+        )
 
     /**
-     * Mejor puntuacion ya escrita para cada especie de la sesion.
+     * Arranca o para la escucha en segundo plano.
      *
-     * Evita ir a la base de datos en cada ventana: con una inferencia cada
-     * 800 ms y tres candidatos, serian unas cuatro consultas por segundo para
-     * no cambiar nada la mayoria de las veces. La regla de "quedarse con la
-     * mejor" tambien vive en el DAO, asi que esto es solo un filtro barato
-     * delante, no la fuente de verdad.
+     * No hace falta `@RequiresPermission` aqui: quien comprueba el permiso es la
+     * pantalla antes de llamar, y el servicio vuelve a fallar de forma
+     * controlada si se hubiera revocado por el camino.
      */
-    private val recordedScores = HashMap<String, Float>()
-
-    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun toggleListening() {
-        if (_uiState.value.isListening) stopListening() else startListening()
-    }
-
-    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    private fun startListening() {
-        if (listenJob?.isActive == true) return
-
-        val active = classifier ?: classifierFactory()
-        if (active == null) {
-            _uiState.update { it.copy(error = IdentifyError.NO_MODEL_IN_BUILD) }
-            return
-        }
-        classifier = active
-
-        val stabilizer = DetectionStabilizer()
-        recordedScores.clear()
-        _uiState.update {
-            it.copy(
-                isListening = true,
-                isWarmingUp = true,
-                error = null,
-                errorDetail = null,
-                detections = emptyList(),
-                windowsProcessed = 0,
-                windowsSkipped = 0,
-                speciesRecorded = 0,
-                attribution = active.descriptor.attributionText,
-            )
-        }
-
-        listenJob = viewModelScope.launch {
-            try {
-                active.warmUp()
-                _uiState.update { it.copy(isWarmingUp = false) }
-
-                sessionLocation = locationProvider?.invoke()
-
-                // La sesion se abre DESPUES de calentar el modelo: si el .tflite
-                // no esta, no queremos dejar una sesion huerfana en la base.
-                sessionId = observationRepository?.startSession(
-                    modelId = active.descriptor.modelId,
-                    startedAt = System.currentTimeMillis(),
-                    latitude = sessionLocation?.latitude,
-                    longitude = sessionLocation?.longitude,
-                )
-
-                // Descargar las ocurrencias de la celda puede tardar; no debe
-                // retrasar la primera identificacion. Si llega tarde, las
-                // primeras detecciones se guardan sin rareza y ya esta.
-                sessionLocation?.let { where ->
-                    launch {
-                        runCatching {
-                            regionRepository?.ensureCellCached(
-                                where.latitude,
-                                where.longitude,
-                                System.currentTimeMillis(),
-                            )
-                        }.onFailure { Log.w(TAG, "No se pudo cachear la celda", it) }
-                    }
-                }
-
-                val engine = AudioCaptureEngine(
-                    // Los parametros los manda el MODELO. Si manana se cambia a
-                    // uno de 32 kHz y 5 s, esta linea no se toca.
-                    sampleRate = active.requiredSampleRate,
-                    windowSampleCount = active.requiredSampleCount,
-                    scaling = INPUT_SCALING,
-                )
-                val gate = EnergyGate(INPUT_SCALING)
-                // El codificador se configura con el formato que pide el modelo,
-                // igual que la captura: nada de constantes cableadas aqui.
-                val clipWriter = clipsDirectory?.let {
-                    AudioClipWriter(
-                        sampleRate = active.requiredSampleRate,
-                        scaling = INPUT_SCALING,
-                    )
-                }
-
-                engine.frames().collect { frame ->
-                    // Calcular la energia cuesta microsegundos; la inferencia
-                    // cuesta cientos de milisegundos. En el campo la mayor parte
-                    // del tiempo no canta nada, asi que esta linea se ahorra la
-                    // mayoria del gasto de bateria.
-                    if (!gate.shouldClassify(frame.samples)) {
-                        _uiState.update { it.copy(windowsSkipped = it.windowsSkipped + 1) }
-                        return@collect
-                    }
-
-                    val started = System.nanoTime()
-                    val results = active.classify(
-                        samples = frame.samples,
-                        context = ObservationContext(
-                            latitude = sessionLocation?.latitude,
-                            longitude = sessionLocation?.longitude,
-                            epochMillis = frame.endTimestampMillis,
-                            contextInfluence = DEFAULT_CONTEXT_INFLUENCE,
-                        ),
-                    )
-                    val elapsedMillis = (System.nanoTime() - started) / 1_000_000
-
-                    val stable = stabilizer.update(results)
-                    persist(
-                        detections = stable,
-                        modelId = active.descriptor.modelId,
-                        timestamp = frame.endTimestampMillis,
-                        samples = frame.samples,
-                        clipWriter = clipWriter,
-                    )
-
-                    _uiState.update {
-                        it.copy(
-                            detections = stable,
-                            windowsProcessed = it.windowsProcessed + 1,
-                            lastInferenceMillis = elapsedMillis,
-                            speciesRecorded = recordedScores.size,
-                        )
-                    }
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: FileNotFoundException) {
-                // El caso mas probable al empezar: el .tflite no esta en assets.
-                fail(IdentifyError.MODEL_FILES_MISSING, e)
-            } catch (e: IOException) {
-                fail(IdentifyError.MODEL_FILES_MISSING, e)
-            } catch (e: IllegalStateException) {
-                fail(IdentifyError.MICROPHONE_UNAVAILABLE, e)
-            } finally {
-                closeSession()
-                _uiState.update { it.copy(isListening = false, isWarmingUp = false) }
-            }
+        stopFileAnalysis()
+        if (ListeningService.state.value.isRunning) {
+            ListeningService.stop(appContext)
+        } else {
+            ListeningService.start(appContext)
         }
     }
 
-    private fun fail(error: IdentifyError, cause: Throwable) {
-        Log.e(TAG, "Se detuvo la escucha: $error", cause)
-        _uiState.update {
-            it.copy(error = error, errorDetail = cause.message, detections = emptyList())
-        }
+    fun stopListening() {
+        if (ListeningService.state.value.isRunning) ListeningService.stop(appContext)
     }
 
     /**
      * Analiza un fichero de audio en vez del microfono.
      *
-     * Esta era la pieza que faltaba para poder cerrar el riesgo #1: sin una via
-     * de meter un WAV conocido en el pipeline, no hay forma de comparar la
-     * salida del modelo contra una referencia y saber si el escalado de entrada
-     * es el correcto.
+     * Esta fue la pieza que permitio cerrar el riesgo de la normalizacion de
+     * entrada: sin una via de meter un WAV conocido en el pipeline no habia
+     * forma de comparar la salida del modelo contra una referencia.
      *
-     * A diferencia del modo en directo aqui NO se aplica histeresis: no hay un
-     * flujo continuo que estabilizar, hay un fichero finito. Se analiza por
-     * ventanas solapadas y se agrega quedandose con la mejor puntuacion de cada
-     * especie, que es lo que hace BirdNET-Analyzer.
-     *
-     * @param openStream se invoca en el hilo de E/S; el llamante decide de donde
-     *   sale el flujo (ContentResolver, assets, fichero de test...).
+     * A diferencia del modo en directo NO se aplica histeresis: no hay un flujo
+     * continuo que estabilizar, hay un fichero finito. Se analiza por ventanas
+     * solapadas y se agrega quedandose con la mejor puntuacion de cada especie,
+     * que es lo que hace BirdNET-Analyzer.
      */
     fun analyzeFile(fileName: String, openStream: () -> java.io.InputStream) {
+        // Analizar un fichero y escuchar el microfono a la vez no tiene sentido:
+        // compiten por el mismo modelo y la pantalla solo puede enseñar uno.
         stopListening()
+        analyzeJob?.cancel()
 
-        val active = classifier ?: classifierFactory()
+        val active = fileClassifier ?: classifierFactory()
         if (active == null) {
-            _uiState.update { it.copy(error = IdentifyError.NO_MODEL_IN_BUILD) }
+            fileState.update { it.copy(error = IdentifyError.NO_MODEL_IN_BUILD) }
             return
         }
-        classifier = active
+        fileClassifier = active
 
-        _uiState.update {
-            it.copy(
-                isAnalyzingFile = true,
-                isWarmingUp = true,
-                error = null,
-                errorDetail = null,
-                detections = emptyList(),
-                windowsProcessed = 0,
-                windowsSkipped = 0,
-                analyzedFileName = fileName,
-                attribution = active.descriptor.attributionText,
-            )
-        }
+        fileState.value = IdentifyUiState(
+            isAnalyzingFile = true,
+            isWarmingUp = true,
+            analyzedFileName = fileName,
+        )
 
-        listenJob = viewModelScope.launch {
+        analyzeJob = viewModelScope.launch {
             try {
                 active.warmUp()
-                _uiState.update { it.copy(isWarmingUp = false) }
+                fileState.update { it.copy(isWarmingUp = false) }
 
                 val decoded = withContext(Dispatchers.IO) {
                     openStream().use { stream ->
@@ -333,7 +200,7 @@ class IdentifyViewModel(
 
                     if (!gate.shouldClassify(window)) {
                         skipped++
-                        _uiState.update { it.copy(windowsSkipped = skipped) }
+                        fileState.update { it.copy(windowsSkipped = skipped) }
                         continue
                     }
 
@@ -362,7 +229,7 @@ class IdentifyViewModel(
                         }
                     }
 
-                    _uiState.update {
+                    fileState.update {
                         it.copy(
                             windowsProcessed = processed,
                             detections = best.values.sortedByDescending { d -> d.score },
@@ -385,171 +252,68 @@ class IdentifyViewModel(
             } catch (e: IOException) {
                 fail(IdentifyError.UNSUPPORTED_AUDIO, e)
             } finally {
-                _uiState.update { it.copy(isAnalyzingFile = false, isWarmingUp = false) }
+                fileState.update { it.copy(isAnalyzingFile = false, isWarmingUp = false) }
             }
         }
     }
 
-    /**
-     * Guarda las detecciones confirmadas de la sesion en curso.
-     *
-     * Solo escribe cuando la especie es nueva en la sesion o ha mejorado su
-     * mejor puntuacion. El DAO aplica la misma regla de forma atomica, asi que
-     * esto es solo un filtro barato para no consultar la base cuatro veces por
-     * segundo sin necesidad.
-     */
-    private suspend fun persist(
-        detections: List<StableDetection>,
-        modelId: String,
-        timestamp: Long,
-        samples: FloatArray,
-        clipWriter: AudioClipWriter?,
-    ) {
-        val repository = observationRepository ?: return
-        val session = sessionId ?: return
+    /** Vuelve al modo microfono, descartando el resultado del fichero. */
+    fun stopFileAnalysis() {
+        analyzeJob?.cancel()
+        analyzeJob = null
+        fileState.value = IdentifyUiState()
+    }
 
-        for (detection in detections) {
-            val alreadyWritten = recordedScores[detection.speciesId]
-            if (alreadyWritten != null && detection.score <= alreadyWritten) continue
-
-            // El recorte se escribe con la ventana que PRODUJO esta deteccion,
-            // no con una posterior: es la prueba de por que el modelo dijo lo
-            // que dijo, y es lo que hace que la bandeja de revision se pueda
-            // usar de verdad en vez de pedir un acto de fe.
-            val clipPath = writeClip(clipWriter, session, detection.speciesId, samples)
-
-            val rarity = rarityOf(detection.speciesId, timestamp)
-
-            repository.recordDetection(
-                sessionId = session,
-                modelId = modelId,
-                detection = ClassificationResult(
-                    speciesId = detection.speciesId,
-                    rawLabel = detection.label,
-                    labelIndex = detection.labelIndex,
-                    rawScore = detection.score,
-                    adjustedScore = detection.score,
-                ),
-                timestamp = timestamp,
-                latitude = sessionLocation?.latitude,
-                longitude = sessionLocation?.longitude,
-                mediaPath = clipPath,
-                rarityTier = rarity,
-            )
-            recordedScores[detection.speciesId] = detection.score
+    private fun fail(error: IdentifyError, cause: Throwable) {
+        Log.e(TAG, "Fallo el analisis del fichero: $error", cause)
+        fileState.update {
+            it.copy(error = error, errorDetail = cause.message, detections = emptyList())
         }
-    }
-
-    /**
-     * Rareza de la especie aqui y ahora.
-     *
-     * Se congela en la observacion: si el usuario se muda, sus capturas
-     * antiguas no deben cambiar de valor retroactivamente. Aquel mirlo en
-     * Islandia fue notable de verdad.
-     *
-     * Sin ubicacion o sin datos cacheados se marca como excepcional, que es el
-     * fallo seguro: es preferible sobrevalorar una captura que ocultar una
-     * rareza autentica.
-     */
-    private suspend fun rarityOf(speciesId: String, timestamp: Long): RarityTier {
-        val where = sessionLocation ?: return RarityTier.EXCEPTIONAL
-        val repository = regionRepository ?: return RarityTier.EXCEPTIONAL
-        return runCatching {
-            repository.rarityOf(
-                speciesId = speciesId,
-                latitude = where.latitude,
-                longitude = where.longitude,
-                month = RegionRepository.monthOf(timestamp),
-            )
-        }.getOrNull() ?: RarityTier.EXCEPTIONAL
-    }
-
-    /**
-     * Codifica el recorte a AAC. Devuelve null si falla.
-     *
-     * Un fallo al guardar el audio NO puede tumbar la escucha: es preferible
-     * una observacion sin recorte que perder la identificacion entera.
-     */
-    private suspend fun writeClip(
-        clipWriter: AudioClipWriter?,
-        session: Long,
-        speciesId: String,
-        samples: FloatArray,
-    ): String? {
-        val writer = clipWriter ?: return null
-        val baseDir = clipsDirectory ?: return null
-        return try {
-            val target = ClipStorage.clipFile(baseDir, session, speciesId)
-            writer.write(samples, target).file.absolutePath
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "No se pudo guardar el recorte de $speciesId", e)
-            null
-        }
-    }
-
-    /**
-     * Cierra la sesion y descarta las que no registraron nada.
-     *
-     * Va en NonCancellable porque este codigo corre en el `finally` de una
-     * corrutina que casi siempre llega ahi por cancelacion: sin esto, parar la
-     * escucha dejaria la sesion abierta para siempre.
-     */
-    private suspend fun closeSession() {
-        val repository = observationRepository ?: return
-        val session = sessionId ?: return
-        sessionId = null
-
-        withContext(NonCancellable) {
-            val state = _uiState.value
-            repository.endSession(
-                sessionId = session,
-                endedAt = System.currentTimeMillis(),
-                processed = state.windowsProcessed,
-                skipped = state.windowsSkipped,
-            )
-            // Una escucha de diez minutos sin resultados no aporta nada al
-            // historial y solo lo ensucia.
-            repository.discardEmptySessions()
-        }
-    }
-
-    fun stopListening() {
-        listenJob?.cancel()
-        listenJob = null
     }
 
     override fun onCleared() {
-        stopListening()
-        // Sin esto se queda vivo un MappedByteBuffer de ~25 MB.
-        classifier?.close()
-        classifier = null
+        analyzeJob?.cancel()
+        // Solo se cierra el clasificador del analisis de fichero. El de la
+        // escucha es del servicio, que le sobrevive a esta pantalla a proposito.
+        fileClassifier?.close()
+        fileClassifier = null
         super.onCleared()
     }
 
-    companion object {
-        private const val TAG = "IdentifyViewModel"
+    private companion object {
+        const val TAG = "IdentifyViewModel"
 
         /**
-         * Da igual cual se elija: BirdNET normaliza por min-max dentro del
-         * grafo y es invariante a la escala (verificado en
-         * `InputScalingRegressionTest`).
-         *
-         * Se deja en RAW porque evita una multiplicacion por cada una de las
-         * 144.000 muestras de cada ventana, unas 180.000 operaciones por
-         * segundo que no aportan nada.
+         * Da igual cual se elija: BirdNET normaliza por min-max dentro del grafo
+         * y es invariante a la escala (verificado en
+         * `InputScalingRegressionTest`). Se deja en RAW porque evita una
+         * multiplicacion por cada muestra.
          */
         val INPUT_SCALING = PcmScaling.RAW
 
         /**
-         * Cuanto pesa el contexto frente a la salida cruda del modelo.
-         *
-         * A la mitad y no al maximo a proposito: el prior es una estadistica,
-         * no una verdad. Si mandara del todo, un divagante de verdad quedaria
-         * sepultado por lo que "deberia" haber en la zona, y detectar eso es
-         * justo lo mas emocionante que puede pasar con esta app.
+         * Margen para que un giro de pantalla no desconecte del servicio y
+         * vuelva a conectar, perdiendo el estado un instante.
          */
-        const val DEFAULT_CONTEXT_INFLUENCE = 0.5f
+        const val STOP_TIMEOUT_MILLIS = 5_000L
     }
+}
+
+/**
+ * Traduce el fallo del servicio al vocabulario de esta pantalla.
+ *
+ * Son dos enumeraciones distintas a proposito: el servicio conoce fallos que a
+ * la pantalla no le dicen nada (que nadie publicara sus dependencias, que el
+ * sistema denegara el paso a primer plano) y que aqui solo pueden presentarse
+ * como "no se pudo escuchar".
+ */
+private fun ListeningFailure.toIdentifyError(): IdentifyError = when (this) {
+    ListeningFailure.NO_MODEL_IN_BUILD -> IdentifyError.NO_MODEL_IN_BUILD
+    // El motor se para tanto por falta de ficheros del modelo como por
+    // problemas de microfono. El detalle textual distingue el caso concreto.
+    ListeningFailure.ENGINE_FAILED -> IdentifyError.MODEL_FILES_MISSING
+    ListeningFailure.MICROPHONE_PERMISSION_MISSING,
+    ListeningFailure.FOREGROUND_START_DENIED,
+    ListeningFailure.NOT_CONFIGURED,
+    -> IdentifyError.MICROPHONE_UNAVAILABLE
 }

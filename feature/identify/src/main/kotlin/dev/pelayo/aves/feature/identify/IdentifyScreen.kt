@@ -44,11 +44,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import dev.pelayo.aves.core.data.ObservationRepository
-import dev.pelayo.aves.core.data.RegionRepository
-import dev.pelayo.aves.core.model.Coordinates
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
-import java.io.File
+import dev.pelayo.aves.core.listening.StableDetection
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
 import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
 
@@ -62,25 +59,26 @@ import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
 @Composable
 fun IdentifyScreen(
     classifierProvider: () -> AudioBirdClassifier?,
-    observationRepository: ObservationRepository? = null,
-    clipsDirectory: File? = null,
-    regionRepository: RegionRepository? = null,
-    locationProvider: (() -> Coordinates?)? = null,
     /** Abre la camara. La foto es la via secundaria: se usa cuando ves el ave pero no la oyes. */
     onOpenCamera: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    // La escucha en directo corre en un servicio en primer plano, no aqui: asi
+    // sobrevive a salir de la app. Los repositorios y la carpeta de recortes se
+    // los da la Application al servicio, no esta pantalla.
+    val appContext = context.applicationContext
     val viewModel: IdentifyViewModel = viewModel {
-        IdentifyViewModel(
-            classifierFactory = classifierProvider,
-            observationRepository = observationRepository,
-            clipsDirectory = clipsDirectory,
-            regionRepository = regionRepository,
-            locationProvider = locationProvider,
-        )
+        IdentifyViewModel(appContext, classifierProvider)
     }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = LocalContext.current
+
+    // La atribucion es requisito de la licencia CC BY-NC-SA, no cortesia. Se lee
+    // una vez del descriptor y el clasificador se cierra acto seguido: solo se
+    // queria el texto, no cargar 50 MB de modelo.
+    val attribution = remember(classifierProvider) {
+        classifierProvider()?.use { it.descriptor.attributionText }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -133,7 +131,6 @@ fun IdentifyScreen(
                     // ahorra el gate de energía.
                     if (state.windowsSkipped > 0) append(" · ${state.windowsSkipped} en silencio")
                     append(" · ${state.lastInferenceMillis} ms")
-                    if (state.speciesRecorded > 0) append(" · ${state.speciesRecorded} guardadas")
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -219,10 +216,10 @@ fun IdentifyScreen(
         }
 
         // Requisito de la licencia CC BY-NC-SA, no un detalle de cortesia.
-        state.attribution?.let { attribution ->
+        attribution?.let { text ->
             Spacer(Modifier.size(12.dp))
             Text(
-                text = attribution,
+                text = text,
                 style = MaterialTheme.typography.labelSmall,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

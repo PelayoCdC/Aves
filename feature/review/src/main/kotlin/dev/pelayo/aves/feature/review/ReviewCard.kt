@@ -18,6 +18,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import dev.pelayo.aves.core.media.ClipPlayIcon
+import dev.pelayo.aves.core.media.ClipPlayerState
+import dev.pelayo.aves.core.media.hasPlayableClip
+import dev.pelayo.aves.core.media.rememberClipPlayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment

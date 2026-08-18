@@ -1,4 +1,4 @@
-package dev.pelayo.aves.feature.review
+package dev.pelayo.aves.core.media
 
 import org.junit.After
 import org.junit.Assert.assertEquals

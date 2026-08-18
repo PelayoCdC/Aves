@@ -1,4 +1,4 @@
-package dev.pelayo.aves.feature.review
+package dev.pelayo.aves.core.media
 
 import java.io.File
 
