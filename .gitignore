@@ -31,3 +31,7 @@ captures/
 # memoria (pasa si el emulador esta abierto a la vez) y pesan varios MB.
 hs_err_pid*.log
 replay_pid*.log
+
+# Diagnosticos del compilador de Kotlin. Aparecen cuando una entrada de la cache
+# de transformaciones de Gradle se corrompe y no aportan nada al repositorio.
+.kotlin/
