@@ -61,6 +61,10 @@ dependencies {
     // el APK. Es la diferencia entre "no lo usamos" y "no esta".
     "personalImplementation"(projects.core.ml.birdnet)
 
+    // Y el flavor publicable enlaza BirdNET+, cuyos pesos SI son Apache 2.0.
+    // Cubre mas especies que el otro: 8.923 aves frente a 6.421.
+    "openImplementation"(projects.core.ml.birdnetplus)
+
     implementation(projects.feature.identify)
     implementation(projects.feature.pokedex)
     implementation(projects.feature.review)

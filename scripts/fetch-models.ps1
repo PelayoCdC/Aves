@@ -143,3 +143,73 @@ if ($null -eq $visionModel) {
 Write-Host ''
 Write-Host "Listo. Construye con: gradlew.bat :app:assemblePersonalDebug"
 Write-Host ''
+
+# --- BirdNET+ V3, pesos Apache 2.0 (Fase 7) ---------------------------------
+#
+# ESTOS SI SE PUEDEN DISTRIBUIR. Los de BirdNET v2.4 son CC BY-NC-SA; estos los
+# publica el propio equipo de BirdNET bajo Apache 2.0 en birdnet-live-app, y su
+# fichero MODEL_LICENSE lo dice literalmente. Son los que alimentan el flavor
+# `open`, el publicable.
+#
+# Viven en Git LFS, asi que raw.githubusercontent.com sirve un PUNTERO y no el
+# contenido. Hay que pasar por la API de lotes de LFS. La ventaja es que el
+# puntero trae el sha256, con lo que la descarga se verifica gratis.
+
+$plusDir = Join-Path $repoRoot (Join-Path "core" (Join-Path "ml" (Join-Path "birdnetplus" (Join-Path "src" (Join-Path "main" "assets")))))
+New-Item -ItemType Directory -Force -Path $plusDir | Out-Null
+
+$lfsRepo = 'birdnet-team/birdnet-live-app'
+$lfsBase = "https://raw.githubusercontent.com/$lfsRepo/main/assets/models"
+
+function Get-LfsAsset([string]$targetName, [string]$encodedName) {
+    $target = Join-Path $plusDir $targetName
+    if ((Test-Path $target) -and -not $Force) {
+        Write-Host ("  [ya esta]  {0}  ({1} MB)" -f $targetName, [math]::Round((Get-Item $target).Length / 1MB, 2)) -ForegroundColor DarkGray
+        return
+    }
+
+    $pointer = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 120 -Uri "$lfsBase/$encodedName").Content
+    if ($pointer -is [byte[]]) { $pointer = [System.Text.Encoding]::UTF8.GetString($pointer) }
+
+    if ($pointer -notmatch 'git-lfs') {
+        # No esta en LFS: se sirve directo.
+        Invoke-WebRequest -UseBasicParsing -TimeoutSec 300 -Uri "$lfsBase/$encodedName" -OutFile $target
+        Write-Host ("  descargado {0}  ({1} MB)" -f $targetName, [math]::Round((Get-Item $target).Length / 1MB, 2)) -ForegroundColor Green
+        return
+    }
+
+    $oid = ([regex]::Match($pointer, 'sha256:([a-f0-9]+)')).Groups[1].Value
+    $size = [long]([regex]::Match($pointer, 'size (\d+)')).Groups[1].Value
+
+    $body = @{
+        operation = 'download'
+        transfers = @('basic')
+        objects   = @(@{ oid = $oid; size = $size })
+    } | ConvertTo-Json -Depth 4
+
+    $batch = Invoke-RestMethod -Method Post -TimeoutSec 120 `
+        -Uri "https://github.com/$lfsRepo.git/info/lfs/objects/batch" `
+        -Headers @{ Accept = 'application/vnd.git-lfs+json' } `
+        -ContentType 'application/vnd.git-lfs+json' -Body $body
+
+    $href = $batch.objects[0].actions.download.href
+    Write-Host ("  descargando {0} ..." -f $targetName) -NoNewline
+    Invoke-WebRequest -UseBasicParsing -TimeoutSec 900 -Uri $href -OutFile $target
+
+    # El puntero trae el hash, asi que la verificacion sale gratis.
+    $got = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+    if ($got -ne $oid) {
+        Write-Host ' HASH NO COINCIDE' -ForegroundColor Red
+        Remove-Item $target -Force
+        exit 1
+    }
+    Write-Host (" {0} MB  sha256 verificado" -f [math]::Round((Get-Item $target).Length / 1MB, 2)) -ForegroundColor Green
+}
+
+Write-Host ''
+Write-Host 'BirdNET+ V3 (Apache 2.0) - estos SI se pueden distribuir' -ForegroundColor Green
+
+Get-LfsAsset 'birdnetplus_audio.onnx'     'BirdNET%2B_V3.0-preview3.1_Global_10K-pruned_FP16.onnx'
+Get-LfsAsset 'birdnetplus_geo.onnx'       'BirdNET%2B_Geomodel_V3.0.4_Global_10K-pruned_FP16.onnx'
+Get-LfsAsset 'birdnetplus_labels.csv'     'BirdNET%2B_V3.0-preview3.1_Global_10K-pruned_Labels.csv'
+Get-LfsAsset 'birdnetplus_geo_labels.txt' 'BirdNET%2B_Geomodel_V3.0.4_Global_10K-pruned_Labels.txt'

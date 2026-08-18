@@ -39,3 +39,7 @@ replay_pid*.log
 # Labelmap del clasificador de imagen: es metadato del modelo de Google, se
 # descarga con scripts/fetch-models.ps1
 **/src/main/assets/*.csv
+
+# Pesos de BirdNET+ (Apache 2.0). Son 77 MB y se obtienen de Git LFS con
+# scripts/fetch-models.ps1, igual que el resto de modelos.
+**/src/main/assets/*.onnx

@@ -6,8 +6,8 @@ android {
     namespace = "dev.pelayo.aves.core.ml.birdnetplus"
 
     androidResources {
-        // Los .onnx se mapean desde assets igual que los .tflite y tampoco
-        // pueden ir comprimidos.
+        // Sin comprimir para que la copia a filesDir sea un volcado directo y no
+        // una descompresion de 64 MB en el primer arranque.
         noCompress += "onnx"
     }
 }
