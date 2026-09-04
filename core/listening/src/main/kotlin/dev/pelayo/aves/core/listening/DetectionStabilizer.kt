@@ -119,11 +119,27 @@ class DetectionStabilizer(
     fun reset() = tracked.clear()
 
     companion object {
-        /** Exigente para entrar: por debajo de esto BirdNET se equivoca a menudo. */
-        const val DEFAULT_CONFIRM_THRESHOLD = 0.65f
+        /**
+         * Umbral para que una deteccion entre en la lista.
+         *
+         * 0,35 y no 0,65. El valor original se eligio a ojo razonando que "por
+         * debajo BirdNET se equivoca a menudo", sin contrastarlo con nada, y en
+         * la primera prueba de campo real no se confirmo NADA.
+         *
+         * 0,35 es el que recomienda el propio BirdNET: aparece como
+         * `defaultConfidenceThreshold` en el model_config.json que publica el
+         * equipo con BirdNET+ V3. Ellos han visto muchisimos mas espectrogramas
+         * que yo.
+         *
+         * La histeresis sigue exigiendo varias ventanas seguidas, asi que el
+         * filtro contra falsos positivos no desaparece: se traslada de "muy
+         * seguro una vez" a "razonablemente seguro varias veces", que es mejor
+         * criterio con un ave lejana y trafico de fondo.
+         */
+        const val DEFAULT_CONFIRM_THRESHOLD = 0.35f
 
         /** Laxo para mantenerse: los pajaros hacen pausas. */
-        const val DEFAULT_KEEP_THRESHOLD = 0.4f
+        const val DEFAULT_KEEP_THRESHOLD = 0.2f
 
         /** Con salto de 800 ms, 3 ventanas son ~2,4 s de evidencia. */
         const val DEFAULT_REQUIRED_CONSECUTIVE = 3

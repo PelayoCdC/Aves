@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +17,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import kotlin.math.log10
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -134,6 +141,14 @@ fun IdentifyScreen(
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        AnimatedVisibility(visible = state.isListening && !state.isWarmingUp) {
+            AudioLevelMeter(
+                levelRms = state.levelRms,
+                sourceName = state.audioSource,
+                modifier = Modifier.padding(top = 12.dp),
             )
         }
 
@@ -305,3 +320,90 @@ private fun IdentifyScreenPreview() {
         IdentifyScreen(classifierProvider = { null })
     }
 }
+
+/**
+ * Medidor del nivel de audio que entra por el microfono.
+ *
+ * Existe por una razon concreta: la primera prueba de campo real termino en "no
+ * parecia captar nada", y ese sintoma es ambiguo. Puede significar que el
+ * microfono no entrega senal, que la entrega pero el gate de energia la
+ * descarta, o que todo funciona y simplemente no habia ningun ave cantando.
+ * Sin ver el nivel no hay forma de distinguirlos, y estabamos adivinando.
+ *
+ * Se muestra en dBFS porque el rango util del audio es logaritmico: en escala
+ * lineal, todo lo interesante se amontona pegado al cero y la barra no se mueve.
+ *
+ * La marca vertical es el umbral del gate. A la izquierda de ella, la app
+ * descarta la ventana sin gastar inferencia.
+ */
+@Composable
+private fun AudioLevelMeter(
+    levelRms: Float,
+    sourceName: String?,
+    modifier: Modifier = Modifier,
+) {
+    val dbfs = rmsToDbfs(levelRms)
+    val fraction = ((dbfs - METER_FLOOR_DBFS) / -METER_FLOOR_DBFS).coerceIn(0f, 1f)
+    val thresholdFraction =
+        ((GATE_THRESHOLD_DBFS - METER_FLOOR_DBFS) / -METER_FLOOR_DBFS).coerceIn(0f, 1f)
+    val aboveGate = dbfs >= GATE_THRESHOLD_DBFS
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(10.dp)
+                .clip(RoundedCornerShape(5.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction)
+                    .fillMaxHeight()
+                    .background(
+                        if (aboveGate) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            // Por debajo del corte la ventana ni se clasifica, y
+                            // el color lo dice sin necesidad de leer nada.
+                            MaterialTheme.colorScheme.outline
+                        },
+                    ),
+            )
+            // La marca del umbral, para que se vea cuanto falta para cruzarlo.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(thresholdFraction)
+                    .fillMaxHeight()
+                    .wrapContentWidth(Alignment.End)
+                    .width(2.dp)
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant),
+            )
+        }
+
+        Spacer(Modifier.size(4.dp))
+
+        Text(
+            text = buildString {
+                append(if (levelRms <= 0f) "sin señal" else "${dbfs.toInt()} dBFS")
+                if (!aboveGate) append(" · por debajo del umbral")
+                sourceName?.let { append(" · $it") }
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 0 dBFS es el fondo de escala; el silencio digital tiende a menos infinito. */
+private fun rmsToDbfs(rms: Float): Float =
+    if (rms <= 0f) METER_FLOOR_DBFS else (20.0 * log10(rms.toDouble())).toFloat()
+
+/** Suelo del medidor. Por debajo de -80 dBFS no hay nada que mirar. */
+private const val METER_FLOOR_DBFS = -80f
+
+/** Equivale a EnergyGate.DEFAULT_THRESHOLD_FRACTION (0,001). */
+private const val GATE_THRESHOLD_DBFS = -60f

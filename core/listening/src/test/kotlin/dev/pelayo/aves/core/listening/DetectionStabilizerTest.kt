@@ -50,9 +50,28 @@ class DetectionStabilizerTest {
 
     @Test
     fun `una puntuacion baja no cuenta para confirmar`() {
+        // 0,2 esta por debajo del umbral de confirmacion (0,35, el que recomienda
+        // el propio BirdNET). El valor original de este test era 0,5, que valia
+        // cuando el umbral era 0,65: al bajarlo, 0,5 paso a ser una deteccion
+        // perfectamente valida y el test dejo de comprobar lo que decia su
+        // nombre.
         val stabilizer = DetectionStabilizer()
-        repeat(5) { stabilizer.update(listOf(result("mirlo", 0.5f))) }
-        assertTrue(stabilizer.update(listOf(result("mirlo", 0.5f))).isEmpty())
+        repeat(5) { stabilizer.update(listOf(result("mirlo", 0.2f))) }
+        assertTrue(stabilizer.update(listOf(result("mirlo", 0.2f))).isEmpty())
+    }
+
+    @Test
+    fun `una deteccion moderada si confirma tras varias ventanas`() {
+        // El caso que la primera prueba de campo real dejo al descubierto: un ave
+        // lejana con trafico de fondo rara vez pasa de 0,65, y con el umbral
+        // antiguo no se confirmaba NADA. Con 0,35 sostenido tres ventanas si.
+        val stabilizer = DetectionStabilizer()
+        stabilizer.update(listOf(result("mirlo", 0.45f)))
+        stabilizer.update(listOf(result("mirlo", 0.45f)))
+        val confirmed = stabilizer.update(listOf(result("mirlo", 0.45f)))
+
+        assertEquals(1, confirmed.size)
+        assertEquals("mirlo", confirmed[0].speciesId)
     }
 
     @Test

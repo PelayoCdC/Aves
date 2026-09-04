@@ -43,3 +43,6 @@ replay_pid*.log
 # Pesos de BirdNET+ (Apache 2.0). Son 77 MB y se obtienen de Git LFS con
 # scripts/fetch-models.ps1, igual que el resto de modelos.
 **/src/main/assets/*.onnx
+
+# APKs generados para instalar a mano.
+/apk/

@@ -61,6 +61,17 @@ sealed interface ListeningEvent {
         val processed: Int,
         val skipped: Int,
         val inferenceMillis: Long,
+        /**
+         * Nivel de la ventana, 0..1 sobre fondo de escala.
+         *
+         * Viaja hasta la interfaz porque sin el un "no detecta nada" es
+         * ambiguo: no se distingue un microfono que no capta de un microfono
+         * que capta bien pero no hay ningun ave cantando. La primera prueba de
+         * campo real se perdio justo por no poder distinguir esos dos casos.
+         */
+        val levelRms: Float = 0f,
+        /** Fuente de audio en uso. Ver AudioCaptureEngine.activeSourceName. */
+        val sourceName: String? = null,
     ) : ListeningEvent
 
     /**
@@ -189,9 +200,21 @@ class ListeningEngine(
                         // cuesta cientos de milisegundos. En el campo la mayor
                         // parte del tiempo no canta nada, asi que esta linea se
                         // ahorra la mayoria del gasto de bateria.
-                        if (!gate.shouldClassify(frame.samples)) {
+                        // Se calcula UNA vez y se reutiliza para decidir y para
+                        // informar: recorrer 144.000 muestras dos veces por
+                        // ventana no aporta nada.
+                        val level = gate.normalizedRms(frame.samples)
+                        if (level < gate.thresholdFraction) {
                             skipped++
-                            emit(ListeningEvent.Window(processed, skipped, 0L))
+                            emit(
+                                ListeningEvent.Window(
+                                    processed = processed,
+                                    skipped = skipped,
+                                    inferenceMillis = 0L,
+                                    levelRms = level,
+                                    sourceName = capture.activeSourceName,
+                                ),
+                            )
                             return@collect
                         }
 
@@ -219,7 +242,15 @@ class ListeningEngine(
                             clipWriter = clipWriter,
                         )
 
-                        emit(ListeningEvent.Window(processed, skipped, elapsedMillis))
+                        emit(
+                            ListeningEvent.Window(
+                                processed = processed,
+                                skipped = skipped,
+                                inferenceMillis = elapsedMillis,
+                                levelRms = level,
+                                sourceName = capture.activeSourceName,
+                            ),
+                        )
                         if (stable != lastDetections) {
                             lastDetections = stable
                             emit(ListeningEvent.Detections(stable))

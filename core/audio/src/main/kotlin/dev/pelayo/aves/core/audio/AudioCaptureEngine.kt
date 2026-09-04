@@ -107,6 +107,18 @@ class AudioCaptureEngine(
     private val hopSampleCount: Int = ((sampleRate * hopMillis) / 1000L).toInt()
 
     /**
+     * Fuente de audio que se acabo usando, legible una vez arrancada la captura.
+     *
+     * Se expone porque importa para diagnosticar: UNPROCESSED es la buena, pero
+     * hay dispositivos que la declaran disponible y entregan niveles muy bajos o
+     * directamente silencio. Sin saber cual esta activa, un "no capta nada" es
+     * indistinguible de "no hay pajaros".
+     */
+    @Volatile
+    var activeSourceName: String? = null
+        private set
+
+    /**
      * Emite una ventana cada [hopMillis] mientras se recolecte.
      *
      * El flujo lleva `buffer(CONFLATED)`: si la inferencia tarda mas que el
@@ -186,6 +198,7 @@ class AudioCaptureEngine(
             }
 
             if (record != null && record.state == AudioRecord.STATE_INITIALIZED) {
+                activeSourceName = SOURCE_NAMES[source] ?: source.toString()
                 if (source != MediaRecorder.AudioSource.UNPROCESSED) {
                     Log.w(
                         TAG,
@@ -227,6 +240,13 @@ class AudioCaptureEngine(
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val ENCODING = AudioFormat.ENCODING_PCM_16BIT
         private const val BYTES_PER_SAMPLE = 2
+
+        /** Para poder enseñar en la interfaz cual se esta usando. */
+        private val SOURCE_NAMES = mapOf(
+            MediaRecorder.AudioSource.UNPROCESSED to "sin procesar",
+            MediaRecorder.AudioSource.VOICE_RECOGNITION to "reconocimiento de voz",
+            MediaRecorder.AudioSource.MIC to "microfono",
+        )
 
         private val AUDIO_SOURCES = intArrayOf(
             MediaRecorder.AudioSource.UNPROCESSED,

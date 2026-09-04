@@ -21,7 +21,8 @@ import kotlin.math.sqrt
  */
 class EnergyGate(
     private val scaling: PcmScaling,
-    private val thresholdFraction: Float = DEFAULT_THRESHOLD_FRACTION,
+    /** Publico para que la interfaz pueda dibujar donde esta el corte. */
+    val thresholdFraction: Float = DEFAULT_THRESHOLD_FRACTION,
 ) {
     /** RMS de la ventana, normalizado a [0,1] sobre el fondo de escala. */
     fun normalizedRms(samples: FloatArray): Float {

@@ -123,6 +123,10 @@ data class ListeningServiceState(
     val windowsProcessed: Int = 0,
     val windowsSkipped: Int = 0,
     val lastInferenceMillis: Long = 0L,
+    /** Nivel de audio de la ultima ventana, 0..1 sobre fondo de escala. */
+    val levelRms: Float = 0f,
+    /** Fuente de microfono en uso, para poder diagnosticar un "no capta nada". */
+    val audioSource: String? = null,
     val startedAtMillis: Long = 0L,
     /** Instante en el que se cortara sola. 0 si no hay escucha en curso. */
     val stopsAtMillis: Long = 0L,
@@ -322,6 +326,8 @@ class ListeningService : Service() {
                         windowsProcessed = event.processed,
                         windowsSkipped = event.skipped,
                         lastInferenceMillis = event.inferenceMillis,
+                        levelRms = event.levelRms,
+                        audioSource = event.sourceName ?: it.audioSource,
                     )
                 }
             }

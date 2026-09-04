@@ -53,6 +53,10 @@ data class IdentifyUiState(
     /** Ventanas descartadas por el gate de energia sin gastar inferencia. */
     val windowsSkipped: Int = 0,
     val lastInferenceMillis: Long = 0L,
+    /** Nivel de audio de la ultima ventana, 0..1 sobre fondo de escala. */
+    val levelRms: Float = 0f,
+    /** Fuente de microfono en uso. */
+    val audioSource: String? = null,
     val error: IdentifyError? = null,
     val errorDetail: String? = null,
     /** Instante en el que la escucha se cortara sola. 0 si no hay ninguna en curso. */
@@ -107,6 +111,8 @@ class IdentifyViewModel(
                     windowsProcessed = service.windowsProcessed,
                     windowsSkipped = service.windowsSkipped,
                     lastInferenceMillis = service.lastInferenceMillis,
+                    levelRms = service.levelRms,
+                    audioSource = service.audioSource,
                     stopsAtMillis = service.stopsAtMillis,
                     stoppedByTimeout = service.stoppedByTimeout,
                     error = service.failure?.toIdentifyError(),
