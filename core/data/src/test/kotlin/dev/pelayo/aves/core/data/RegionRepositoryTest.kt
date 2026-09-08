@@ -2,6 +2,7 @@ package dev.pelayo.aves.core.data
 
 import dev.pelayo.aves.core.database.dao.RegionDao
 import dev.pelayo.aves.core.database.entity.RegionCellEntity
+import dev.pelayo.aves.core.database.entity.RegionMonthEntity
 import dev.pelayo.aves.core.database.entity.SpeciesFrequencyEntity
 import dev.pelayo.aves.core.ml.api.ObservationContext
 import dev.pelayo.aves.core.model.RarityTier
@@ -16,10 +17,17 @@ class RegionRepositoryTest {
     /** Los DAO de Room son interfaces, asi que se pueden doblar sin emulador. */
     private class FakeRegionDao : RegionDao {
         val cells = HashMap<String, RegionCellEntity>()
+        val months = HashMap<Pair<String, Int>, RegionMonthEntity>()
         val frequencies = ArrayList<SpeciesFrequencyEntity>()
 
         override suspend fun findCell(cellId: String) = cells[cellId]
         override suspend fun upsertCell(cell: RegionCellEntity) { cells[cell.cellId] = cell }
+        override suspend fun findMonth(cellId: String, month: Int) = months[cellId to month]
+        override suspend fun monthsFor(cellId: String) =
+            months.values.filter { it.cellId == cellId }.sortedBy { it.month }
+        override suspend fun upsertMonth(month: RegionMonthEntity) {
+            months[month.cellId to month.month] = month
+        }
         override suspend fun upsertFrequencies(frequencies: List<SpeciesFrequencyEntity>) {
             this.frequencies += frequencies
         }
@@ -31,8 +39,8 @@ class RegionRepositoryTest {
             }
         override suspend fun frequencyCountFor(cellId: String) =
             frequencies.count { it.cellId == cellId }
-        override suspend fun deleteFrequenciesFor(cellId: String) {
-            frequencies.removeAll { it.cellId == cellId }
+        override suspend fun deleteFrequenciesFor(cellId: String, month: Int) {
+            frequencies.removeAll { it.cellId == cellId && it.month == month }
         }
     }
 
@@ -42,6 +50,7 @@ class RegionRepositoryTest {
     ) : OccurrenceSource {
         var calls = 0
             private set
+        val monthsAsked = ArrayList<Int>()
 
         override suspend fun occurrencesInCell(
             latitude: Double,
@@ -50,6 +59,7 @@ class RegionRepositoryTest {
             month: Int,
         ): OccurrenceSummary {
             calls++
+            monthsAsked += month
             return perMonth[month] ?: fallback
         }
     }
@@ -74,16 +84,45 @@ class RegionRepositoryTest {
 
     @Test
     fun `cachea los doce meses de una celda`() = runTest {
-        // Se bajan los doce de golpe para que salir a pajarear en otra estacion
-        // no dependa de tener cobertura.
+        // Se bajan los doce para que salir a pajarear en otra estacion no
+        // dependa de tener cobertura.
         val source = FakeSource(mapOf(6 to juneNearOviedo))
         val dao = FakeRegionDao()
 
-        val refreshed = repository(source, dao).ensureCellCached(oviedo.first, oviedo.second, NOW)
+        val refreshed = repository(source, dao).ensureCellCached(oviedo.first, oviedo.second, JUNE_MILLIS)
 
         assertEquals(12, refreshed)
         assertEquals(12, source.calls)
         assertEquals(1, dao.cells.size)
+        assertEquals(12, dao.months.size)
+    }
+
+    @Test
+    fun `el mes actual se pide primero`() = runTest {
+        // Es el unico que hace falta para la escucha en curso: si la descarga
+        // se corta, al menos ese tiene que haber llegado.
+        val source = FakeSource(mapOf(6 to juneNearOviedo))
+
+        repository(source).ensureCellCached(oviedo.first, oviedo.second, JUNE_MILLIS)
+
+        assertEquals(6, source.monthsAsked.first())
+    }
+
+    @Test
+    fun `cada mes queda guardado aunque los demas no lleguen`() = runTest {
+        val source = FakeSource(mapOf(6 to juneNearOviedo))
+        val dao = FakeRegionDao()
+
+        val downloaded = repository(source, dao)
+            .ensureCurrentMonthCached(oviedo.first, oviedo.second, JUNE_MILLIS)
+
+        assertTrue(downloaded)
+        assertEquals(1, source.calls)
+        assertEquals(
+            RarityTier.VERY_COMMON,
+            repository(FakeSource(emptyMap()), dao)
+                .rarityOf("turdus_merula", oviedo.first, oviedo.second, 6),
+        )
     }
 
     @Test
@@ -92,8 +131,8 @@ class RegionRepositoryTest {
         val dao = FakeRegionDao()
         val repository = repository(source, dao)
 
-        repository.ensureCellCached(oviedo.first, oviedo.second, NOW)
-        val second = repository.ensureCellCached(oviedo.first, oviedo.second, NOW + 1_000)
+        repository.ensureCellCached(oviedo.first, oviedo.second, JUNE_MILLIS)
+        val second = repository.ensureCellCached(oviedo.first, oviedo.second, JUNE_MILLIS + 1_000)
 
         assertEquals("la segunda vez no debe tocar la red", 0, second)
         assertEquals(12, source.calls)
@@ -104,8 +143,8 @@ class RegionRepositoryTest {
         val source = FakeSource(mapOf(6 to juneNearOviedo))
         val repository = repository(source)
 
-        repository.ensureCellCached(oviedo.first, oviedo.second, NOW)
-        val stale = NOW + RegionRepository.DEFAULT_FRESHNESS_MILLIS + 1
+        repository.ensureCellCached(oviedo.first, oviedo.second, JUNE_MILLIS)
+        val stale = JUNE_MILLIS + RegionRepository.DEFAULT_FRESHNESS_MILLIS + 1
         val second = repository.ensureCellCached(oviedo.first, oviedo.second, stale)
 
         assertEquals(12, second)
@@ -115,7 +154,7 @@ class RegionRepositoryTest {
     fun `deriva los tiers de rareza de las cuotas reales`() = runTest {
         val dao = FakeRegionDao()
         repository(FakeSource(mapOf(6 to juneNearOviedo)), dao)
-            .ensureCellCached(oviedo.first, oviedo.second, NOW)
+            .ensureCellCached(oviedo.first, oviedo.second, JUNE_MILLIS)
         val repository = repository(FakeSource(emptyMap()), dao)
 
         // Un mirlo cerca de Oviedo es trivial; un martin pescador no.
@@ -141,7 +180,7 @@ class RegionRepositoryTest {
     fun `una especie sin registros locales es excepcional, no desconocida`() = runTest {
         val dao = FakeRegionDao()
         repository(FakeSource(mapOf(6 to juneNearOviedo)), dao)
-            .ensureCellCached(oviedo.first, oviedo.second, NOW)
+            .ensureCellCached(oviedo.first, oviedo.second, JUNE_MILLIS)
 
         // GBIF tiene cientos de millones de observaciones: que ninguna sea de
         // esta especie aqui significa algo.
@@ -161,10 +200,24 @@ class RegionRepositoryTest {
     }
 
     @Test
+    fun `un mes que no esta descargado tampoco inventa nada`() = runTest {
+        // Con junio bajado y noviembre no, preguntar por noviembre es "no se",
+        // no "excepcional": la diferencia es justo lo que UNKNOWN existe para marcar.
+        val dao = FakeRegionDao()
+        repository(FakeSource(mapOf(6 to juneNearOviedo)), dao)
+            .ensureCurrentMonthCached(oviedo.first, oviedo.second, JUNE_MILLIS)
+
+        assertNull(
+            repository(FakeSource(emptyMap()), dao)
+                .rarityOf("turdus_merula", oviedo.first, oviedo.second, 11),
+        )
+    }
+
+    @Test
     fun `descarta hibridos al agregar`() = runTest {
         val dao = FakeRegionDao()
         repository(FakeSource(mapOf(6 to juneNearOviedo)), dao)
-            .ensureCellCached(oviedo.first, oviedo.second, NOW)
+            .ensureCellCached(oviedo.first, oviedo.second, JUNE_MILLIS)
 
         // El hibrido traia 99 ocurrencias y no debe sumarlas a ninguna especie.
         assertTrue(dao.frequencies.none { it.speciesId.contains("anas") })
@@ -176,7 +229,7 @@ class RegionRepositoryTest {
         // y es justo lo mas interesante que puede pasar en esta app.
         val dao = FakeRegionDao()
         val repository = repository(FakeSource(mapOf(6 to juneNearOviedo)), dao)
-        repository.ensureCellCached(oviedo.first, oviedo.second, NOW)
+        repository.ensureCellCached(oviedo.first, oviedo.second, JUNE_MILLIS)
 
         val prior = repository.prior(
             ObservationContext(oviedo.first, oviedo.second, JUNE_MILLIS, contextInfluence = 1f),
@@ -190,7 +243,7 @@ class RegionRepositoryTest {
     fun `el prior favorece lo comun sin anular lo raro`() = runTest {
         val dao = FakeRegionDao()
         val repository = repository(FakeSource(mapOf(6 to juneNearOviedo)), dao)
-        repository.ensureCellCached(oviedo.first, oviedo.second, NOW)
+        repository.ensureCellCached(oviedo.first, oviedo.second, JUNE_MILLIS)
 
         val prior = repository.prior(
             ObservationContext(oviedo.first, oviedo.second, JUNE_MILLIS, contextInfluence = 1f),
@@ -220,8 +273,6 @@ class RegionRepositoryTest {
     }
 
     private companion object {
-        const val NOW = 1_750_000_000_000L
-
         /** Un instante de junio, el mes de los datos de prueba. */
         val JUNE_MILLIS: Long = java.util.GregorianCalendar(2026, 5, 15).timeInMillis
     }

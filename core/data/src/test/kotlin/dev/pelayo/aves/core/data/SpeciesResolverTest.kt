@@ -30,6 +30,13 @@ class SpeciesResolverTest {
         override suspend fun unmappedCountFor(modelId: String): Int =
             labels[modelId].orEmpty().count { it.speciesId == null }
 
+        override suspend fun modelIds(): List<String> = labels.keys.toList()
+
+        override fun detectableSpeciesCount(): kotlinx.coroutines.flow.Flow<Int> =
+            kotlinx.coroutines.flow.flowOf(
+                labels.values.flatten().mapNotNull { it.speciesId }.distinct().size,
+            )
+
         override suspend fun upsertAll(labels: List<ModelLabelEntity>) = Unit
 
         override suspend fun deleteModel(modelId: String) = Unit

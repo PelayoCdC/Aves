@@ -42,7 +42,7 @@ import dev.pelayo.aves.core.model.ObservationSource
 data class ObservationEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val speciesId: String,
-    /** Nulo para observaciones manuales, que no pertenecen a ninguna escucha. */
+    /** Nulo para observaciones manuales y por foto, que no pertenecen a ninguna escucha. */
     val sessionId: Long? = null,
     val timestamp: Long,
     val latitude: Double? = null,
@@ -61,9 +61,12 @@ data class ObservationEntity(
     /**
      * Tier de rareza congelado en el momento de la captura.
      *
-     * No se recalcula nunca. La rareza depende de (especie, lugar, mes), asi que
-     * si el usuario se muda, sus capturas antiguas no deben cambiar de valor
-     * retroactivamente: aquel mirlo en Islandia fue notable de verdad.
+     * No se recalcula nunca, con una excepcion: si en el momento de la captura
+     * no habia datos (sin ubicacion o sin la celda descargada) se guarda como
+     * desconocido, y ESE si se rellena cuando los datos llegan. La rareza
+     * depende de (especie, lugar, mes), asi que si el usuario se muda, sus
+     * capturas antiguas no deben cambiar de valor retroactivamente: aquel mirlo
+     * en Islandia fue notable de verdad.
      */
     val rarityTierAtCapture: Int,
 )
@@ -74,6 +77,10 @@ data class ObservationEntity(
  * Se guardan para poder auditar el modelo y, sobre todo, para que la bandeja de
  * revision pueda ofrecer "no era esto, era lo segundo" en vez de obligar a
  * buscar la especie correcta a mano.
+ *
+ * El indice unico por (observacion, puesto) hace que reemplazar los candidatos
+ * de una observacion sea un `REPLACE` y no un borrado mas una insercion: cada
+ * deteccion mejor que llega trae su propia lista y pisa la anterior.
  */
 @Entity(
     tableName = "observation_candidates",
@@ -85,7 +92,10 @@ data class ObservationEntity(
             onDelete = ForeignKey.CASCADE,
         ),
     ],
-    indices = [Index("observationId")],
+    indices = [
+        Index("observationId"),
+        Index(value = ["observationId", "rank"], unique = true),
+    ],
 )
 data class ObservationCandidateEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

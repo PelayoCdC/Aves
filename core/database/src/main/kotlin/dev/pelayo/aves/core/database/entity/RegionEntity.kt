@@ -10,8 +10,6 @@ import androidx.room.PrimaryKey
  * Se cachea por celda geohash-4 (~40x20 km) y no por coordenada exacta para que
  * cruzar la ciudad no dispare descargas constantes. Una vez cacheada una celda,
  * la app funciona offline en esa zona indefinidamente.
- *
- * Se llena en Fase 4; la tabla existe desde ya para no tener que migrar despues.
  */
 @Entity(tableName = "region_cells")
 data class RegionCellEntity(
@@ -21,6 +19,31 @@ data class RegionCellEntity(
     /** Total de observaciones de aves en la celda, denominador de la rareza. */
     val totalObservations: Long,
     val lastRefreshed: Long,
+)
+
+/**
+ * Que meses de una celda estan descargados, y cuando.
+ *
+ * Existe porque la descarga de una celda son doce consultas a GBIF y antes se
+ * escribia todo o nada: una escucha corta con mala cobertura no cacheaba ni un
+ * mes, y la celda nunca llegaba a existir. Con una fila por mes, cada consulta
+ * que termina queda guardada aunque las demas se cancelen, y el mes actual (que
+ * es el que hace falta YA) se pide primero.
+ *
+ * Un mes con cero ocurrencias es informacion real y tambien se registra aqui:
+ * asi no se vuelve a pedir cada vez.
+ */
+@Entity(
+    tableName = "region_cell_months",
+    primaryKeys = ["cellId", "month"],
+)
+data class RegionMonthEntity(
+    val cellId: String,
+    /** 1..12. */
+    val month: Int,
+    val fetchedAt: Long,
+    /** Ocurrencias totales de aves en la celda ese mes: el denominador de la rareza. */
+    val totalObservations: Long,
 )
 
 /**

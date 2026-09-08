@@ -7,13 +7,24 @@ package dev.pelayo.aves.core.model
  * Por eso los avistamientos congelan el tier del momento de la captura en vez de
  * calcularlo al vuelo: si el usuario se muda, sus capturas antiguas no deben
  * cambiar de valor retroactivamente.
+ *
+ * [UNKNOWN] existe porque "no hay datos" y "excepcional" son cosas distintas.
+ * La primera version usaba EXCEPTIONAL como valor por defecto para todo lo que
+ * no se podia calcular (sin GPS, sin la celda descargada, tier fuera de rango),
+ * y el resultado era una coleccion en la que cada gorrion era una rareza
+ * dorada. Lo desconocido se marca como tal y se rellena cuando los datos llegan.
  */
 enum class RarityTier(val level: Int) {
+    /** Sin datos para decidir. Es el unico tier que se recalcula despues. */
+    UNKNOWN(-1),
     VERY_COMMON(0),
     COMMON(1),
     UNCOMMON(2),
     RARE(3),
     EXCEPTIONAL(4);
+
+    /** Si hay una rareza de verdad detras, y no un hueco. */
+    val isKnown: Boolean get() = this != UNKNOWN
 
     companion object {
         /**
@@ -35,7 +46,8 @@ enum class RarityTier(val level: Int) {
             else -> EXCEPTIONAL
         }
 
+        /** Un nivel que no existe es un dato corrupto, y lo honesto es "no se". */
         fun fromLevel(level: Int): RarityTier =
-            entries.firstOrNull { it.level == level } ?: EXCEPTIONAL
+            entries.firstOrNull { it.level == level } ?: UNKNOWN
     }
 }

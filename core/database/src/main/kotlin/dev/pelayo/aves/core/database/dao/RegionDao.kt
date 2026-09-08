@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import dev.pelayo.aves.core.database.entity.RegionCellEntity
+import dev.pelayo.aves.core.database.entity.RegionMonthEntity
 import dev.pelayo.aves.core.database.entity.SpeciesFrequencyEntity
 
 @Dao
@@ -16,6 +17,15 @@ interface RegionDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertCell(cell: RegionCellEntity)
+
+    @Query("SELECT * FROM region_cell_months WHERE cellId = :cellId AND month = :month")
+    suspend fun findMonth(cellId: String, month: Int): RegionMonthEntity?
+
+    @Query("SELECT * FROM region_cell_months WHERE cellId = :cellId ORDER BY month")
+    suspend fun monthsFor(cellId: String): List<RegionMonthEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertMonth(month: RegionMonthEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertFrequencies(frequencies: List<SpeciesFrequencyEntity>)
@@ -39,20 +49,26 @@ interface RegionDao {
     @Query("SELECT COUNT(*) FROM species_frequency WHERE cellId = :cellId")
     suspend fun frequencyCountFor(cellId: String): Int
 
-    @Query("DELETE FROM species_frequency WHERE cellId = :cellId")
-    suspend fun deleteFrequenciesFor(cellId: String)
+    @Query("DELETE FROM species_frequency WHERE cellId = :cellId AND month = :month")
+    suspend fun deleteFrequenciesFor(cellId: String, month: Int)
 
     /**
-     * Reemplaza los datos de una celda de forma atomica.
+     * Reemplaza los datos de UN mes de una celda de forma atomica.
      *
-     * Si se insertara sin borrar, una revision posterior de GBIF dejaria
-     * mezcladas frecuencias viejas y nuevas de la misma celda, y las rarezas
-     * saldrian de una media sin sentido entre dos instantaneas.
+     * Por mes y no por celda entera: asi cada consulta a GBIF que termina queda
+     * guardada aunque las once restantes se cancelen. Y si se insertara sin
+     * borrar, una revision posterior dejaria mezcladas frecuencias viejas y
+     * nuevas del mismo mes, y las rarezas saldrian de una media sin sentido.
      */
     @Transaction
-    suspend fun replaceCell(cell: RegionCellEntity, frequencies: List<SpeciesFrequencyEntity>) {
-        deleteFrequenciesFor(cell.cellId)
+    suspend fun replaceMonth(
+        cell: RegionCellEntity,
+        month: RegionMonthEntity,
+        frequencies: List<SpeciesFrequencyEntity>,
+    ) {
         upsertCell(cell)
-        upsertFrequencies(frequencies)
+        deleteFrequenciesFor(cell.cellId, month.month)
+        if (frequencies.isNotEmpty()) upsertFrequencies(frequencies)
+        upsertMonth(month)
     }
 }

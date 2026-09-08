@@ -5,10 +5,30 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Upsert
 import dev.pelayo.aves.core.database.entity.ModelLabelEntity
 import dev.pelayo.aves.core.database.entity.SpeciesEntity
 import dev.pelayo.aves.core.database.entity.SpeciesNameEntity
 import kotlinx.coroutines.flow.Flow
+
+/**
+ * Las columnas del catalogo que vienen del TSV.
+ *
+ * Es una entidad parcial para que volver a sembrar (cuando el catalogo crece
+ * con una taxonomia nueva) actualice la taxonomia SIN pisar lo que la app ha
+ * ido cacheando en las demas columnas: el resumen y la imagen de Wikipedia se
+ * descargaron una vez y no hay motivo para perderlos.
+ */
+data class SpeciesTaxonomy(
+    val speciesId: String,
+    val scientificName: String,
+    val genus: String,
+    val family: String,
+    val order: String,
+    val defaultCommonName: String,
+    val ebirdCode: String?,
+    val searchName: String,
+)
 
 @Dao
 interface SpeciesDao {
@@ -25,25 +45,45 @@ interface SpeciesDao {
     @Query("SELECT COUNT(*) FROM species")
     suspend fun count(): Int
 
+    /**
+     * Busqueda por texto ya normalizado (ver `SearchText.fold`): el llamante
+     * normaliza la consulta igual que se normalizo la columna al sembrar.
+     */
     @Query(
         """
         SELECT * FROM species
-        WHERE defaultCommonName LIKE '%' || :query || '%'
-           OR scientificName LIKE '%' || :query || '%'
+        WHERE searchName LIKE '%' || :foldedQuery || '%'
         ORDER BY defaultCommonName
         LIMIT :limit
         """,
     )
-    fun search(query: String, limit: Int = 50): Flow<List<SpeciesEntity>>
+    fun search(foldedQuery: String, limit: Int = 50): Flow<List<SpeciesEntity>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertAll(species: List<SpeciesEntity>)
+    @Upsert(entity = SpeciesEntity::class)
+    suspend fun upsertTaxonomy(rows: List<SpeciesTaxonomy>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertNames(names: List<SpeciesNameEntity>)
 
     @Query("SELECT commonName FROM species_names WHERE speciesId = :speciesId AND languageTag = :languageTag")
     suspend fun localizedName(speciesId: String, languageTag: String): String?
+
+    /** Guarda lo que trajo Wikipedia. Se escribe una vez y se lee siempre. */
+    @Query(
+        """
+        UPDATE species
+        SET imageUrl = :imageUrl, wikipediaUrl = :wikipediaUrl, summary = :summary,
+            imageAttribution = :imageAttribution
+        WHERE speciesId = :speciesId
+        """,
+    )
+    suspend fun updateEncyclopedia(
+        speciesId: String,
+        imageUrl: String?,
+        wikipediaUrl: String?,
+        summary: String?,
+        imageAttribution: String?,
+    )
 }
 
 @Dao
@@ -54,7 +94,7 @@ interface ModelLabelDao {
      *
      * Se carga entero y se cachea en memoria porque la inferencia lo consulta
      * varias veces por segundo: una consulta a SQLite por cada candidato de cada
-     * ventana seria un despropósito. Son 6.522 filas, caben de sobra.
+     * ventana seria un despropósito. Son unos miles de filas, caben de sobra.
      */
     @Query("SELECT * FROM model_labels WHERE modelId = :modelId ORDER BY labelIndex")
     suspend fun labelsFor(modelId: String): List<ModelLabelEntity>
@@ -65,6 +105,19 @@ interface ModelLabelDao {
     /** Cuantas clases del modelo NO tienen especie canonica asignada. */
     @Query("SELECT COUNT(*) FROM model_labels WHERE modelId = :modelId AND speciesId IS NULL")
     suspend fun unmappedCountFor(modelId: String): Int
+
+    @Query("SELECT DISTINCT modelId FROM model_labels")
+    suspend fun modelIds(): List<String>
+
+    /**
+     * Especies distintas que ALGUN modelo enlazado sabe identificar.
+     *
+     * Es el "total" de la Pokedex: el catalogo tiene 11.000 especies, pero
+     * prometer 11.000 huecos cuando el modelo solo distingue 6.400 seria
+     * prometer una coleccion imposible de completar.
+     */
+    @Query("SELECT COUNT(DISTINCT speciesId) FROM model_labels WHERE speciesId IS NOT NULL")
+    fun detectableSpeciesCount(): Flow<Int>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(labels: List<ModelLabelEntity>)

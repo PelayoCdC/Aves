@@ -143,9 +143,14 @@ fun LockedSpeciesCard(modifier: Modifier = Modifier) {
     }
 }
 
-/** El tier fuera de rango cae en el ultimo color en vez de reventar. */
+/** Sin datos no hay color de rareza: un gris neutro, que es lo que significa. */
+@Composable
 internal fun rarityColor(tier: RarityTier): Color =
-    RarityColors.getOrElse(tier.level) { RarityColors.last() }
+    if (tier.isKnown) {
+        RarityColors.getOrElse(tier.level) { RarityColors.last() }
+    } else {
+        MaterialTheme.colorScheme.outline
+    }
 
 // --- Previews -------------------------------------------------------------
 

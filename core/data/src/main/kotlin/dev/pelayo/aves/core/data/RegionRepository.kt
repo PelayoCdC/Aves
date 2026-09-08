@@ -3,6 +3,7 @@ package dev.pelayo.aves.core.data
 import dev.pelayo.aves.core.common.Geohash
 import dev.pelayo.aves.core.database.dao.RegionDao
 import dev.pelayo.aves.core.database.entity.RegionCellEntity
+import dev.pelayo.aves.core.database.entity.RegionMonthEntity
 import dev.pelayo.aves.core.database.entity.SpeciesFrequencyEntity
 import dev.pelayo.aves.core.ml.api.ContextPriorProvider
 import dev.pelayo.aves.core.ml.api.ObservationContext
@@ -44,8 +45,8 @@ interface OccurrenceSource {
  *
  * Tambien actua de [ContextPriorProvider]: los mismos datos que dan la rareza
  * sirven para filtrar las predicciones del modelo. Es la version que funciona en
- * los dos flavors; el flavor `personal` tiene ademas el meta-modelo de BirdNET,
- * que es mas fino porque se entreno junto al clasificador.
+ * los dos flavors; cada flavor tiene ademas el geomodelo de su clasificador,
+ * que es mas fino porque se entreno junto a el.
  */
 class RegionRepository(
     private val regionDao: RegionDao,
@@ -64,14 +65,17 @@ class RegionRepository(
     )
 
     /**
-     * Descarga y cachea los datos de la celda si hacen falta.
+     * Descarga y cachea los meses de la celda que falten o hayan caducado.
      *
-     * Doce llamadas, una por mes, y despues la app funciona sin red en esa zona
-     * indefinidamente. Se hacen los doce meses de golpe y no solo el actual
-     * porque el coste marginal es bajo y evita que salir a pajarear en otra
-     * estacion dependa de tener cobertura.
+     * El mes de [now] se pide PRIMERO: es el que hace falta para la escucha en
+     * curso. Los otros once van despues, y cada uno se guarda en cuanto llega.
+     * Asi una escucha corta con mala cobertura deja al menos el mes actual, y la
+     * siguiente salida en otra estacion no depende de tener red.
      *
-     * @return numero de meses efectivamente refrescados.
+     * Antes se escribia todo o nada, y si la descarga se cancelaba a medias la
+     * celda nunca llegaba a existir.
+     *
+     * @return numero de meses efectivamente descargados.
      */
     suspend fun ensureCellCached(
         latitude: Double,
@@ -80,36 +84,68 @@ class RegionRepository(
         force: Boolean = false,
     ): Int {
         val cellId = Geohash.encode(latitude, longitude, CELL_PRECISION)
-        val existing = regionDao.findCell(cellId)
-        val fresh = existing != null && now - existing.lastRefreshed < freshnessMillis
-        if (fresh && !force && regionDao.frequencyCountFor(cellId) > 0) return 0
+        val current = monthOf(now)
+        val order = (0 until 12).map { offset -> ((current - 1 + offset) % 12) + 1 }
 
         var refreshed = 0
-        var totalAcrossYear = 0L
-        val frequencies = ArrayList<SpeciesFrequencyEntity>()
-
-        for (month in 1..12) {
-            val summary = occurrenceSource.occurrencesInCell(latitude, longitude, radiusKm, month)
-            totalAcrossYear += summary.total
-            frequencies += toFrequencies(cellId, month, summary)
-            refreshed++
+        for (month in order) {
+            if (ensureMonthCached(cellId, latitude, longitude, month, now, force)) refreshed++
         }
+        return refreshed
+    }
 
-        regionDao.replaceCell(
+    /**
+     * Solo el mes que hace falta ahora. Es lo primero que se llama al empezar
+     * una escucha, y lo unico que se necesita para que la rareza funcione hoy.
+     *
+     * @return true si hubo que descargarlo.
+     */
+    suspend fun ensureCurrentMonthCached(latitude: Double, longitude: Double, now: Long): Boolean {
+        val cellId = Geohash.encode(latitude, longitude, CELL_PRECISION)
+        return ensureMonthCached(cellId, latitude, longitude, monthOf(now), now, force = false)
+    }
+
+    private suspend fun ensureMonthCached(
+        cellId: String,
+        latitude: Double,
+        longitude: Double,
+        month: Int,
+        now: Long,
+        force: Boolean,
+    ): Boolean {
+        val existing = regionDao.findMonth(cellId, month)
+        val fresh = existing != null && now - existing.fetchedAt < freshnessMillis
+        if (fresh && !force) return false
+
+        val summary = occurrenceSource.occurrencesInCell(latitude, longitude, radiusKm, month)
+        val cell = regionDao.findCell(cellId)
+        regionDao.replaceMonth(
             cell = RegionCellEntity(
                 cellId = cellId,
                 centerLat = latitude,
                 centerLon = longitude,
-                totalObservations = totalAcrossYear,
+                // El total de la celda es la suma de los meses que se conocen.
+                totalObservations = (cell?.totalObservations ?: 0L) -
+                    (existing?.totalObservations ?: 0L) + summary.total,
                 lastRefreshed = now,
             ),
-            frequencies = frequencies,
+            month = RegionMonthEntity(
+                cellId = cellId,
+                month = month,
+                fetchedAt = now,
+                totalObservations = summary.total,
+            ),
+            frequencies = toFrequencies(cellId, month, summary),
         )
         invalidate()
-        return refreshed
+        return true
     }
 
-    /** Tier de rareza de una especie aqui y ahora, o null si la celda no esta cacheada. */
+    /**
+     * Tier de rareza de una especie aqui y ahora, o null si ese mes de esa celda
+     * no esta descargado todavia. Null quiere decir "no se", y quien llama debe
+     * tratarlo asi ([RarityTier.UNKNOWN]), nunca inventarse un tier.
+     */
     suspend fun rarityOf(
         speciesId: String,
         latitude: Double,
@@ -117,7 +153,7 @@ class RegionRepository(
         month: Int,
     ): RarityTier? {
         val cellId = Geohash.encode(latitude, longitude, CELL_PRECISION)
-        if (regionDao.findCell(cellId) == null) return null
+        if (regionDao.findMonth(cellId, month) == null) return null
         val frequency = regionDao.frequencyOf(cellId, speciesId, month)
             // Sin registro local la especie no es "desconocida", es excepcional:
             // GBIF tiene cientos de millones de observaciones, y que ninguna sea

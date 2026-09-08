@@ -3,7 +3,7 @@ package dev.pelayo.aves.feature.pokedex
 import dev.pelayo.aves.core.model.ObservationSource
 import dev.pelayo.aves.core.model.RarityTier
 import dev.pelayo.aves.core.model.Species
-import java.text.Normalizer
+import dev.pelayo.aves.core.common.SearchText
 
 /*
  * Modelo y logica de la coleccion, deliberadamente sin nada de Android ni de
@@ -148,11 +148,7 @@ internal fun filterCollection(
  * lo que va a escribir alguien con el movil en una mano y unos prismaticos en
  * la otra.
  */
-internal fun foldForSearch(value: String): String =
-    Normalizer.normalize(value.trim().lowercase(), Normalizer.Form.NFD)
-        .replace(DIACRITICS, "")
-
-private val DIACRITICS = Regex("\\p{Mn}+")
+internal fun foldForSearch(value: String): String = SearchText.fold(value)
 
 /**
  * Separador de millares a la espanola, sin depender del Locale del dispositivo.
@@ -195,4 +191,5 @@ internal fun rarityLabel(tier: RarityTier): String = when (tier) {
     RarityTier.UNCOMMON -> "Poco común"
     RarityTier.RARE -> "Rara"
     RarityTier.EXCEPTIONAL -> "Excepcional"
+    RarityTier.UNKNOWN -> "Sin datos"
 }
