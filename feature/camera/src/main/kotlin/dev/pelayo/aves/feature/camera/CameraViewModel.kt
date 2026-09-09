@@ -37,13 +37,32 @@ enum class CameraError {
  *
  * El labelmap de AIY solo trae nombre cientifico, asi que aqui no hay nombre
  * comun que mostrar. Resolverlo es trabajo del catalogo de especies, aguas
- * abajo de esta pantalla.
+ * abajo de esta pantalla. [labelIndex] viaja hasta alli porque es lo que el
+ * cross-walk necesita para dar con la especie canonica.
  */
 data class ImageCandidate(
-    /** null cuando la clase del modelo no mapea a ninguna especie que sigamos. */
+    /** Provisional, derivado del nombre cientifico. null si la clase no mapea a nada. */
     val speciesId: String?,
     val scientificName: String,
+    /** Confianza tras el prior geo-temporal: la que se ensena y sobre la que se decide. */
     val confidence: Float,
+    /** Lo que dijo el modelo antes del prior. Se guarda para poder auditarlo. */
+    val rawConfidence: Float,
+    val labelIndex: Int,
+)
+
+/**
+ * Lo que sale de la pantalla cuando el usuario elige un candidato: todo lo que
+ * hace falta para guardar la observacion, incluida la foto que la justifica.
+ *
+ * @param photo copia propia de la imagen que vio el modelo (224 px). Quien la
+ *   recibe es su dueno.
+ */
+data class ImageIdentification(
+    val candidate: ImageCandidate,
+    val modelId: String,
+    val context: ObservationContext,
+    val photo: Bitmap?,
 )
 
 data class CameraUiState(
@@ -62,6 +81,7 @@ data class CameraUiState(
     /** Texto de atribucion del modelo. Lo exige la licencia, no es cortesia. */
     val attribution: String? = null,
     val modelName: String? = null,
+    val modelId: String? = null,
     val speciesCount: Int = 0,
     /**
      * Lado en pixeles de la entrada del modelo. Lo declara el MODELO y por eso
@@ -107,6 +127,14 @@ class CameraViewModel(
     private var warmedUp = false
 
     /**
+     * La ultima foto que vio el modelo y el contexto con el que se clasifico.
+     * Se conservan para poder guardarlos con la observacion si el usuario
+     * elige un candidato. Este ViewModel es el dueno del bitmap y lo recicla.
+     */
+    private var lastInput: Bitmap? = null
+    private var lastContext: ObservationContext? = null
+
+    /**
      * Carga el modelo por adelantado.
      *
      * Se llama al conceder el permiso, no al pulsar el disparador: el usuario
@@ -138,18 +166,27 @@ class CameraViewModel(
     /**
      * Clasifica la foto ya recortada y escalada a [CameraUiState.inputSize].
      *
-     * NO toma la propiedad de [bitmap]: no lo recicla. A este tamano son unos
-     * 200 KB, y reciclarlo aqui abriria la puerta a que la pantalla intentara
-     * pintar despues un bitmap muerto, que si revienta la app. El que si hay que
-     * reciclar -la foto original de varios megapixeles- ya se ha soltado antes
-     * de llegar aqui.
+     * TOMA LA PROPIEDAD de [bitmap]: lo conserva hasta la siguiente foto o
+     * hasta que muera la pantalla, por si el usuario elige un candidato y hay
+     * que guardarlo junto a la observacion. A este tamano son unos 200 KB.
      */
     fun classify(bitmap: Bitmap, context: ObservationContext) {
         // Un disparo a la vez. El boton se deshabilita mientras tanto, pero un
         // doble toque rapido llegaria igual hasta aqui.
-        if (_uiState.value.isClassifying) return
+        if (_uiState.value.isClassifying) {
+            bitmap.recycle()
+            return
+        }
 
-        val active = obtainClassifier() ?: return
+        val active = obtainClassifier()
+        if (active == null) {
+            bitmap.recycle()
+            return
+        }
+
+        lastInput?.recycle()
+        lastInput = bitmap
+        lastContext = context
 
         _uiState.update {
             it.copy(
@@ -191,10 +228,32 @@ class CameraViewModel(
                 fail(CameraError.MODEL_FILES_MISSING, e)
             } catch (e: IOException) {
                 fail(CameraError.MODEL_FILES_MISSING, e)
+            } catch (e: IllegalStateException) {
+                fail(CameraError.CAPTURE_FAILED, e)
+            } catch (e: IllegalArgumentException) {
+                fail(CameraError.CAPTURE_FAILED, e)
             } finally {
                 _uiState.update { it.copy(isClassifying = false, isWarmingUp = false) }
             }
         }
+    }
+
+    /**
+     * Empaqueta la eleccion del usuario con su foto y su contexto.
+     *
+     * La foto se COPIA: quien la recibe puede guardarla cuando quiera sin que
+     * un disparo posterior la recicle debajo.
+     */
+    fun identification(candidate: ImageCandidate): ImageIdentification {
+        val photo = lastInput?.takeIf { !it.isRecycled }?.let { source ->
+            runCatching { source.copy(source.config ?: Bitmap.Config.ARGB_8888, false) }.getOrNull()
+        }
+        return ImageIdentification(
+            candidate = candidate,
+            modelId = _uiState.value.modelId ?: UNKNOWN_MODEL_ID,
+            context = lastContext ?: ObservationContext(epochMillis = System.currentTimeMillis()),
+            photo = photo,
+        )
     }
 
     /** La pantalla no pudo abrir o enlazar la camara. */
@@ -232,6 +291,7 @@ class CameraViewModel(
             it.copy(
                 attribution = created.descriptor.attributionText,
                 modelName = created.descriptor.displayName,
+                modelId = created.descriptor.modelId,
                 speciesCount = created.descriptor.speciesCount,
                 inputSize = created.inputSize,
             )
@@ -265,6 +325,8 @@ class CameraViewModel(
                 speciesId = it.speciesId,
                 scientificName = it.rawLabel,
                 confidence = it.adjustedScore,
+                rawConfidence = it.rawScore,
+                labelIndex = it.labelIndex,
             )
         }
 
@@ -273,6 +335,8 @@ class CameraViewModel(
         classifyJob = null
         warmUpJob?.cancel()
         warmUpJob = null
+        lastInput?.recycle()
+        lastInput = null
         // Sin esto se queda vivo el modelo mapeado en memoria.
         classifier?.close()
         classifier = null
@@ -305,5 +369,7 @@ class CameraViewModel(
          * usa AIY birds_V1.
          */
         const val FALLBACK_INPUT_SIZE = 224
+
+        private const val UNKNOWN_MODEL_ID = "unknown-image-model"
     }
 }

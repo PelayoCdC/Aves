@@ -27,7 +27,7 @@ class AvesApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        container = AppContainer(this)
+        container = AppContainer(this, applicationScope)
 
         // El servicio de escucha no puede recibir sus dependencias por
         // constructor: lo instancia el sistema. Este punto de inyeccion estatico
@@ -37,10 +37,12 @@ class AvesApplication : Application() {
         // El catalogo se siembra en segundo plano nada mas arrancar, no la
         // primera vez que se necesita: asi la espera cae en el arranque, donde
         // el usuario todavia no esta esperando nada concreto, y no en mitad de
-        // una identificacion.
+        // una identificacion. Despues se rellenan las rarezas que quedaron
+        // pendientes por falta de datos en su momento.
         applicationScope.launch {
             runCatching { container.catalogSeeder.seedIfNeeded() }
                 .onFailure { Log.e(TAG, "No se pudo sembrar el catalogo", it) }
+            container.regionWarmer.fillRarities()
         }
     }
 

@@ -1,9 +1,12 @@
 package dev.pelayo.aves.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -18,12 +21,12 @@ import dev.pelayo.aves.feature.pokedex.SpeciesDetailScreen
 import dev.pelayo.aves.feature.pokedex.SpeciesDetailViewModel
 import dev.pelayo.aves.feature.review.ReviewScreen
 import dev.pelayo.aves.feature.review.ReviewViewModel
+import dev.pelayo.aves.feature.settings.AvesSettings
 import dev.pelayo.aves.feature.settings.SettingsScreen
 import dev.pelayo.aves.feature.settings.SettingsViewModel
-import dev.pelayo.aves.feature.settings.settingsStore
 import dev.pelayo.aves.ml.createAudioClassifier
-import dev.pelayo.aves.ml.createContextPrior
 import dev.pelayo.aves.ml.createImageClassifier
+import kotlinx.coroutines.launch
 
 /** Ruta de la ficha de especie. Es un destino de detalle, no de primer nivel. */
 private const val SPECIES_DETAIL_ROUTE = "species"
@@ -49,12 +52,16 @@ fun AvesNavHost(
     // repositorios, asi que es quien inyecta hacia abajo. Las features reciben
     // fabricas y no saben de donde salen sus dependencias.
     val appContext = LocalContext.current.applicationContext
-    // El prior se elige por flavor: `personal` usa el meta-modelo de BirdNET,
-    // que se entreno junto al clasificador; `open` usa el derivado de GBIF, que
-    // es el unico distribuible.
-    val contextPrior = remember(appContext, container) {
-        createContextPrior(appContext, container.regionRepository)
-    }
+    val scope = rememberCoroutineScope()
+
+    // Los ajustes del usuario, vivos: la camara y la escucha los leen de aqui.
+    val settings by container.settingsStore.settings.collectAsStateWithLifecycle(
+        initialValue = AvesSettings(),
+    )
+
+    // El prior es el singleton del contenedor: su cache (el barrido anual del
+    // geomodelo) tiene que sobrevivir entre pantallas y entre escuchas.
+    val contextPrior = container.contextPrior
     val classifierProvider = remember(appContext, contextPrior) {
         { createAudioClassifier(appContext, contextPrior) }
     }
@@ -67,6 +74,7 @@ fun AvesNavHost(
         composable(AvesDestination.IDENTIFY.route) {
             IdentifyScreen(
                 classifierProvider = classifierProvider,
+                namer = container.detectionNamer,
                 onOpenCamera = { navController.navigate(CAMERA_ROUTE) },
             )
         }
@@ -93,9 +101,22 @@ fun AvesNavHost(
         composable(CAMERA_ROUTE) {
             CameraScreen(
                 classifierProvider = { createImageClassifier(appContext, contextPrior) },
-                locationProvider = { container.locationProvider.lastKnown() },
-                onIdentified = { speciesId, _ ->
-                    navController.navigate("$SPECIES_DETAIL_ROUTE/$speciesId")
+                locationProvider = {
+                    if (settings.locationDisabled) null else container.locationProvider.current()
+                },
+                contextInfluence = settings.contextInfluence,
+                onIdentified = { identification ->
+                    // Se guarda ANTES de navegar: la ficha tiene que abrirse ya
+                    // con el avistamiento dentro, y con el id canonico del
+                    // catalogo, no con el provisional del modelo.
+                    scope.launch {
+                        val speciesId = runCatching {
+                            container.imageObservationRecorder.record(identification)
+                        }.getOrNull() ?: identification.candidate.speciesId
+                        if (speciesId != null) {
+                            navController.navigate("$SPECIES_DETAIL_ROUTE/$speciesId")
+                        }
+                    }
                 },
             )
         }
@@ -104,14 +125,14 @@ fun AvesNavHost(
             SettingsScreen(
                 viewModelFactory = {
                     SettingsViewModel(
-                        store = settingsStore(appContext),
+                        store = container.settingsStore,
                         observationRepository = container.observationRepository,
                         clipsDirectory = container.clipsDirectory,
                     )
                 },
                 // Los descriptores salen del flavor compilado: :app es el unico
-                // que sabe si BirdNET esta enlazado. La atribucion no es
-                // decorativa, es requisito de la licencia CC BY-NC-SA.
+                // que sabe que modelos estan enlazados. La atribucion no es
+                // decorativa, es requisito de las licencias.
                 modelDescriptors = remember(appContext, contextPrior) {
                     listOfNotNull(
                         createAudioClassifier(appContext, contextPrior)?.use { it.descriptor },

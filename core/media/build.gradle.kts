@@ -16,6 +16,7 @@ android {
 dependencies {
     // Los iconos vienen de :core:designsystem, que ya los expone con api().
     implementation(projects.core.designsystem)
+    implementation(projects.core.audio)
     implementation(libs.media3.exoplayer)
     implementation(libs.kotlinx.coroutines.android)
 

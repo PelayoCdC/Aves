@@ -44,21 +44,20 @@ data class AudioFrame(
 /**
  * Como se escalan las muestras PCM de 16 bits al convertirlas a Float.
  *
- * RESUELTO (2026-07-29). Durante un tiempo esto fue el riesgo tecnico numero
- * uno: no se sabia si BirdNET esperaba las muestras normalizadas a [-1,1] o
- * crudas, y equivocarse no habria dado ningun error, solo peores aciertos en
- * silencio.
+ * Durante un tiempo esto fue el riesgo tecnico numero uno: no se sabia si
+ * BirdNET esperaba las muestras normalizadas a [-1,1] o crudas, y equivocarse
+ * no habria dado ningun error, solo peores aciertos en silencio.
  *
- * Ya no importa: **BirdNET v2.4 es invariante a la escala de entrada**. Su
- * frontend `model/MEL_SPEC1` aplica una normalizacion min-max
- * `(x - min) / (max - min)` sobre el espectrograma, y eso elimina cualquier
- * factor de ganancia constante. Verificado ejecutando el modelo real con la
- * misma senal a escalas que difieren en cinco ordenes de magnitud: mismas
- * puntuaciones (ver `InputScalingRegressionTest`).
+ * Para **BirdNET v2.4** esta resuelto: es invariante a la escala. Su frontend
+ * `model/MEL_SPEC1` aplica una normalizacion min-max sobre el espectrograma, y
+ * eso elimina cualquier factor de ganancia constante. Verificado ejecutando el
+ * modelo real con la misma senal a escalas que difieren en cinco ordenes de
+ * magnitud (ver `InputScalingRegressionTest`).
  *
- * Se conserva el enum, y con el el test, por dos razones: documenta la
- * propiedad y la protege de regresiones si algun dia se cambia de modelo. Un
- * modelo distinto podria no ser invariante, y entonces esto vuelve a importar.
+ * Para **BirdNET+ V3** NO esta verificado, y por eso la app usa [NORMALIZED]
+ * en todas partes: si el modelo es invariante, da igual; si no lo es, [-1,1] es
+ * la convencion con la que se entrena cualquier modelo de audio en PyTorch. Es
+ * la eleccion que no puede salir mal, y cuesta una multiplicacion por muestra.
  */
 enum class PcmScaling {
     /** Se pasa el valor del Short tal cual: rango [-32768, 32767]. */
@@ -90,12 +89,18 @@ enum class PcmScaling {
  * El formato lo impone quien construye el motor, leyendolo del clasificador.
  * Aqui no hay ningun 48000 ni ningun 144000 cableado: ese es justamente el
  * punto que permite cambiar de modelo sin tocar este codigo.
+ *
+ * @param preferUnprocessed si el dispositivo soporta de verdad la fuente
+ *   UNPROCESSED (ver [AudioSourceSupport]). Cuando no, se salta directamente a
+ *   VOICE_RECOGNITION en vez de abrir una fuente que se llama "sin procesar" y
+ *   procesa igual.
  */
 class AudioCaptureEngine(
     private val sampleRate: Int,
     val windowSampleCount: Int,
     private val hopMillis: Long = DEFAULT_HOP_MILLIS,
-    private val scaling: PcmScaling = PcmScaling.RAW,
+    private val scaling: PcmScaling = PcmScaling.NORMALIZED,
+    private val preferUnprocessed: Boolean = true,
 ) {
     init {
         require(sampleRate > 0) { "sampleRate debe ser positivo" }
@@ -104,15 +109,13 @@ class AudioCaptureEngine(
     }
 
     /** Muestras entre dos inferencias consecutivas. Con 800 ms sobre 3 s, el solape es del 73%. */
-    private val hopSampleCount: Int = ((sampleRate * hopMillis) / 1000L).toInt()
+    val hopSampleCount: Int = ((sampleRate * hopMillis) / 1000L).toInt()
 
     /**
      * Fuente de audio que se acabo usando, legible una vez arrancada la captura.
      *
-     * Se expone porque importa para diagnosticar: UNPROCESSED es la buena, pero
-     * hay dispositivos que la declaran disponible y entregan niveles muy bajos o
-     * directamente silencio. Sin saber cual esta activa, un "no capta nada" es
-     * indistinguible de "no hay pajaros".
+     * Se expone porque importa para diagnosticar: sin saber cual esta activa, un
+     * "no capta nada" es indistinguible de "no hay pajaros".
      */
     @Volatile
     var activeSourceName: String? = null
@@ -121,10 +124,10 @@ class AudioCaptureEngine(
     /**
      * Emite una ventana cada [hopMillis] mientras se recolecte.
      *
-     * El flujo lleva `buffer(CONFLATED)`: si la inferencia tarda mas que el
-     * salto entre ventanas, se descartan las intermedias en vez de acumular
-     * retraso. Para identificar aves en directo vale mucho mas el audio de hace
-     * un segundo que el de hace treinta.
+     * El flujo lleva un buffer de una posicion que descarta lo mas antiguo: si
+     * la inferencia tarda mas que el salto entre ventanas, se pierden las
+     * intermedias en vez de acumular retraso. Para identificar aves en directo
+     * vale mucho mas el audio de hace un segundo que el de hace treinta.
      */
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun frames(): Flow<AudioFrame> = flow {
@@ -183,11 +186,13 @@ class AudioCaptureEngine(
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun createRecord(bufferBytes: Int): AudioRecord {
-        // UNPROCESSED es esencial: el control automatico de ganancia y la
-        // supresion de ruido del sistema estan afinados para voz humana y
-        // destrozan los cantos, sobre todo los agudos. No todos los dispositivos
-        // lo implementan, de ahi el fallback.
-        for (source in AUDIO_SOURCES) {
+        // UNPROCESSED es esencial cuando existe: el control automatico de
+        // ganancia y la supresion de ruido del sistema estan afinados para voz
+        // humana y destrozan los cantos, sobre todo los agudos. Pero un
+        // dispositivo que no lo implementa lo acepta igual y aplica DEFAULT por
+        // debajo, asi que solo se intenta si el sistema dice que es real.
+        val sources = if (preferUnprocessed) AUDIO_SOURCES else AUDIO_SOURCES.drop(1)
+        for (source in sources) {
             val record = try {
                 buildRecord(source, bufferBytes)
             } catch (e: CancellationException) {
@@ -248,7 +253,8 @@ class AudioCaptureEngine(
             MediaRecorder.AudioSource.MIC to "microfono",
         )
 
-        private val AUDIO_SOURCES = intArrayOf(
+        /** En orden de preferencia. El primero solo si el dispositivo lo soporta de verdad. */
+        private val AUDIO_SOURCES = listOf(
             MediaRecorder.AudioSource.UNPROCESSED,
             MediaRecorder.AudioSource.VOICE_RECOGNITION,
             MediaRecorder.AudioSource.MIC,

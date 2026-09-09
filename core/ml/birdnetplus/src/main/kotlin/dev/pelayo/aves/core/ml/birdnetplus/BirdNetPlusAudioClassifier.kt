@@ -15,7 +15,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.io.FileNotFoundException
 import java.nio.FloatBuffer
 
@@ -183,29 +182,15 @@ class BirdNetPlusAudioClassifier(
     }
 
     /**
-     * Copia el modelo a almacenamiento privado la primera vez y devuelve su ruta.
-     *
-     * ONNX Runtime puede cargar desde un `ByteArray`, pero eso deja 64 MB en el
-     * monton de Java. Cargar desde ruta permite mapearlo, que es lo que hace el
-     * de TFLite con `openFd`. El coste es una copia unica en el primer arranque.
+     * Copia el modelo a disco la primera vez y devuelve su ruta. Ver
+     * [BirdNetPlusAssets]: sin copia de seguridad y con el tamano en el nombre.
      */
-    private fun modelPath(): String {
-        val target = File(context.filesDir, MODEL_ASSET)
-        if (target.exists() && target.length() > 0L) return target.absolutePath
-
-        val available = context.assets.list("").orEmpty()
-        check(MODEL_ASSET in available) {
-            throw FileNotFoundException(
+    private fun modelPath(): String =
+        BirdNetPlusAssets.materialize(context, MODEL_ASSET)
+            ?: throw FileNotFoundException(
                 "Falta $MODEL_ASSET en los assets. Ejecuta scripts/fetch-models.ps1: " +
                     "descarga los pesos Apache 2.0 desde birdnet-team/birdnet-live-app.",
             )
-        }
-
-        context.assets.open(MODEL_ASSET).use { source ->
-            target.outputStream().use { destination -> source.copyTo(destination) }
-        }
-        return target.absolutePath
-    }
 
     override fun close() {
         session?.close()
@@ -234,7 +219,13 @@ class BirdNetPlusAudioClassifier(
         private const val DEFAULT_OUTPUT_NAME = "predictions"
 
         private const val DEFAULT_THREAD_COUNT = 2
-        private const val DEFAULT_TOP_K = 3
+        /**
+         * Ocho y no tres: el estabilizador necesita ver a una especie en ventanas
+         * CONSECUTIVAS para confirmarla. Con dos aves fuertes cantando, la
+         * tercera se caia del top-3 y perdia la racha aunque siguiera ahi. Lo
+         * que se ensena al usuario lo decide la histeresis, no este numero.
+         */
+        private const val DEFAULT_TOP_K = 8
         private const val DEFAULT_MIN_SCORE = 0.05f
     }
 }

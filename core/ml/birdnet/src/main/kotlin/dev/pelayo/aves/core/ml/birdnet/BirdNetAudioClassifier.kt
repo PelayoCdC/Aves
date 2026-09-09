@@ -222,26 +222,35 @@ class BirdNetAudioClassifier(
         const val SAMPLE_COUNT = 144_000
 
         /**
-         * En orden de preferencia. FP32 primero porque, si estan los dos, es el
-         * que hay que usar para comparar contra las salidas de referencia de
-         * BirdNET-Analyzer sin que la cuantizacion meta ruido.
+         * En orden de preferencia. FP16 primero: es la mitad de tamano (25 MB
+         * frente a 51) y en un movil no se nota la diferencia de precision. El
+         * FP32 solo tiene sentido para comparar contra las salidas de
+         * referencia de BirdNET-Analyzer, y el script de descarga no lo baja
+         * salvo que se pida. Tener los DOS en assets duplicaba el APK.
          */
         val MODEL_ASSET_CANDIDATES = listOf(
-            "BirdNET_GLOBAL_6K_V2.4_Model_FP32.tflite",
             "BirdNET_GLOBAL_6K_V2.4_Model_FP16.tflite",
+            "BirdNET_GLOBAL_6K_V2.4_Model_FP32.tflite",
         )
 
         const val LABELS_ASSET = "labels_es.txt"
         const val TAXO_CODES_ASSET = "taxo_code.txt"
 
         private const val DEFAULT_THREAD_COUNT = 2
-        private const val DEFAULT_TOP_K = 3
+
+        /**
+         * Ocho y no tres: el estabilizador necesita ver a una especie en ventanas
+         * CONSECUTIVAS para confirmarla. Con dos aves fuertes cantando, la
+         * tercera se caia del top-3 y perdia la racha aunque siguiera ahi. Lo
+         * que se ensena al usuario lo decide la histeresis, no este numero.
+         */
+        private const val DEFAULT_TOP_K = 8
 
         /**
          * Suelo bajo a proposito: aqui solo se recortan candidatos irrelevantes.
-         * El umbral que decide si algo se ENSENA al usuario (~0.65) vive en la
-         * capa de interfaz, junto con la histeresis, porque es una decision de
-         * producto y no del modelo.
+         * El umbral que decide si algo se ENSENA al usuario (0,35 de fabrica,
+         * ajustable) vive en el estabilizador de `:core:listening`, porque es
+         * una decision de producto y no del modelo.
          */
         private const val DEFAULT_MIN_SCORE = 0.05f
     }

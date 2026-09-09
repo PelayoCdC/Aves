@@ -46,7 +46,14 @@ data class AvesSettings(
          * solo sirve para que alguien lo pruebe y crea que la app esta rota.
          */
         val CONFIDENCE_THRESHOLD_RANGE = 0.05f..0.95f
-        const val DEFAULT_CONFIDENCE_THRESHOLD = 0.5f
+
+        /**
+         * 0,35: el que recomienda el propio equipo de BirdNET
+         * (`defaultConfidenceThreshold` en su model_config.json). Es el mismo
+         * valor de fabrica que usa el estabilizador de la escucha; este ajuste
+         * es la unica forma de cambiarlo.
+         */
+        const val DEFAULT_CONFIDENCE_THRESHOLD = 0.35f
 
         val LISTENING_CUTOFF_RANGE = 0..120
         const val LISTENING_CUTOFF_STEP_MINUTES = 5
@@ -55,11 +62,11 @@ data class AvesSettings(
         const val NO_CUTOFF = 0
 
         /**
-         * Media hora: mas de lo que dura una salida corta al jardin y bastante
-         * menos de lo que tarda el microfono en agotar la bateria si la app se
-         * queda escuchando olvidada en un bolsillo.
+         * Una hora: lo que dura el coro del amanecer, que es el caso de uso que
+         * justifica la escucha en segundo plano. Es el mismo valor por defecto
+         * que aplica el servicio si no se ha guardado ningun ajuste.
          */
-        const val DEFAULT_LISTENING_CUTOFF_MINUTES = 30
+        const val DEFAULT_LISTENING_CUTOFF_MINUTES = 60
 
         fun sanitizeContextInfluence(value: Float): Float =
             if (value.isNaN()) DEFAULT_CONTEXT_INFLUENCE else value.coerceIn(CONTEXT_INFLUENCE_RANGE)

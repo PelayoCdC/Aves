@@ -178,9 +178,11 @@ class ObservationRepository(
         latitude: Double?,
         longitude: Double?,
         mediaPath: String?,
-        rarityTier: RarityTier,
+        /** Se consulta con la especie YA canonica, que es la que conoce la cache de rarezas. */
+        rarityOf: suspend (speciesId: String) -> RarityTier,
     ): Pair<Long, String>? {
         val speciesId = speciesResolver.resolve(modelId, detection.labelIndex) ?: return null
+        val rarityTier = runCatching { rarityOf(speciesId) }.getOrDefault(RarityTier.UNKNOWN)
         val id = observationDao.insert(
             ObservationEntity(
                 speciesId = speciesId,

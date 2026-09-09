@@ -141,7 +141,7 @@ object WavDecoder {
         }
 
         val mono = readMono(bytes, dataOffset, dataLength, channels)
-        val resampled = if (sampleRate == targetSampleRate) mono else resample(mono, sampleRate, targetSampleRate)
+        val resampled = Resampler.resample(mono, sampleRate, targetSampleRate)
 
         return DecodedAudio(
             samples = FloatArray(resampled.size) { scaling.apply(resampled[it]) },
@@ -162,34 +162,6 @@ object WavDecoder {
             mono[frame] = (sum / channels).toShort()
         }
         return mono
-    }
-
-    /**
-     * Remuestreo por interpolacion lineal.
-     *
-     * No es de alta calidad: no hay filtro anti-aliasing, asi que al bajar de
-     * frecuencia se produce solapamiento espectral. Para este caso es aceptable
-     * porque casi todo el material relevante ya viene a 48 kHz o mas, y el
-     * camino critico (el test de regresion) usa ficheros preparados a 48 kHz
-     * exactos, donde esta funcion ni se ejecuta.
-     *
-     * Si algun dia se admite audio de 8 o 16 kHz en serio, hay que meter un
-     * filtro paso-bajo antes de decimar.
-     */
-    private fun resample(input: ShortArray, from: Int, to: Int): ShortArray {
-        if (input.isEmpty()) return input
-        val ratio = from.toDouble() / to
-        val outputSize = (input.size / ratio).toInt()
-        val output = ShortArray(outputSize)
-        for (i in 0 until outputSize) {
-            val position = i * ratio
-            val index = position.toInt()
-            val fraction = position - index
-            val a = input[index].toDouble()
-            val b = if (index + 1 < input.size) input[index + 1].toDouble() else a
-            output[i] = (a + (b - a) * fraction).toInt().toShort()
-        }
-        return output
     }
 
     private fun require4CC(buffer: ByteBuffer, expected: String) {

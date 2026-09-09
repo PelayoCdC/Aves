@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Reglas de extraccion de datos (Android 12 y posteriores). Misma politica que
+    backup_rules.xml: los recortes de audio no van a la nube por la cuota de
+    25 MB. En una transferencia directa entre dispositivos no hay cuota y viaja
+    todo.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="clips" />
+    </cloud-backup>
+</data-extraction-rules>

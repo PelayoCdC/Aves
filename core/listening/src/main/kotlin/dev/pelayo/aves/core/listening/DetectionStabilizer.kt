@@ -5,14 +5,14 @@ import dev.pelayo.aves.core.ml.api.ClassificationResult
 /**
  * Una deteccion que ya ha superado la histeresis y se puede ensenar.
  *
- * DUPLICADO A PROPOSITO de `dev.pelayo.aves.feature.identify.StableDetection`.
- * El bucle de escucha tiene que poder vivir en un servicio, y un modulo `core`
- * no puede depender de un `feature` sin invertir el grafo. Cuando
- * `:feature:identify` se migre a [ListeningEngine], la copia de alli queda
- * obsoleta y debe borrarse: esta es la que se queda.
+ * [commonName], [scientificName] y [canonicalSpeciesId] los rellena
+ * [DetectionNamer] a partir del catalogo; el estabilizador no los conoce. Si
+ * vienen a null, la interfaz cae a la etiqueta cruda del modelo.
  */
 data class StableDetection(
+    /** speciesId provisional, el que trae el clasificador. */
     val speciesId: String,
+    /** Etiqueta cruda del modelo, `Cientifico_Comun`. */
     val label: String,
     val score: Float,
     /**
@@ -26,17 +26,14 @@ data class StableDetection(
     val labelIndex: Int,
     /** Ventanas consecutivas en las que se ha visto. Util para depurar. */
     val streak: Int,
+    val canonicalSpeciesId: String? = null,
+    val commonName: String? = null,
+    val scientificName: String? = null,
 )
 
 /**
  * Convierte el chorro de resultados por ventana en algo que un humano pueda
  * leer.
- *
- * DUPLICADO A PROPOSITO de `dev.pelayo.aves.feature.identify.DetectionStabilizer`
- * por el mismo motivo que [StableDetection]: la histeresis es parte del bucle de
- * escucha, no de la pantalla, y el bucle ha bajado a `core` para poder correr
- * dentro de un servicio. La copia de `:feature:identify` queda obsoleta en
- * cuanto esa pantalla consuma [ListeningEngine].
  *
  * Sin esto la lista cambia 1,25 veces por segundo (una por ventana) y la
  * pantalla es un parpadeo ilegible. Es el paso que separa una demo de una app
@@ -135,11 +132,16 @@ class DetectionStabilizer(
          * filtro contra falsos positivos no desaparece: se traslada de "muy
          * seguro una vez" a "razonablemente seguro varias veces", que es mejor
          * criterio con un ave lejana y trafico de fondo.
+         *
+         * El usuario lo puede cambiar en Ajustes; esto es el valor de fabrica.
          */
         const val DEFAULT_CONFIRM_THRESHOLD = 0.35f
 
         /** Laxo para mantenerse: los pajaros hacen pausas. */
         const val DEFAULT_KEEP_THRESHOLD = 0.2f
+
+        /** Proporcion entre mantenerse y entrar, para derivar uno del otro cuando el usuario mueve el umbral. */
+        const val KEEP_RATIO = DEFAULT_KEEP_THRESHOLD / DEFAULT_CONFIRM_THRESHOLD
 
         /** Con salto de 800 ms, 3 ventanas son ~2,4 s de evidencia. */
         const val DEFAULT_REQUIRED_CONSECUTIVE = 3

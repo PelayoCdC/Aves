@@ -5,14 +5,7 @@ import java.io.File
 /*
  * Logica pura del reproductor de recortes: donde esta el audio y cual suena.
  *
- * DUPLICADO A PROPOSITO. Hay una copia identica de este fichero (solo cambia el
- * paquete) en `feature/pokedex`. Las dos pantallas necesitan reproducir el mismo
- * tipo de recorte y en esta fase no se puede crear un modulo nuevo; duplicar es
- * preferible a que una feature dependa de la otra. DEBE UNIFICARSE en
- * `:core:designsystem` (o en un `:core:media` propio) al integrar. Hasta
- * entonces, cualquier arreglo aqui hay que replicarlo en la otra copia.
- *
- * Vive separado del composable porque es justo la parte que se puede probar sin
+ * Vive separada del composable porque es justo la parte que se puede probar sin
  * Android: decidir si hay algo que reproducir y cual de las tarjetas suena.
  */
 
@@ -21,9 +14,9 @@ import java.io.File
  *
  * Devuelve null en vez de lanzar porque la ausencia del fichero es un caso
  * normal, no un error: los recortes viven en `filesDir` y el usuario puede haber
- * borrado los datos de la app, o la politica de retencion puede haberlos
- * limpiado, mientras la fila de la base de datos sigue ahi con su ruta. La
- * interfaz tiene que poder degradar a "sin grabacion" en lugar de reventar.
+ * borrado los datos de la app, o la copia de seguridad puede haberlos excluido,
+ * mientras la fila de la base de datos sigue ahi con su ruta. La interfaz tiene
+ * que poder degradar a "sin grabacion" en lugar de reventar.
  *
  * @param baseDir raiz contra la que resolver rutas relativas. Puede ser null
  *   (previsualizaciones, tests): entonces solo se aceptan rutas absolutas.
@@ -33,7 +26,7 @@ fun resolveClipFile(mediaPath: String?, baseDir: File?): File? {
     if (path.isEmpty()) return null
 
     val raw = File(path)
-    // Hoy `mediaPath` se guarda absoluto (lo escribe `IdentifyViewModel` con
+    // Hoy `mediaPath` se guarda absoluto (lo escribe `ListeningEngine` con
     // `File.absolutePath`), pero se admite relativo para que un cambio futuro en
     // la politica de rutas no deje mudos los recortes ya guardados.
     val candidate = when {

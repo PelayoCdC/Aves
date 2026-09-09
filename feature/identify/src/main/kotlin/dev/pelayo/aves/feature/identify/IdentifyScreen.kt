@@ -1,33 +1,35 @@
 package dev.pelayo.aves.feature.identify
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import kotlin.math.log10
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AudioFile
-import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -40,10 +42,17 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -52,9 +61,12 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
-import dev.pelayo.aves.core.listening.StableDetection
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
+import dev.pelayo.aves.core.listening.CandidateGlimpse
+import dev.pelayo.aves.core.listening.DetectionNamer
+import dev.pelayo.aves.core.listening.StableDetection
 import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
+import kotlin.math.log10
 
 /**
  * Pantalla de escucha en directo.
@@ -62,10 +74,12 @@ import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
  * @param classifierProvider fabrica del clasificador. Llega desde :app porque es
  *   quien sabe que flavor se ha compilado; devuelve null si el build no incluye
  *   ningun modelo de audio.
+ * @param namer nombres del catalogo para el analisis de fichero.
  */
 @Composable
 fun IdentifyScreen(
     classifierProvider: () -> AudioBirdClassifier?,
+    namer: DetectionNamer? = null,
     /** Abre la camara. La foto es la via secundaria: se usa cuando ves el ave pero no la oyes. */
     onOpenCamera: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -76,21 +90,51 @@ fun IdentifyScreen(
     // los da la Application al servicio, no esta pantalla.
     val appContext = context.applicationContext
     val viewModel: IdentifyViewModel = viewModel {
-        IdentifyViewModel(appContext, classifierProvider)
+        IdentifyViewModel(appContext, classifierProvider, namer)
     }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     // La atribucion es requisito de la licencia CC BY-NC-SA, no cortesia. Se lee
     // una vez del descriptor y el clasificador se cierra acto seguido: solo se
-    // queria el texto, no cargar 50 MB de modelo.
+    // queria el texto, no cargar decenas de MB de modelo.
     val attribution = remember(classifierProvider) {
         classifierProvider()?.use { it.descriptor.attributionText }
     }
 
+    // --- Permisos -----------------------------------------------------------
+    // El microfono es imprescindible. Las notificaciones (Android 13+) y la
+    // ubicacion no lo son, pero sin ellas la app funciona a medias: sin
+    // notificacion el usuario no ve que el microfono esta abierto, y sin
+    // ubicacion no hay prior geo-temporal ni rareza. Se piden todos de una
+    // vez la primera vez; despues, solo el que falte, una sola vez.
+    var pendingStart by remember { mutableStateOf(false) }
+    var askedOptional by rememberSaveable { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) viewModel.toggleListening()
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { _ ->
+        if (pendingStart && context.hasPermission(Manifest.permission.RECORD_AUDIO)) {
+            viewModel.toggleListening()
+        }
+        pendingStart = false
+    }
+
+    val onMicrophoneTap: () -> Unit = {
+        val hasMicrophone = context.hasPermission(Manifest.permission.RECORD_AUDIO)
+        val optionalMissing = optionalPermissions().filterNot(context::hasPermission)
+        when {
+            !hasMicrophone -> {
+                pendingStart = true
+                permissionLauncher.launch((listOf(Manifest.permission.RECORD_AUDIO) + optionalMissing).toTypedArray())
+            }
+
+            optionalMissing.isNotEmpty() && !askedOptional && !state.isListening -> {
+                askedOptional = true
+                pendingStart = true
+                permissionLauncher.launch(optionalMissing.toTypedArray())
+            }
+
+            else -> viewModel.toggleListening()
+        }
     }
 
     val filePicker = rememberLauncherForActivityResult(
@@ -105,11 +149,6 @@ fun IdentifyScreen(
         }
     }
 
-    val hasPermission = remember(state.isListening) {
-        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
-    }
-
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -121,6 +160,7 @@ fun IdentifyScreen(
                 state.isWarmingUp -> "Preparando el modelo..."
                 state.isAnalyzingFile -> state.analyzedFileName ?: "Analizando fichero"
                 state.isListening -> "Escuchando"
+                state.analyzedFileName != null -> state.analyzedFileName!!
                 else -> "Pulsa para escuchar"
             },
             style = MaterialTheme.typography.titleMedium,
@@ -138,6 +178,7 @@ fun IdentifyScreen(
                     // ahorra el gate de energía.
                     if (state.windowsSkipped > 0) append(" · ${state.windowsSkipped} en silencio")
                     append(" · ${state.lastInferenceMillis} ms")
+                    if (state.isListening) append(if (state.hasLocation) " · con ubicación" else " · sin ubicación")
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -145,30 +186,48 @@ fun IdentifyScreen(
         }
 
         AnimatedVisibility(visible = state.isListening && !state.isWarmingUp) {
-            AudioLevelMeter(
-                levelRms = state.levelRms,
-                sourceName = state.audioSource,
-                modifier = Modifier.padding(top = 12.dp),
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                LiveSpectrogram(
+                    columns = state.spectrogram,
+                    modifier = Modifier
+                        .padding(top = 12.dp)
+                        .fillMaxWidth()
+                        .height(72.dp),
+                )
+                AudioLevelMeter(
+                    levelRms = state.levelRms,
+                    sourceName = state.audioSource,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
         }
 
         Spacer(Modifier.size(16.dp))
 
         state.error?.let { error ->
-            ErrorCard(error = error, detail = state.errorDetail)
+            ErrorCard(error = error, detail = state.errorDetail, sampleRate = state.modelSampleRate)
             Spacer(Modifier.size(16.dp))
         }
 
         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            val glimpse = state.glimpse?.takeIf { candidate ->
+                state.isListening && state.detections.none { it.speciesId == candidate.speciesId }
+            }
             when {
                 state.isWarmingUp -> CircularProgressIndicator()
 
-                state.detections.isEmpty() && state.isListening -> Text(
-                    text = "Nada reconocido todavia.\nHacen falta unos segundos de canto seguido.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                state.detections.isEmpty() && state.isListening -> Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        text = "Nada confirmado todavía.\nHacen falta unos segundos de canto seguido.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    glimpse?.let { GlimpseRow(it) }
+                }
 
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxWidth(),
@@ -177,6 +236,7 @@ fun IdentifyScreen(
                     items(state.detections, key = { it.speciesId }) { detection ->
                         DetectionCard(detection)
                     }
+                    glimpse?.let { item(key = "glimpse") { GlimpseRow(it) } }
                 }
             }
         }
@@ -186,13 +246,7 @@ fun IdentifyScreen(
             horizontalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             FloatingActionButton(
-                onClick = {
-                    if (hasPermission) {
-                        viewModel.toggleListening()
-                    } else {
-                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                    }
-                },
+                onClick = onMicrophoneTap,
                 modifier = Modifier
                     .size(72.dp)
                     .clip(CircleShape),
@@ -243,12 +297,38 @@ fun IdentifyScreen(
     }
 }
 
+private fun Context.hasPermission(permission: String): Boolean =
+    ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+
+/** Los que mejoran la app pero no la bloquean. */
+private fun optionalPermissions(): List<String> = buildList {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        add(Manifest.permission.POST_NOTIFICATIONS)
+    }
+    add(Manifest.permission.ACCESS_COARSE_LOCATION)
+}
+
+/** Nombre comun y cientifico de una deteccion, del catalogo si lo hay y de la etiqueta cruda si no. */
+private fun StableDetection.displayNames(): Pair<String, String> {
+    val common = commonName
+    val scientific = scientificName
+    if (common != null && scientific != null) return common to scientific
+    // Formato de BirdNET: "Nombre cientifico_Nombre comun".
+    val separator = label.indexOf('_')
+    val rawScientific = if (separator >= 0) label.take(separator) else label
+    val rawCommon = if (separator >= 0) label.substring(separator + 1) else ""
+    return (common ?: rawCommon) to (scientific ?: rawScientific)
+}
+
+private fun CandidateGlimpse.displayName(): String {
+    commonName?.let { return it }
+    val separator = label.indexOf('_')
+    return if (separator >= 0) label.substring(separator + 1) else label
+}
+
 @Composable
 private fun DetectionCard(detection: StableDetection, modifier: Modifier = Modifier) {
-    // Formato de BirdNET: "Nombre cientifico_Nombre comun".
-    val separator = detection.label.indexOf('_')
-    val scientific = if (separator >= 0) detection.label.take(separator) else detection.label
-    val common = if (separator >= 0) detection.label.substring(separator + 1) else ""
+    val (common, scientific) = detection.displayNames()
 
     Card(modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
@@ -271,27 +351,51 @@ private fun DetectionCard(detection: StableDetection, modifier: Modifier = Modif
     }
 }
 
+/**
+ * Lo que el modelo esta oyendo AHORA, aunque aun no lo de por bueno.
+ *
+ * En gris y sin tarjeta a proposito: es una corazonada, no un resultado. Su
+ * funcion es que el usuario vea que la app esta trabajando y que distinga "no
+ * capta" de "capta pero no confirma", que fue lo que no se pudo saber en la
+ * primera prueba de campo.
+ */
 @Composable
-private fun ErrorCard(error: IdentifyError, detail: String?, modifier: Modifier = Modifier) {
+private fun GlimpseRow(glimpse: CandidateGlimpse, modifier: Modifier = Modifier) {
+    Text(
+        text = "Oyendo… ¿${glimpse.displayName()}? ${(glimpse.score * 100).toInt()} %",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
+    )
+}
+
+@Composable
+private fun ErrorCard(
+    error: IdentifyError,
+    detail: String?,
+    sampleRate: Int?,
+    modifier: Modifier = Modifier,
+) {
     val (title, help) = when (error) {
         IdentifyError.NO_MODEL_IN_BUILD ->
-            "Esta version no incluye modelo de audio" to
-                "El flavor `open` todavia no tiene un clasificador con licencia " +
-                "Apache. Compila el flavor `personal`."
+            "Esta versión no incluye modelo de audio" to
+                "El build se compiló sin ningún clasificador de cantos. Revisa el " +
+                "flavor: `personal` enlaza BirdNET v2.4 y `open` BirdNET+."
 
         IdentifyError.MODEL_FILES_MISSING ->
             "Faltan los ficheros del modelo" to
                 "Ejecuta scripts/fetch-models.ps1 y vuelve a compilar. Los modelos " +
-                "no se versionan: pesan ~39 MB y son CC BY-NC-SA."
+                "no se versionan en el repositorio."
 
         IdentifyError.MICROPHONE_UNAVAILABLE ->
-            "No se pudo abrir el microfono" to
-                "Puede que otra aplicacion lo tenga ocupado."
+            "No se pudo abrir el micrófono" to
+                "Puede que otra aplicación lo tenga ocupado, o que falte el permiso."
 
         IdentifyError.UNSUPPORTED_AUDIO ->
             "Ese fichero no se puede analizar" to
-                "De momento solo se admite WAV PCM de 16 bits. Conviertelo con: " +
-                "ffmpeg -i entrada -ac 1 -ar 48000 -c:a pcm_s16le salida.wav"
+                "De momento solo se admite WAV PCM de 16 bits. Conviértelo con: " +
+                "ffmpeg -i entrada -ac 1 -ar ${sampleRate ?: 48_000} -c:a pcm_s16le salida.wav"
     }
 
     Card(
@@ -320,6 +424,55 @@ private fun IdentifyScreenPreview() {
         IdentifyScreen(classifierProvider = { null })
     }
 }
+
+/**
+ * Espectrograma en directo: tiempo hacia la derecha, frecuencia hacia arriba.
+ *
+ * Es la forma mas rapida de VER que el microfono capta un canto antes de que
+ * el modelo lo confirme: un trino se dibuja como un garabato claro en la mitad
+ * alta, y el trafico como una mancha en la base. Se pinta a mano en un Canvas
+ * con un rectangulo por celda; con 160 columnas y 48 bandas son unos miles de
+ * rectangulos por fotograma, que a 1,25 fotogramas por segundo no se nota.
+ */
+@Composable
+private fun LiveSpectrogram(columns: List<FloatArray>, modifier: Modifier = Modifier) {
+    val background = MaterialTheme.colorScheme.surfaceVariant
+    val quiet = MaterialTheme.colorScheme.surfaceVariant
+    val mid = MaterialTheme.colorScheme.primary
+    val loud = MaterialTheme.colorScheme.tertiary
+
+    Canvas(modifier = modifier.clip(RoundedCornerShape(6.dp)).background(background)) {
+        if (columns.isEmpty()) return@Canvas
+        val bands = columns.first().size
+        val cellWidth = size.width / SPECTROGRAM_VISIBLE_COLUMNS
+        val cellHeight = size.height / bands
+        val visible = columns.takeLast(SPECTROGRAM_VISIBLE_COLUMNS)
+        // Las columnas nuevas entran por la derecha.
+        val offset = SPECTROGRAM_VISIBLE_COLUMNS - visible.size
+        visible.forEachIndexed { columnIndex, column ->
+            val x = (offset + columnIndex) * cellWidth
+            for (band in 0 until bands) {
+                val value = column[band]
+                if (value <= 0.02f) continue
+                // Dos tramos: de callado a medio y de medio a fuerte, para que
+                // el rango util no se aplaste en un solo degradado.
+                val color = if (value < 0.5f) {
+                    lerp(quiet, mid, value * 2f)
+                } else {
+                    lerp(mid, loud, (value - 0.5f) * 2f)
+                }
+                drawRect(
+                    color = color,
+                    topLeft = Offset(x, size.height - (band + 1) * cellHeight),
+                    size = Size(cellWidth + 0.5f, cellHeight + 0.5f),
+                )
+            }
+        }
+    }
+}
+
+/** Cuantas columnas se ven: a 512 muestras por columna y 48 kHz, ~1,7 s. Con hop de 800 ms, ~24 s en pantalla. */
+private const val SPECTROGRAM_VISIBLE_COLUMNS = 160
 
 /**
  * Medidor del nivel de audio que entra por el microfono.
@@ -407,3 +560,6 @@ private const val METER_FLOOR_DBFS = -80f
 
 /** Equivale a EnergyGate.DEFAULT_THRESHOLD_FRACTION (0,001). */
 private const val GATE_THRESHOLD_DBFS = -60f
+
+@Suppress("unused")
+private val previewColor = Color.Unspecified

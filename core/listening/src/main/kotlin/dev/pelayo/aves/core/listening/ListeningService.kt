@@ -15,11 +15,13 @@ import android.os.Build
 import android.os.IBinder
 import android.text.format.DateFormat
 import android.util.Log
+import dev.pelayo.aves.core.audio.AudioSourceSupport
 import dev.pelayo.aves.core.audio.PcmScaling
 import dev.pelayo.aves.core.data.ObservationRepository
 import dev.pelayo.aves.core.data.RegionRepository
 import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
 import dev.pelayo.aves.core.model.Coordinates
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -72,7 +74,8 @@ class ListeningDeadline(
          * Es aproximadamente lo que dura el coro del amanecer, que es el caso de
          * uso que justifica todo este servicio. Mas corto obligaria a rearmar la
          * escucha en mitad de lo interesante; mucho mas largo deja de parecerse
-         * a nada que un usuario haga a proposito.
+         * a nada que un usuario haga a proposito. Es el mismo valor por defecto
+         * que ensena la pantalla de ajustes.
          */
         const val DEFAULT_DURATION_MILLIS = 60L * 60_000L
 
@@ -82,7 +85,8 @@ class ListeningDeadline(
         /**
          * Ocho horas es el techo absoluto. Aun queriendo dejarlo escuchando toda
          * la noche, eso es un descuido, no una intencion: quien lo quiera de
-         * verdad puede volver a arrancarlo por la manana.
+         * verdad puede volver a arrancarlo por la manana. "Sin corte" en los
+         * ajustes significa esto.
          */
         const val MAX_DURATION_MILLIS = 8L * 60L * 60_000L
     }
@@ -96,7 +100,7 @@ enum class ListeningFailure {
     /** Nadie publico [ListeningService.dependencies]. Es un fallo de montaje. */
     NOT_CONFIGURED,
 
-    /** El flavor compilado no incluye ningun modelo de audio (caso de `open`). */
+    /** El flavor compilado no incluye ningun modelo de audio. */
     NO_MODEL_IN_BUILD,
 
     /** Falta RECORD_AUDIO: el servicio se arranco sin pasar por el dialogo. */
@@ -127,6 +131,12 @@ data class ListeningServiceState(
     val levelRms: Float = 0f,
     /** Fuente de microfono en uso, para poder diagnosticar un "no capta nada". */
     val audioSource: String? = null,
+    /** El mejor candidato de la ultima ventana, confirmado o no. */
+    val glimpse: CandidateGlimpse? = null,
+    /** Las ultimas columnas del espectrograma, de mas antigua a mas nueva. */
+    val spectrogram: List<FloatArray> = emptyList(),
+    /** Si la ubicacion se uso en esta escucha. Para que la pantalla pueda decirlo. */
+    val hasLocation: Boolean = false,
     val startedAtMillis: Long = 0L,
     /** Instante en el que se cortara sola. 0 si no hay escucha en curso. */
     val stopsAtMillis: Long = 0L,
@@ -141,17 +151,15 @@ data class ListeningServiceState(
  *
  * Un `Service` lo instancia el sistema con el constructor vacio, asi que no hay
  * forma de inyectarle nada por parametro. Y el clasificador ademas depende del
- * flavor compilado (`personal` trae BirdNET, `open` no trae ninguno), cosa que
- * un modulo `core` no puede ni debe saber.
+ * flavor compilado, cosa que un modulo `core` no puede ni debe saber.
  *
- * Lo rellena la Application al arrancar. Cuando entre Hilt esto se sustituye por
- * `@AndroidEntryPoint` y desaparece.
+ * Lo rellena la Application al arrancar.
  */
 interface ListeningDependencies {
     /**
      * Crea un clasificador nuevo para esta escucha, o null si el flavor
      * compilado no incluye ninguno. El servicio lo cierra al terminar: retiene
-     * un modelo de ~25 MB mapeado en memoria.
+     * un modelo de decenas de MB mapeado en memoria.
      */
     fun createClassifier(): AudioBirdClassifier?
 
@@ -161,8 +169,25 @@ interface ListeningDependencies {
 
     val clipsDirectory: File?
 
-    /** Se llama una vez por sesion, fuera del hilo principal. */
-    fun currentLocation(): Coordinates?
+    /** Nombres del catalogo para las detecciones. Nulo deja las etiquetas crudas. */
+    val detectionNamer: DetectionNamer?
+
+    /** Los ajustes del usuario en el momento de arrancar. */
+    suspend fun currentSettings(): ListeningSettings
+
+    /**
+     * Ubicacion aproximada, pidiendo una lectura fresca si hace falta. Se
+     * llama una vez por sesion y solo si los ajustes lo permiten.
+     */
+    suspend fun currentLocation(): Coordinates?
+
+    /**
+     * Pide que se descarguen (en un ambito que sobrevive a la escucha) los
+     * datos de ocurrencia de la celda de [location]. Antes esta descarga vivia
+     * dentro de la escucha y se cancelaba con ella: una salida corta con mala
+     * cobertura no dejaba nada cacheado.
+     */
+    fun warmRegion(location: Coordinates)
 }
 
 /**
@@ -189,7 +214,25 @@ interface ListeningDependencies {
  */
 class ListeningService : Service() {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /**
+     * Con manejador de excepciones: lo que se le escape al motor no puede
+     * tumbar el proceso con el microfono abierto. Se registra el fallo y se
+     * para la escucha de forma ordenada.
+     */
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default +
+            CoroutineExceptionHandler { _, error ->
+                Log.e(TAG, "Fallo no controlado en la escucha", error)
+                stopEverything(
+                    _state.value.copy(
+                        isRunning = false,
+                        isWarmingUp = false,
+                        failure = ListeningFailure.ENGINE_FAILED,
+                        failureDetail = error.message,
+                    ),
+                )
+            },
+    )
     private var listenJob: Job? = null
 
     private val notifications: NotificationManager
@@ -224,12 +267,11 @@ class ListeningService : Service() {
 
         if (listenJob?.isActive == true) return START_NOT_STICKY
 
-        val requested = intent?.getLongExtra(
-            EXTRA_MAX_DURATION_MILLIS,
-            ListeningDeadline.DEFAULT_DURATION_MILLIS,
-        ) ?: ListeningDeadline.DEFAULT_DURATION_MILLIS
+        // Sin extra, la duracion sale de los ajustes del usuario.
+        val requested = intent?.takeIf { it.hasExtra(EXTRA_MAX_DURATION_MILLIS) }
+            ?.getLongExtra(EXTRA_MAX_DURATION_MILLIS, ListeningDeadline.DEFAULT_DURATION_MILLIS)
 
-        startListening(ListeningDeadline(System.currentTimeMillis(), requested))
+        startListening(requested)
 
         // START_NOT_STICKY a proposito: si el sistema mata el proceso, NO debe
         // resucitar el microfono por su cuenta. Grabar sin que el usuario lo
@@ -237,7 +279,7 @@ class ListeningService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun startListening(deadline: ListeningDeadline) {
+    private fun startListening(requestedDurationMillis: Long?) {
         val dependencies = ListeningService.dependencies
         if (dependencies == null) {
             Log.e(TAG, "No hay dependencias registradas; la Application no las publico")
@@ -256,15 +298,27 @@ class ListeningService : Service() {
             return
         }
 
+        val startedAt = System.currentTimeMillis()
         _state.value = ListeningServiceState(
             isRunning = true,
             isWarmingUp = true,
-            startedAtMillis = deadline.startedAtMillis,
-            stopsAtMillis = deadline.expiresAtMillis,
+            startedAtMillis = startedAt,
         )
         refreshNotification()
 
         listenJob = scope.launch {
+            // Los ajustes se leen aqui y no en onStartCommand: vienen de disco
+            // y el hilo principal no es sitio para esperar a DataStore.
+            val settings = runCatching { dependencies.currentSettings() }
+                .onFailure { Log.w(TAG, "No se pudieron leer los ajustes; se usan los de fabrica", it) }
+                .getOrDefault(ListeningSettings())
+            val deadline = ListeningDeadline(
+                startedAt,
+                requestedDurationMillis ?: settings.maxDurationMillis,
+            )
+            _state.update { it.copy(stopsAtMillis = deadline.expiresAtMillis) }
+            refreshNotification()
+
             val classifier = dependencies.createClassifier()
             if (classifier == null) {
                 stopEverything(ListeningServiceState(failure = ListeningFailure.NO_MODEL_IN_BUILD))
@@ -272,16 +326,29 @@ class ListeningService : Service() {
             }
 
             try {
+                val location = if (settings.useLocation) {
+                    runCatching { dependencies.currentLocation() }
+                        .onFailure { Log.w(TAG, "No se pudo obtener la ubicacion", it) }
+                        .getOrNull()
+                } else {
+                    null
+                }
+                _state.update { it.copy(hasLocation = location != null) }
+                // La descarga de GBIF va en un ambito que sobrevive a la
+                // escucha: si llega tarde, las primeras detecciones se guardan
+                // con rareza desconocida y se rellenan despues.
+                location?.let { runCatching { dependencies.warmRegion(it) } }
+
                 val engine = ListeningEngine(
                     classifier = classifier,
                     observationRepository = dependencies.observationRepository,
                     regionRepository = dependencies.regionRepository,
                     clipsDirectory = dependencies.clipsDirectory,
                     scaling = INPUT_SCALING,
+                    settings = settings,
+                    namer = dependencies.detectionNamer,
+                    preferUnprocessed = AudioSourceSupport.unprocessedSupported(this@ListeningService),
                 )
-                val location = runCatching { dependencies.currentLocation() }
-                    .onFailure { Log.w(TAG, "No se pudo obtener la ubicacion", it) }
-                    .getOrNull()
 
                 // El corte por tiempo es una cancelacion normal, asi que el
                 // `finally` del motor cierra la sesion igual que si el usuario
@@ -297,8 +364,8 @@ class ListeningService : Service() {
                     _state.update { it.copy(stoppedByTimeout = true) }
                 }
             } finally {
-                // Sin esto se queda vivo un MappedByteBuffer de ~25 MB hasta que
-                // el sistema mate el proceso.
+                // Sin esto se queda vivo un MappedByteBuffer de decenas de MB
+                // hasta que el sistema mate el proceso.
                 runCatching { classifier.close() }
                 stopEverything(_state.value.copy(isRunning = false, isWarmingUp = false))
             }
@@ -328,6 +395,8 @@ class ListeningService : Service() {
                         lastInferenceMillis = event.inferenceMillis,
                         levelRms = event.levelRms,
                         audioSource = event.sourceName ?: it.audioSource,
+                        glimpse = event.glimpse ?: it.glimpse?.takeIf { event.inferenceMillis == 0L },
+                        spectrogram = (it.spectrogram + event.spectrogram).takeLast(SPECTROGRAM_COLUMNS),
                     )
                 }
             }
@@ -364,8 +433,8 @@ class ListeningService : Service() {
     private fun stopForegroundAndSelf() {
         // REMOVE y no DETACH: una notificacion de "estoy escuchando" que sigue
         // ahi cuando ya no se escucha es peor que no tener ninguna.
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+        runCatching { stopSelf() }
     }
 
     override fun onDestroy() {
@@ -527,17 +596,21 @@ class ListeningService : Service() {
         private const val REQUEST_STOP = 1
         private const val REQUEST_OPEN = 2
 
+        /** Columnas de espectrograma que se conservan para pintar: ~25 s a 512 muestras por columna. */
+        private const val SPECTROGRAM_COLUMNS = 160
+
         const val ACTION_STOP = "dev.pelayo.aves.core.listening.action.STOP"
 
-        /** Long, milisegundos. Ver [ListeningDeadline]. */
+        /** Long, milisegundos. Opcional: sin el, mandan los ajustes. Ver [ListeningDeadline]. */
         const val EXTRA_MAX_DURATION_MILLIS = "dev.pelayo.aves.core.listening.extra.MAX_DURATION"
 
         /**
-         * Da igual cual se elija: BirdNET normaliza por min-max dentro del grafo
-         * y es invariante a la escala. Se deja en RAW porque evita una
-         * multiplicacion por cada una de las 144.000 muestras de cada ventana.
+         * Normalizado a [-1, 1]. Para BirdNET v2.4 da igual (es invariante a la
+         * escala, verificado); para BirdNET+ no esta verificado y esta es la
+         * convencion con la que se entrena cualquier modelo de audio. Ver
+         * [PcmScaling].
          */
-        val INPUT_SCALING = PcmScaling.RAW
+        val INPUT_SCALING = PcmScaling.NORMALIZED
 
         /** Lo publica la Application antes de que nadie arranque el servicio. */
         @Volatile
@@ -554,15 +627,13 @@ class ListeningService : Service() {
         /**
          * Arranca la escucha.
          *
-         * @param maxDurationMillis limite tras el que se para sola. Ver
-         *   [ListeningDeadline]: no es opcional por diseno, solo configurable.
+         * @param maxDurationMillis limite tras el que se para sola. Nulo para
+         *   usar el de los ajustes. Ver [ListeningDeadline]: no es opcional por
+         *   diseno, solo configurable.
          */
-        fun start(
-            context: Context,
-            maxDurationMillis: Long = ListeningDeadline.DEFAULT_DURATION_MILLIS,
-        ) {
+        fun start(context: Context, maxDurationMillis: Long? = null) {
             val intent = Intent(context, ListeningService::class.java)
-                .putExtra(EXTRA_MAX_DURATION_MILLIS, maxDurationMillis)
+            if (maxDurationMillis != null) intent.putExtra(EXTRA_MAX_DURATION_MILLIS, maxDurationMillis)
             // startForegroundService y no startService: desde Android 8 lo
             // segundo lanza IllegalStateException si la app no esta en primer
             // plano, que es justo cuando este servicio tiene sentido.
@@ -570,6 +641,9 @@ class ListeningService : Service() {
         }
 
         fun stop(context: Context) {
+            // Si no hay escucha, no hay nada que parar: arrancar el servicio
+            // solo para pararlo hacia parpadear la notificacion.
+            if (!_state.value.isRunning) return
             val intent = Intent(context, ListeningService::class.java).setAction(ACTION_STOP)
             context.startForegroundService(intent)
         }

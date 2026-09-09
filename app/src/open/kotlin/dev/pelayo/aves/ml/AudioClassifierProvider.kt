@@ -3,7 +3,9 @@ package dev.pelayo.aves.ml
 import android.content.Context
 import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
 import dev.pelayo.aves.core.ml.api.ContextPriorProvider
+import dev.pelayo.aves.core.ml.api.FallbackPriorProvider
 import dev.pelayo.aves.core.ml.birdnetplus.BirdNetPlusAudioClassifier
+import dev.pelayo.aves.core.ml.birdnetplus.BirdNetPlusGeoPriorProvider
 
 /**
  * Variante `open`: BirdNET+ V3, con pesos **Apache 2.0**.
@@ -29,16 +31,17 @@ fun createAudioClassifier(
     BirdNetPlusAudioClassifier(context.applicationContext, priorProvider = priorProvider)
 
 /**
- * En el flavor publicable el prior sale de GBIF, que no tiene clausula no
- * comercial.
+ * El geomodelo de BirdNET+, tambien Apache 2.0, con GBIF de respaldo.
  *
- * BirdNET+ trae ademas su propio geomodelo, tambien Apache 2.0 y ya descargado
- * en assets. Integrarlo es el siguiente paso natural: seria un prior mejor que
- * el de GBIF por la misma razon que el MData lo es en el flavor personal, porque
- * se entreno junto al clasificador.
+ * Se prefiere al prior de GBIF por la misma razon que el MData en el flavor
+ * personal: se entreno junto al clasificador y sus probabilidades estan
+ * pensadas para filtrar exactamente esas predicciones. Si el fichero faltara o
+ * fallara al cargar, se cae a GBIF en vez de escuchar sin contexto.
  */
-@Suppress("UNUSED_PARAMETER")
 fun createContextPrior(
     context: Context,
     gbifPrior: ContextPriorProvider,
-): ContextPriorProvider = gbifPrior
+): ContextPriorProvider = FallbackPriorProvider(
+    primary = BirdNetPlusGeoPriorProvider(context.applicationContext),
+    fallback = gbifPrior,
+)

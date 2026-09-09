@@ -8,6 +8,8 @@ import dev.pelayo.aves.core.audio.AudioClipWriter
 import dev.pelayo.aves.core.audio.ClipStorage
 import dev.pelayo.aves.core.audio.EnergyGate
 import dev.pelayo.aves.core.audio.PcmScaling
+import dev.pelayo.aves.core.audio.PlaybackSignal
+import dev.pelayo.aves.core.audio.SpectrogramComputer
 import dev.pelayo.aves.core.data.ObservationRepository
 import dev.pelayo.aves.core.data.RegionRepository
 import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
@@ -17,14 +19,10 @@ import dev.pelayo.aves.core.model.Coordinates
 import dev.pelayo.aves.core.model.RarityTier
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileNotFoundException
-import java.io.IOException
 
 /**
  * Lo que va pasando durante una escucha.
@@ -55,23 +53,22 @@ sealed interface ListeningEvent {
      * sesion, no de la ventana, para que el consumidor no tenga que sumar.
      *
      * @param inferenceMillis lo que costo la ultima inferencia, o 0 si la
-     *   ventana la descarto el gate de energia sin clasificar.
+     *   ventana se descarto sin clasificar.
+     * @param levelRms nivel de la ventana, 0..1 sobre fondo de escala. Sin el,
+     *   un "no detecta nada" es ambiguo: no se distingue un microfono que no
+     *   capta de uno que capta bien pero no hay ningun ave cantando.
+     * @param sourceName fuente de audio en uso. Ver AudioCaptureEngine.activeSourceName.
+     * @param glimpse el mejor candidato de ESTA ventana, confirmado o no.
+     * @param spectrogram columnas nuevas del espectrograma desde la ventana anterior.
      */
     data class Window(
         val processed: Int,
         val skipped: Int,
         val inferenceMillis: Long,
-        /**
-         * Nivel de la ventana, 0..1 sobre fondo de escala.
-         *
-         * Viaja hasta la interfaz porque sin el un "no detecta nada" es
-         * ambiguo: no se distingue un microfono que no capta de un microfono
-         * que capta bien pero no hay ningun ave cantando. La primera prueba de
-         * campo real se perdio justo por no poder distinguir esos dos casos.
-         */
         val levelRms: Float = 0f,
-        /** Fuente de audio en uso. Ver AudioCaptureEngine.activeSourceName. */
         val sourceName: String? = null,
+        val glimpse: CandidateGlimpse? = null,
+        val spectrogram: List<FloatArray> = emptyList(),
     ) : ListeningEvent
 
     /**
@@ -95,22 +92,23 @@ sealed interface ListeningEvent {
  * El bucle de escucha completo: microfono -> gate de energia -> clasificador ->
  * histeresis -> persistencia.
  *
- * Extraido del ViewModel de `:feature:identify` porque ahi era imposible cumplir
- * el caso de uso mas interesante de la app: dejar el movil escuchando un rato
- * largo mientras haces otra cosa. Un ViewModel muere con su pantalla; esto vive
- * donde lo pongan, y en particular dentro de un
- * [servicio en primer plano][ListeningService].
+ * Vive fuera de cualquier ViewModel porque un ViewModel muere con su pantalla y
+ * el caso de uso mas interesante de la app es dejar el movil escuchando un rato
+ * largo mientras haces otra cosa. Esto corre dentro de [ListeningService].
  *
  * Aqui NO entra nada de Android UI ni de `androidx.lifecycle`: esa es justo la
  * propiedad que lo hace reutilizable.
  *
- * @param classifier ya construido. El motor NO lo cierra: no es suyo, y quien lo
- *   creo puede querer reutilizarlo entre escuchas para no repagar el `warmUp`.
+ * @param classifier ya construido. El motor NO lo cierra: no es suyo.
  * @param observationRepository nulo desactiva la persistencia.
- * @param regionRepository nulo desactiva rarezas y prior de respaldo.
+ * @param regionRepository nulo desactiva las rarezas.
  * @param clipsDirectory nulo desactiva la grabacion de recortes.
- * @param scaling debe ser el mismo con el que se capturo, se clasifico y se
+ * @param scaling debe ser el mismo con el que se captura, se clasifica y se
  *   codifica el recorte; mezclarlos no da error, solo audio mudo o saturado.
+ * @param settings lo que el usuario ajusto: umbral, peso del contexto.
+ * @param namer pone nombres del catalogo a las detecciones. Nulo deja la
+ *   etiqueta cruda del modelo.
+ * @param preferUnprocessed si el dispositivo soporta de verdad audio sin procesar.
  */
 class ListeningEngine(
     private val classifier: AudioBirdClassifier,
@@ -118,6 +116,9 @@ class ListeningEngine(
     private val regionRepository: RegionRepository?,
     private val clipsDirectory: File?,
     private val scaling: PcmScaling,
+    private val settings: ListeningSettings = ListeningSettings(),
+    private val namer: DetectionNamer? = null,
+    private val preferUnprocessed: Boolean = true,
 ) {
 
     /**
@@ -127,19 +128,28 @@ class ListeningEngine(
      * estado intermedio "pedido parar pero todavia grabando" que siempre acaba
      * en fugas de sesion.
      *
+     * Cualquier excepcion que no sea una cancelacion termina en un
+     * [ListeningEvent.Failed] y el flujo se completa. Antes solo se capturaban
+     * tres tipos concretos, y un `IllegalArgumentException` del runtime del
+     * modelo o una `SQLiteException` salian del flujo y mataban el proceso con
+     * el microfono abierto.
+     *
      * @param location ubicacion aproximada de la sesion. Se resuelve UNA vez
      *   fuera y se pasa hecha: el usuario no se mueve 40 km mientras escucha, y
      *   consultarla cada 800 ms seria gasto puro.
      */
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun listen(location: Coordinates?): Flow<ListeningEvent> = flow {
-        val stabilizer = DetectionStabilizer()
+        val stabilizer = DetectionStabilizer(
+            confirmThreshold = settings.confirmThreshold,
+            keepThreshold = settings.keepThreshold,
+        )
 
         /**
          * Mejor puntuacion ya escrita para cada especie de la sesion.
          *
          * Filtro barato delante de la base de datos: con una inferencia cada
-         * 800 ms y tres candidatos serian unas cuatro consultas por segundo para
+         * 800 ms y varios candidatos serian bastantes consultas por segundo para
          * no cambiar nada la mayoria de las veces. La regla de "quedarse con la
          * mejor" tambien vive en el DAO, asi que esto no es la fuente de verdad.
          */
@@ -170,113 +180,120 @@ class ListeningEngine(
                 sampleRate = classifier.requiredSampleRate,
                 windowSampleCount = classifier.requiredSampleCount,
                 scaling = scaling,
+                preferUnprocessed = preferUnprocessed,
             )
             val gate = EnergyGate(scaling)
-            // El codificador se configura con el formato que pide el modelo,
-            // igual que la captura: nada de constantes cableadas aqui.
             val clipWriter = clipsDirectory?.let {
                 AudioClipWriter(sampleRate = classifier.requiredSampleRate, scaling = scaling)
             }
+            val spectrogram = SpectrogramComputer(classifier.requiredSampleRate, scaling)
+            // Solo se pintan las columnas del audio NUEVO desde la ventana
+            // anterior; el resto ya se pinto. Un poco mas del salto, para que
+            // el ultimo tramo tenga con que rellenar su FFT.
+            val freshSampleCount = capture.hopSampleCount + spectrogram.hopSize
+            val windowMillis = classifier.requiredSampleCount * 1000L / classifier.requiredSampleRate
+            val modelId = classifier.descriptor.modelId
 
-            coroutineScope {
-                // Descargar las ocurrencias de la celda puede tardar; no debe
-                // retrasar la primera identificacion. Si llega tarde, las
-                // primeras detecciones se guardan sin rareza y ya esta.
-                val prefetch = location?.let { where ->
-                    launch {
-                        runCatching {
-                            regionRepository?.ensureCellCached(
-                                where.latitude,
-                                where.longitude,
-                                System.currentTimeMillis(),
-                            )
-                        }.onFailure { Log.w(TAG, "No se pudo cachear la celda", it) }
-                    }
+            capture.frames().collect { frame ->
+                val columns = spectrogram.columns(
+                    frame.samples.copyOfRange(
+                        (frame.samples.size - freshSampleCount).coerceAtLeast(0),
+                        frame.samples.size,
+                    ),
+                )
+
+                // Mientras la propia app reproduce un recorte, el microfono lo
+                // oye por el altavoz: clasificar eso seria detectar lo que
+                // acabamos de reproducir.
+                if (PlaybackSignal.contaminates(frame.endTimestampMillis, windowMillis)) {
+                    skipped++
+                    emit(
+                        ListeningEvent.Window(
+                            processed, skipped, 0L,
+                            levelRms = gate.normalizedRms(frame.samples),
+                            sourceName = capture.activeSourceName,
+                            spectrogram = columns,
+                        ),
+                    )
+                    return@collect
                 }
 
-                try {
-                    capture.frames().collect { frame ->
-                        // Calcular la energia cuesta microsegundos; la inferencia
-                        // cuesta cientos de milisegundos. En el campo la mayor
-                        // parte del tiempo no canta nada, asi que esta linea se
-                        // ahorra la mayoria del gasto de bateria.
-                        // Se calcula UNA vez y se reutiliza para decidir y para
-                        // informar: recorrer 144.000 muestras dos veces por
-                        // ventana no aporta nada.
-                        val level = gate.normalizedRms(frame.samples)
-                        if (level < gate.thresholdFraction) {
-                            skipped++
-                            emit(
-                                ListeningEvent.Window(
-                                    processed = processed,
-                                    skipped = skipped,
-                                    inferenceMillis = 0L,
-                                    levelRms = level,
-                                    sourceName = capture.activeSourceName,
-                                ),
-                            )
-                            return@collect
-                        }
+                // Calcular la energia cuesta microsegundos; la inferencia cuesta
+                // cientos de milisegundos. En el campo la mayor parte del tiempo
+                // no canta nada, asi que esta linea se ahorra la mayoria del
+                // gasto de bateria. Se calcula UNA vez y se reutiliza para
+                // decidir y para informar.
+                val level = gate.normalizedRms(frame.samples)
+                if (level < gate.thresholdFraction) {
+                    skipped++
+                    emit(
+                        ListeningEvent.Window(
+                            processed, skipped, 0L,
+                            levelRms = level,
+                            sourceName = capture.activeSourceName,
+                            spectrogram = columns,
+                        ),
+                    )
+                    return@collect
+                }
 
-                        val startedAt = System.nanoTime()
-                        val results = classifier.classify(
-                            samples = frame.samples,
-                            context = ObservationContext(
-                                latitude = location?.latitude,
-                                longitude = location?.longitude,
-                                epochMillis = frame.endTimestampMillis,
-                                contextInfluence = DEFAULT_CONTEXT_INFLUENCE,
-                            ),
-                        )
-                        val elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000
-                        processed++
+                val startedAt = System.nanoTime()
+                val results = classifier.classify(
+                    samples = frame.samples,
+                    context = ObservationContext(
+                        latitude = location?.latitude,
+                        longitude = location?.longitude,
+                        epochMillis = frame.endTimestampMillis,
+                        contextInfluence = settings.contextInfluence,
+                    ),
+                )
+                val elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000
+                processed++
 
-                        val stable = stabilizer.update(results)
-                        persist(
-                            detections = stable,
-                            sessionId = sessionId,
-                            location = location,
-                            recordedScores = recordedScores,
-                            timestamp = frame.endTimestampMillis,
-                            samples = frame.samples,
-                            clipWriter = clipWriter,
-                        )
+                val stable = stabilizer.update(results).map { detection ->
+                    namer?.name(modelId, detection) ?: detection
+                }
+                persistSafely(
+                    detections = stable,
+                    candidates = results,
+                    sessionId = sessionId,
+                    location = location,
+                    recordedScores = recordedScores,
+                    timestamp = frame.endTimestampMillis,
+                    samples = frame.samples,
+                    clipWriter = clipWriter,
+                )
 
-                        emit(
-                            ListeningEvent.Window(
-                                processed = processed,
-                                skipped = skipped,
-                                inferenceMillis = elapsedMillis,
-                                levelRms = level,
-                                sourceName = capture.activeSourceName,
-                            ),
-                        )
-                        if (stable != lastDetections) {
-                            lastDetections = stable
-                            emit(ListeningEvent.Detections(stable))
-                        }
-                    }
-                } finally {
-                    // Sin esto, una descarga de GBIF a medias mantendria vivo el
-                    // coroutineScope despues de que la captura ya haya parado, y
-                    // el flujo tardaria segundos en completarse.
-                    prefetch?.cancel()
+                emit(
+                    ListeningEvent.Window(
+                        processed, skipped, elapsedMillis,
+                        levelRms = level,
+                        sourceName = capture.activeSourceName,
+                        glimpse = glimpseOf(modelId, results),
+                        spectrogram = columns,
+                    ),
+                )
+                if (stable != lastDetections) {
+                    lastDetections = stable
+                    emit(ListeningEvent.Detections(stable))
                 }
             }
         } catch (e: CancellationException) {
             throw e
-        } catch (e: FileNotFoundException) {
-            // El caso mas probable al empezar: el .tflite no esta en assets.
-            emit(fail(e))
-        } catch (e: IOException) {
-            emit(fail(e))
-        } catch (e: IllegalStateException) {
-            // Microfono no disponible: otra app lo tiene, o el formato del modelo
-            // no lo admite este dispositivo.
+        } catch (e: Exception) {
+            // Modelo ausente, microfono ocupado, E/S, un tensor mal formado, la
+            // base de datos: todo termina aqui, con un evento y no con un crash.
             emit(fail(e))
         } finally {
             closeSession(sessionId, processed, skipped)
         }
+    }
+
+    private suspend fun glimpseOf(modelId: String, results: List<ClassificationResult>): CandidateGlimpse? {
+        val best = results.firstOrNull() ?: return null
+        val speciesId = best.speciesId ?: return null
+        val glimpse = CandidateGlimpse(speciesId, best.rawLabel, best.adjustedScore)
+        return namer?.name(modelId, glimpse, best.labelIndex) ?: glimpse
     }
 
     private fun fail(cause: Throwable): ListeningEvent.Failed {
@@ -285,15 +302,43 @@ class ListeningEngine(
     }
 
     /**
+     * Guarda sin dejar que un fallo de persistencia tumbe la escucha.
+     *
+     * Una fila que no se pudo escribir es una observacion perdida; una escucha
+     * que se para por eso son todas las siguientes perdidas tambien. Esto cubre,
+     * entre otros, la carrera del primer arranque en la que el catalogo aun se
+     * esta sembrando cuando llega la primera deteccion.
+     */
+    private suspend fun persistSafely(
+        detections: List<StableDetection>,
+        candidates: List<ClassificationResult>,
+        sessionId: Long?,
+        location: Coordinates?,
+        recordedScores: HashMap<String, Float>,
+        timestamp: Long,
+        samples: FloatArray,
+        clipWriter: AudioClipWriter?,
+    ) {
+        try {
+            persist(detections, candidates, sessionId, location, recordedScores, timestamp, samples, clipWriter)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo guardar la deteccion; la escucha sigue", e)
+        }
+    }
+
+    /**
      * Guarda las detecciones confirmadas de la sesion en curso.
      *
      * Solo escribe cuando la especie es nueva en la sesion o ha mejorado su
      * mejor puntuacion. El DAO aplica la misma regla de forma atomica, asi que
-     * esto es solo un filtro barato para no consultar la base cuatro veces por
+     * esto es solo un filtro barato para no consultar la base varias veces por
      * segundo sin necesidad.
      */
     private suspend fun persist(
         detections: List<StableDetection>,
+        candidates: List<ClassificationResult>,
         sessionId: Long?,
         location: Coordinates?,
         recordedScores: HashMap<String, Float>,
@@ -328,7 +373,10 @@ class ListeningEngine(
                 latitude = location?.latitude,
                 longitude = location?.longitude,
                 mediaPath = clipPath,
-                rarityTier = rarityOf(detection.speciesId, location, timestamp),
+                rarityTier = rarityOf(detection.canonicalSpeciesId ?: detection.speciesId, location, timestamp),
+                // Los demas candidatos de la MISMA ventana: la bandeja los
+                // ofrece como "no era esto, era lo segundo".
+                candidates = candidates,
             )
             recordedScores[detection.speciesId] = detection.score
         }
@@ -341,17 +389,17 @@ class ListeningEngine(
      * no deben cambiar de valor retroactivamente. Aquel mirlo en Islandia fue
      * notable de verdad.
      *
-     * Sin ubicacion o sin datos cacheados se marca como excepcional, que es el
-     * fallo seguro: es preferible sobrevalorar una captura que ocultar una
-     * rareza autentica.
+     * Sin ubicacion, o sin ese mes de esa celda descargado, se marca como
+     * DESCONOCIDA y no como excepcional: es un hueco que se rellena cuando los
+     * datos llegan, no un veredicto.
      */
     private suspend fun rarityOf(
         speciesId: String,
         location: Coordinates?,
         timestamp: Long,
     ): RarityTier {
-        val where = location ?: return RarityTier.EXCEPTIONAL
-        val repository = regionRepository ?: return RarityTier.EXCEPTIONAL
+        val where = location ?: return RarityTier.UNKNOWN
+        val repository = regionRepository ?: return RarityTier.UNKNOWN
         return runCatching {
             repository.rarityOf(
                 speciesId = speciesId,
@@ -359,7 +407,7 @@ class ListeningEngine(
                 longitude = where.longitude,
                 month = RegionRepository.monthOf(timestamp),
             )
-        }.getOrNull() ?: RarityTier.EXCEPTIONAL
+        }.getOrNull() ?: RarityTier.UNKNOWN
     }
 
     /**
@@ -399,29 +447,21 @@ class ListeningEngine(
         val session = sessionId ?: return
 
         withContext(NonCancellable) {
-            repository.endSession(
-                sessionId = session,
-                endedAt = System.currentTimeMillis(),
-                processed = processed,
-                skipped = skipped,
-            )
-            // Una escucha de diez minutos sin resultados no aporta nada al
-            // historial y solo lo ensucia.
-            repository.discardEmptySessions()
+            runCatching {
+                repository.endSession(
+                    sessionId = session,
+                    endedAt = System.currentTimeMillis(),
+                    processed = processed,
+                    skipped = skipped,
+                )
+                // Una escucha de diez minutos sin resultados no aporta nada al
+                // historial y solo lo ensucia.
+                repository.discardEmptySessions()
+            }.onFailure { Log.w(TAG, "No se pudo cerrar la sesion $session", it) }
         }
     }
 
-    companion object {
-        private const val TAG = "ListeningEngine"
-
-        /**
-         * Cuanto pesa el contexto frente a la salida cruda del modelo.
-         *
-         * A la mitad y no al maximo a proposito: el prior es una estadistica, no
-         * una verdad. Si mandara del todo, un divagante de verdad quedaria
-         * sepultado por lo que "deberia" haber en la zona, y detectar eso es
-         * justo lo mas emocionante que puede pasar con esta app.
-         */
-        const val DEFAULT_CONTEXT_INFLUENCE = 0.5f
+    private companion object {
+        const val TAG = "ListeningEngine"
     }
 }

@@ -4,11 +4,13 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.pelayo.aves.core.audio.EnergyGate
 import dev.pelayo.aves.core.audio.PcmScaling
 import dev.pelayo.aves.core.audio.WavDecoder
 import dev.pelayo.aves.core.audio.WavFormatException
 import dev.pelayo.aves.core.audio.audioWindows
-import dev.pelayo.aves.core.audio.EnergyGate
+import dev.pelayo.aves.core.listening.CandidateGlimpse
+import dev.pelayo.aves.core.listening.DetectionNamer
 import dev.pelayo.aves.core.listening.ListeningFailure
 import dev.pelayo.aves.core.listening.ListeningService
 import dev.pelayo.aves.core.listening.StableDetection
@@ -20,10 +22,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -32,7 +34,7 @@ import java.io.IOException
 
 /** Por que no se puede escuchar. Se distinguen porque cada una se arregla distinto. */
 enum class IdentifyError {
-    /** El flavor compilado no incluye ningun modelo de audio (caso del flavor `open`). */
+    /** El flavor compilado no incluye ningun modelo de audio. */
     NO_MODEL_IN_BUILD,
 
     /** Hay codigo de modelo pero faltan los ficheros: hay que ejecutar fetch-models.ps1. */
@@ -57,6 +59,12 @@ data class IdentifyUiState(
     val levelRms: Float = 0f,
     /** Fuente de microfono en uso. */
     val audioSource: String? = null,
+    /** El mejor candidato de la ultima ventana, confirmado o no. */
+    val glimpse: CandidateGlimpse? = null,
+    /** Ultimas columnas del espectrograma, de mas antigua a mas nueva. */
+    val spectrogram: List<FloatArray> = emptyList(),
+    /** Si la escucha en curso tiene ubicacion (prior y rareza activos). */
+    val hasLocation: Boolean = false,
     val error: IdentifyError? = null,
     val errorDetail: String? = null,
     /** Instante en el que la escucha se cortara sola. 0 si no hay ninguna en curso. */
@@ -66,6 +74,8 @@ data class IdentifyUiState(
     /** Nombre del fichero analizado, o null si la fuente es el microfono. */
     val analyzedFileName: String? = null,
     val isAnalyzingFile: Boolean = false,
+    /** Frecuencia que pide el modelo, para poder decir "conviertelo a N Hz". */
+    val modelSampleRate: Int? = null,
 )
 
 /**
@@ -79,16 +89,16 @@ data class IdentifyUiState(
  * eso rompe el caso de uso mas interesante que tiene la app, que es dejar el
  * movil escuchando un rato largo mientras haces otra cosa.
  *
- * Como efecto secundario desaparece la duplicacion: antes habia dos bucles con
- * su propia histeresis, su propio gate de energia y su propia politica de
- * escritura, que podian divergir sin que nadie se enterase.
- *
  * El analisis de FICHERO si se queda aqui: es puntual, acotado y no tiene
  * sentido sacarlo a un servicio en primer plano.
+ *
+ * @param namer nombres del catalogo para el analisis de fichero. Los de la
+ *   escucha en directo los pone el servicio.
  */
 class IdentifyViewModel(
     private val appContext: Context,
     private val classifierFactory: () -> AudioBirdClassifier?,
+    private val namer: DetectionNamer? = null,
 ) : ViewModel() {
 
     /** Estado propio del analisis de fichero, que no pasa por el servicio. */
@@ -113,10 +123,14 @@ class IdentifyViewModel(
                     lastInferenceMillis = service.lastInferenceMillis,
                     levelRms = service.levelRms,
                     audioSource = service.audioSource,
+                    glimpse = service.glimpse,
+                    spectrogram = service.spectrogram,
+                    hasLocation = service.hasLocation,
                     stopsAtMillis = service.stopsAtMillis,
                     stoppedByTimeout = service.stoppedByTimeout,
                     error = service.failure?.toIdentifyError(),
                     errorDetail = service.failureDetail,
+                    modelSampleRate = file.modelSampleRate,
                 )
             }
         }.stateIn(
@@ -169,11 +183,13 @@ class IdentifyViewModel(
             return
         }
         fileClassifier = active
+        val modelId = active.descriptor.modelId
 
         fileState.value = IdentifyUiState(
             isAnalyzingFile = true,
             isWarmingUp = true,
             analyzedFileName = fileName,
+            modelSampleRate = active.requiredSampleRate,
         )
 
         analyzeJob = viewModelScope.launch {
@@ -214,6 +230,8 @@ class IdentifyViewModel(
                         samples = window,
                         context = ObservationContext(
                             epochMillis = System.currentTimeMillis(),
+                            // Una grabacion puede venir de cualquier sitio del
+                            // mundo: el contexto de AQUI no dice nada de ella.
                             contextInfluence = 0f,
                         ),
                     )
@@ -223,13 +241,14 @@ class IdentifyViewModel(
                         val speciesId = result.speciesId ?: continue
                         val current = best[speciesId]
                         if (current == null || result.adjustedScore > current.score) {
-                            best[speciesId] = StableDetection(
+                            val detection = StableDetection(
                                 speciesId = speciesId,
                                 label = result.rawLabel,
                                 score = result.adjustedScore,
                                 labelIndex = result.labelIndex,
                                 streak = (current?.streak ?: 0) + 1,
                             )
+                            best[speciesId] = namer?.name(modelId, detection) ?: detection
                         } else {
                             best[speciesId] = current.copy(streak = current.streak + 1)
                         }
@@ -256,6 +275,8 @@ class IdentifyViewModel(
             } catch (e: FileNotFoundException) {
                 fail(IdentifyError.MODEL_FILES_MISSING, e)
             } catch (e: IOException) {
+                fail(IdentifyError.UNSUPPORTED_AUDIO, e)
+            } catch (e: IllegalArgumentException) {
                 fail(IdentifyError.UNSUPPORTED_AUDIO, e)
             } finally {
                 fileState.update { it.copy(isAnalyzingFile = false, isWarmingUp = false) }
@@ -289,13 +310,8 @@ class IdentifyViewModel(
     private companion object {
         const val TAG = "IdentifyViewModel"
 
-        /**
-         * Da igual cual se elija: BirdNET normaliza por min-max dentro del grafo
-         * y es invariante a la escala (verificado en
-         * `InputScalingRegressionTest`). Se deja en RAW porque evita una
-         * multiplicacion por cada muestra.
-         */
-        val INPUT_SCALING = PcmScaling.RAW
+        /** El mismo que usa el servicio. Ver `PcmScaling`. */
+        val INPUT_SCALING = PcmScaling.NORMALIZED
 
         /**
          * Margen para que un giro de pantalla no desconecte del servicio y

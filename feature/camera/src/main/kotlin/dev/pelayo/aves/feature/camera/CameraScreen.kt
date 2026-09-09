@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.view.OrientationEventListener
+import android.view.Surface
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -13,6 +15,8 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview as CameraPreview
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
@@ -35,7 +39,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.Surface as MaterialSurface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -57,14 +61,16 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
 import dev.pelayo.aves.core.ml.api.ImageBirdClassifier
-import dev.pelayo.aves.core.model.Coordinates
 import dev.pelayo.aves.core.ml.api.ObservationContext
+import dev.pelayo.aves.core.model.Coordinates
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -83,6 +89,10 @@ import kotlin.coroutines.resumeWithException
  * @param classifierProvider fabrica del clasificador. Llega desde :app porque es
  *   quien sabe que flavor se ha compilado. Devuelve null si el build no incluye
  *   modelo de imagen.
+ * @param locationProvider ubicacion aproximada, pedida en el momento del
+ *   disparo. Sin ella el prior geo-temporal no filtra nada y el modelo tiene
+ *   que elegir entre las 964 especies del mundo en vez de entre las plausibles.
+ * @param contextInfluence cuanto pesa el prior frente al modelo, de los ajustes.
  * @param onIdentified se invoca cuando el usuario elige uno de los candidatos.
  *   No se dispara solo con el mejor a proposito: en este proyecto la maquina
  *   propone y la persona decide, igual que en la bandeja de revision.
@@ -90,13 +100,9 @@ import kotlin.coroutines.resumeWithException
 @Composable
 fun CameraScreen(
     classifierProvider: () -> ImageBirdClassifier?,
-    /**
-     * Ubicacion aproximada. Sin ella el prior geo-temporal no filtra nada y el
-     * modelo tiene que elegir entre las 964 especies del mundo en vez de entre
-     * las plausibles aqui.
-     */
-    locationProvider: (() -> Coordinates?)? = null,
-    onIdentified: (speciesId: String, confidence: Float) -> Unit = { _, _ -> },
+    locationProvider: (suspend () -> Coordinates?)? = null,
+    contextInfluence: Float = DEFAULT_CONTEXT_INFLUENCE,
+    onIdentified: (ImageIdentification) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val viewModel: CameraViewModel = viewModel {
@@ -105,13 +111,12 @@ fun CameraScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // TODO: no se reevalua al volver de los ajustes del sistema. Hace falta
-    //  reconsultarlo en ON_RESUME para el caso de conceder el permiso a mano.
-    var hasPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-                PackageManager.PERMISSION_GRANTED,
-        )
+    var hasPermission by remember { mutableStateOf(context.hasCameraPermission()) }
+
+    // Se reevalua al volver a la pantalla: si el usuario fue a los ajustes del
+    // sistema a conceder el permiso a mano, no hay dialogo que avise.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        hasPermission = context.hasCameraPermission()
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -136,14 +141,19 @@ fun CameraScreen(
     CameraContent(
         state = state,
         locationProvider = locationProvider,
+        contextInfluence = contextInfluence,
         onCapture = viewModel::classify,
         onCaptureFailed = viewModel::reportCaptureFailure,
         onCameraFailed = viewModel::reportCameraFailure,
         onDismissResults = viewModel::dismissResults,
-        onIdentified = onIdentified,
+        onIdentified = { candidate -> onIdentified(viewModel.identification(candidate)) },
         modifier = modifier,
     )
 }
+
+private fun Context.hasCameraPermission(): Boolean =
+    ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+        PackageManager.PERMISSION_GRANTED
 
 /**
  * La vista previa y todo lo que hay encima.
@@ -155,13 +165,13 @@ fun CameraScreen(
 @Composable
 private fun CameraContent(
     state: CameraUiState,
-    /** Ver el parametro homonimo de [CameraScreen]. */
-    locationProvider: (() -> Coordinates?)?,
+    locationProvider: (suspend () -> Coordinates?)?,
+    contextInfluence: Float,
     onCapture: (Bitmap, ObservationContext) -> Unit,
     onCaptureFailed: (Throwable) -> Unit,
     onCameraFailed: (Throwable) -> Unit,
     onDismissResults: () -> Unit,
-    onIdentified: (String, Float) -> Unit,
+    onIdentified: (ImageCandidate) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -178,17 +188,42 @@ private fun CameraContent(
         }
     }
 
-    // TODO: targetRotation se queda con la rotacion de pantalla que hubiera al
-    //  enlazar. Con la app bloqueada en vertical, sujetar el telefono apaisado
-    //  da un `rotationDegrees` que endereza respecto a la pantalla, no respecto
-    //  al mundo. Se arregla con un OrientationEventListener que actualice
-    //  imageCapture.targetRotation.
+    // La misma relacion de aspecto en la vista previa y en la captura. Sin
+    // fijarla, cada fabricante elige la suya para cada caso de uso y el cuadro
+    // guia dejaria de coincidir con lo que recibe el modelo.
+    val resolutionSelector = remember {
+        ResolutionSelector.Builder()
+            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+            .build()
+    }
+
     val imageCapture = remember {
         ImageCapture.Builder()
             // El ave no espera. Vale mas una foto algo menos limpia disparada a
             // tiempo que una perfecta del arbusto que acaba de dejar vacio.
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .setResolutionSelector(resolutionSelector)
             .build()
+    }
+
+    // Con la app bloqueada en vertical, la rotacion de pantalla no cambia al
+    // girar el telefono y `rotationDegrees` enderezaria respecto a la pantalla,
+    // no respecto al mundo: un ave fotografiada en apaisado llegaria tumbada al
+    // modelo. El sensor de orientacion si sabe como esta sujeto el telefono.
+    DisposableEffect(context, imageCapture) {
+        val listener = object : OrientationEventListener(context) {
+            override fun onOrientationChanged(orientation: Int) {
+                if (orientation == ORIENTATION_UNKNOWN) return
+                imageCapture.targetRotation = when (orientation) {
+                    in 45 until 135 -> Surface.ROTATION_270
+                    in 135 until 225 -> Surface.ROTATION_180
+                    in 225 until 315 -> Surface.ROTATION_90
+                    else -> Surface.ROTATION_0
+                }
+            }
+        }
+        if (listener.canDetectOrientation()) listener.enable()
+        onDispose { listener.disable() }
     }
 
     // Decodificar el JPEG y escalarlo cuesta decenas de milisegundos. En el hilo
@@ -212,7 +247,9 @@ private fun CameraContent(
     DisposableEffect(cameraProvider, lifecycleOwner) {
         val provider = cameraProvider
         if (provider != null) {
-            val preview = CameraPreview.Builder().build()
+            val preview = CameraPreview.Builder()
+                .setResolutionSelector(resolutionSelector)
+                .build()
             preview.setSurfaceProvider(previewView.surfaceProvider)
             try {
                 // Sin unbindAll, volver a esta pantalla acumula enlaces sobre la
@@ -235,20 +272,19 @@ private fun CameraContent(
         scope.launch {
             try {
                 val input = imageCapture.captureModelInput(captureExecutor, state.inputSize)
-                // Una sola lectura: invocarlo dos veces podria dar latitud y
-                // longitud de lecturas distintas.
+                // Se consulta en el momento del disparo y no al abrir la
+                // pantalla: entre encuadrar y disparar puede pasar un rato, y
+                // una foto tomada tras andar un trecho merece la ubicacion de
+                // donde se tomo. Una sola lectura: invocarlo dos veces podria
+                // dar latitud y longitud de lecturas distintas.
                 val where = locationProvider?.invoke()
                 onCapture(
                     input,
                     ObservationContext(
-                        // Se consulta en el momento del disparo y no al abrir la
-                        // pantalla: entre encuadrar y disparar puede pasar un
-                        // rato, y una foto tomada tras andar un trecho merece la
-                        // ubicacion de donde se tomo.
                         latitude = where?.latitude,
                         longitude = where?.longitude,
                         epochMillis = System.currentTimeMillis(),
-                        contextInfluence = DEFAULT_CONTEXT_INFLUENCE,
+                        contextInfluence = contextInfluence,
                     ),
                 )
             } catch (e: CancellationException) {
@@ -285,9 +321,8 @@ private fun CameraContent(
  * medias sigue dando candidatos, solo que malos, y ese es el fallo que mas
  * cuesta diagnosticar.
  *
- * Es exacto mientras la vista previa y la captura compartan relacion de
- * aspecto. TODO: fijar la misma con ResolutionSelector en las dos para que
- * dejar de serlo no dependa del fabricante.
+ * Es exacto porque la vista previa y la captura comparten relacion de aspecto
+ * (ver el `ResolutionSelector` de arriba).
  */
 @Composable
 private fun FramingGuide(modifier: Modifier = Modifier) {
@@ -311,7 +346,7 @@ internal fun CaptureOverlay(
     state: CameraUiState,
     onShutter: () -> Unit,
     onDismissResults: () -> Unit,
-    onIdentified: (String, Float) -> Unit,
+    onIdentified: (ImageCandidate) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -374,11 +409,11 @@ internal fun CaptureOverlay(
 @Composable
 private fun CandidateList(
     candidates: List<ImageCandidate>,
-    onIdentified: (String, Float) -> Unit,
+    onIdentified: (ImageCandidate) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
+    MaterialSurface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         // Semitransparente para no perder de vista al ave mientras se decide:
@@ -409,11 +444,10 @@ private fun CandidateList(
 @Composable
 private fun CandidateRow(
     candidate: ImageCandidate,
-    onIdentified: (String, Float) -> Unit,
+    onIdentified: (ImageCandidate) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val speciesId = candidate.speciesId
-    val selectable = speciesId != null
+    val selectable = candidate.speciesId != null
 
     Column(
         modifier = modifier
@@ -423,7 +457,7 @@ private fun CandidateRow(
                 enabled = selectable,
                 onClickLabel = "Confirmar ${candidate.scientificName}",
                 role = Role.Button,
-            ) { speciesId?.let { onIdentified(it, candidate.confidence) } }
+            ) { onIdentified(candidate) }
             .padding(8.dp),
     ) {
         Text(text = candidate.scientificName, style = ScientificNameStyle)
@@ -443,7 +477,7 @@ private fun CandidateRow(
 
 @Composable
 private fun NothingRecognized(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(
+    MaterialSurface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
@@ -524,7 +558,7 @@ private fun OverlayLabel(
     modifier: Modifier = Modifier,
     alpha: Float = 0.85f,
 ) {
-    Surface(
+    MaterialSurface(
         modifier = modifier,
         shape = RoundedCornerShape(8.dp),
         color = Color.Black.copy(alpha = 0.45f),
@@ -797,11 +831,7 @@ private fun replacing(previous: Bitmap, next: Bitmap): Bitmap {
     return next
 }
 
-/**
- * Cuanto pesa el contexto frente a la salida cruda, igual que en audio. Sin
- * ubicacion no cambia nada; queda puesto para que activarla sea solo pasar el
- * proveedor.
- */
+/** Valor de fabrica del peso del contexto cuando la pantalla no recibe los ajustes. */
 private const val DEFAULT_CONTEXT_INFLUENCE = 0.5f
 
 // --- Previews ---------------------------------------------------------------
@@ -827,16 +857,16 @@ private fun CaptureOverlayPreview() {
         CaptureOverlay(
             state = CameraUiState(
                 candidates = listOf(
-                    ImageCandidate("turdus_merula", "Turdus merula", 0.87f),
-                    ImageCandidate("turdus_philomelos", "Turdus philomelos", 0.21f),
-                    ImageCandidate("sturnus_unicolor", "Sturnus unicolor", 0.07f),
+                    ImageCandidate("turdus_merula", "Turdus merula", 0.87f, 0.84f, 812),
+                    ImageCandidate("turdus_philomelos", "Turdus philomelos", 0.21f, 0.25f, 813),
+                    ImageCandidate("sturnus_unicolor", "Sturnus unicolor", 0.07f, 0.09f, 700),
                 ),
                 hasResult = true,
                 attribution = SampleAttribution,
             ),
             onShutter = {},
             onDismissResults = {},
-            onIdentified = { _, _ -> },
+            onIdentified = {},
         )
     }
 }
@@ -849,7 +879,7 @@ private fun CaptureOverlayIdlePreview() {
             state = CameraUiState(attribution = SampleAttribution),
             onShutter = {},
             onDismissResults = {},
-            onIdentified = { _, _ -> },
+            onIdentified = {},
         )
     }
 }
@@ -862,7 +892,7 @@ private fun CaptureOverlayEmptyPreview() {
             state = CameraUiState(hasResult = true, attribution = SampleAttribution),
             onShutter = {},
             onDismissResults = {},
-            onIdentified = { _, _ -> },
+            onIdentified = {},
         )
     }
 }
@@ -875,7 +905,7 @@ private fun CaptureOverlayNoModelPreview() {
             state = CameraUiState(error = CameraError.NO_MODEL_IN_BUILD),
             onShutter = {},
             onDismissResults = {},
-            onIdentified = { _, _ -> },
+            onIdentified = {},
         )
     }
 }

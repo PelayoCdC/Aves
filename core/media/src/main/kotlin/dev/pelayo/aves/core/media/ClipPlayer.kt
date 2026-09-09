@@ -30,16 +30,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import dev.pelayo.aves.core.audio.PlaybackSignal
 import java.io.File
-
-/*
- * Reproductor de los recortes de 3 s que guarda cada deteccion.
- *
- * DUPLICADO A PROPOSITO. Hay una copia identica de este fichero (solo cambia el
- * paquete) en `feature/pokedex`, por el mismo motivo que [ClipPlayback]: las dos
- * pantallas lo necesitan y en esta fase no se puede crear un modulo nuevo. DEBE
- * UNIFICARSE en `:core:designsystem` (o en un `:core:media` propio) al integrar.
- */
 
 /**
  * Un unico reproductor para toda la pantalla.
@@ -48,6 +40,11 @@ import java.io.File
  * un [ExoPlayer], cargar el recorte de otra tarjeta desaloja al anterior por
  * construccion. Un reproductor por tarjeta permitiria dos cantos a la vez, que
  * es exactamente lo que no deja juzgar ninguno de los dos.
+ *
+ * Cada arranque y parada se anuncia en [PlaybackSignal]: la escucha en segundo
+ * plano descarta las ventanas capturadas mientras suena algo, porque si no el
+ * microfono oye el recorte por el altavoz y el modelo "detecta" lo que acaba de
+ * reproducirse.
  *
  * [player] puede ser null cuando no hay reproductor disponible (una
  * previsualizacion del IDE, o un dispositivo que no pudo crearlo). En ese caso
@@ -105,6 +102,7 @@ class ClipPlayerState internal constructor(
         player?.stop()
         player?.clearMediaItems()
         playingKey = null
+        PlaybackSignal.playbackStopped()
     }
 
     /**
@@ -131,11 +129,13 @@ class ClipPlayerState internal constructor(
         exo.prepare()
         exo.play()
         playingKey = playbackAfter(playingKey, key)
+        PlaybackSignal.playbackStarted()
     }
 
     /** El reproductor llego al final o fallo: la interfaz vuelve a "parado". */
     internal fun onPlaybackFinished() {
         playingKey = null
+        PlaybackSignal.playbackStopped()
     }
 }
 
@@ -197,6 +197,10 @@ fun rememberClipPlayer(clipBaseDir: File? = null): ClipPlayerState {
         player?.addListener(listener)
 
         onDispose {
+            // Si se sale de la pantalla con algo sonando, la senal de
+            // reproduccion tiene que apagarse igual: si no, la escucha
+            // descartaria ventanas para siempre.
+            state.onPlaybackFinished()
             player?.removeListener(listener)
             player?.release()
         }

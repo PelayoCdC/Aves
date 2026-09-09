@@ -41,8 +41,9 @@ enum class ConfidenceGate {
     STRICT;
 
     companion object {
-        const val BALANCED_THRESHOLD = 0.4f
-        const val STRICT_THRESHOLD = 0.7f
+        /** Por debajo del 0,3 se esta por debajo de lo que el propio BirdNET recomienda. */
+        const val BALANCED_THRESHOLD = 0.3f
+        const val STRICT_THRESHOLD = 0.6f
 
         fun of(value: Float): ConfidenceGate = when {
             value >= STRICT_THRESHOLD -> STRICT
@@ -114,8 +115,8 @@ fun cutoffLabel(minutes: Int): String = when {
 fun listeningCutoffLine(minutes: Int): String {
     val safe = AvesSettings.sanitizeListeningCutoff(minutes)
     return if (safe == AvesSettings.NO_CUTOFF) {
-        "Sin corte · La escucha sigue hasta que la pares tú. Si el móvil se queda " +
-            "grabando en el bolsillo, se nota en la batería."
+        "Sin corte · La escucha sigue hasta que la pares tú (con un tope de seguridad " +
+            "de 8 horas). Si el móvil se queda grabando en el bolsillo, se nota en la batería."
     } else {
         "${cutoffLabel(safe)} · La escucha se para sola al cumplirse ese tiempo, " +
             "aunque te olvides de ella."
