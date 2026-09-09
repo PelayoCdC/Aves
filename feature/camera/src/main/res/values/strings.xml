@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Textos de la identificacion por foto. Prefijo `camera_`. -->
+<resources>
+    <string name="camera_warming">Preparando el modelo…</string>
+    <string name="camera_classifying">Identificando…</string>
+    <string name="camera_pick_candidate">Toca el candidato que hayas visto</string>
+    <string name="camera_frame_hint">Encuadra al ave dentro del recuadro y dispara</string>
+
+    <string name="camera_could_be">Puede ser</string>
+    <string name="camera_none_of_these">Ninguno de estos</string>
+    <string name="camera_confirm_candidate">Confirmar %1$s</string>
+    <string name="camera_percent">%1$d %%</string>
+
+    <string name="camera_nothing_title">Ningún ave reconocida</string>
+    <string name="camera_nothing_body">Prueba a acercarte o a esperar a que el ave se recorte contra el cielo. Con la silueta a contraluz o entre ramas, el modelo no tiene mucho con lo que trabajar.</string>
+    <string name="camera_nothing_audio_hint">Si la oyes cantar, la vía de audio acierta bastante más.</string>
+    <string name="camera_retry">Volver a intentarlo</string>
+    <string name="camera_shutter">Hacer la foto e identificar</string>
+
+    <string name="camera_permission_title">Hace falta la cámara</string>
+    <string name="camera_permission_body">Identificar por foto es la vía para cuando ves al ave pero no la oyes. Las fotos se analizan en el propio teléfono y no salen de él.</string>
+    <string name="camera_permission_hint">Sin este permiso el resto de la app sigue funcionando: escuchar cantos no lo necesita.</string>
+    <string name="camera_permission_button">Conceder acceso a la cámara</string>
+
+    <string name="camera_error_no_model_title">Esta versión no incluye modelo de imagen</string>
+    <string name="camera_error_no_model_help">El clasificador de foto es Apache 2.0 y debería estar en los dos flavors. Si falta, es que el módulo :core:ml:vision no entró en el build.</string>
+    <string name="camera_error_files_missing_title">Faltan los ficheros del modelo</string>
+    <string name="camera_error_files_missing_help">Ejecuta scripts/fetch-models.ps1 y vuelve a compilar. Los modelos no se versionan.</string>
+    <string name="camera_error_unavailable_title">No se pudo abrir la cámara</string>
+    <string name="camera_error_unavailable_help">Puede que otra aplicación la tenga ocupada.</string>
+    <string name="camera_error_capture_title">La foto no se pudo procesar</string>
+    <string name="camera_error_capture_help">Vuelve a intentarlo. Si se repite, cierra y abre la pantalla.</string>
+</resources>

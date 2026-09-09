@@ -44,6 +44,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -71,6 +73,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -228,7 +231,7 @@ internal fun SpeciesDetailContent(
                 CircularProgressIndicator()
             } else {
                 Text(
-                    text = "Esta especie no está en el catálogo instalado.",
+                    text = stringResource(R.string.pokedex_detail_not_in_catalog),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
@@ -260,10 +263,10 @@ internal fun SpeciesDetailContent(
                 HorizontalDivider()
                 Spacer(Modifier.size(16.dp))
                 Text(
-                    text = when (state.sightings.size) {
-                        0 -> "Todavía no la tienes"
-                        1 -> "Tu avistamiento"
-                        else -> "Tus ${state.sightings.size} avistamientos"
+                    text = if (state.sightings.isEmpty()) {
+                        stringResource(R.string.pokedex_detail_no_sightings)
+                    } else {
+                        pluralStringResource(R.plurals.pokedex_detail_sightings, state.sightings.size, state.sightings.size)
                     },
                     style = MaterialTheme.typography.titleSmall,
                 )
@@ -291,9 +294,9 @@ internal fun SpeciesDetailContent(
 
     if (showManualDialog) {
         NotesDialog(
-            title = "Anotar un avistamiento de ${species.commonName}",
+            title = stringResource(R.string.pokedex_detail_manual_title, species.commonName),
             initial = "",
-            confirmLabel = "Anotar",
+            confirmLabel = stringResource(R.string.pokedex_detail_annotate),
             onDismiss = { showManualDialog = false },
             onConfirm = { notes ->
                 onAddManualSighting(notes)
@@ -304,9 +307,9 @@ internal fun SpeciesDetailContent(
 
     editingNotes?.let { sighting ->
         NotesDialog(
-            title = "Notas del avistamiento",
+            title = stringResource(R.string.pokedex_detail_notes_title),
             initial = sighting.notes.orEmpty(),
-            confirmLabel = "Guardar",
+            confirmLabel = stringResource(R.string.pokedex_detail_save),
             onDismiss = { editingNotes = null },
             onConfirm = { notes ->
                 onUpdateNotes(sighting.id, notes)
@@ -318,8 +321,8 @@ internal fun SpeciesDetailContent(
     deleting?.let { sighting ->
         AlertDialog(
             onDismissRequest = { deleting = null },
-            title = { Text("¿Borrar este avistamiento?") },
-            text = { Text("Se quita de tu colección. No se puede deshacer.") },
+            title = { Text(stringResource(R.string.pokedex_detail_delete_title)) },
+            text = { Text(stringResource(R.string.pokedex_detail_delete_body)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -327,9 +330,11 @@ internal fun SpeciesDetailContent(
                         onDeleteSighting(sighting.id)
                         deleting = null
                     },
-                ) { Text("Borrar") }
+                ) { Text(stringResource(R.string.pokedex_delete)) }
             },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancelar") } },
+            dismissButton = {
+                TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.pokedex_cancel)) }
+            },
         )
     }
 }
@@ -359,7 +364,7 @@ private fun SpeciesHeader(
             )
             species.imageAttribution?.let { attribution ->
                 Text(
-                    text = "Imagen: $attribution",
+                    text = stringResource(R.string.pokedex_detail_image_credit, attribution),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
@@ -391,7 +396,7 @@ private fun SpeciesHeader(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = rarityLabel(rarity),
+                    text = rarityText(rarity),
                     style = MaterialTheme.typography.labelLarge,
                     color = tint,
                 )
@@ -399,9 +404,9 @@ private fun SpeciesHeader(
             Spacer(Modifier.size(16.dp))
         }
 
-        TaxonomyRow(label = "Familia", value = species.family)
-        TaxonomyRow(label = "Orden", value = species.order)
-        TaxonomyRow(label = "Género", value = species.genus)
+        TaxonomyRow(label = stringResource(R.string.pokedex_detail_family), value = species.family)
+        TaxonomyRow(label = stringResource(R.string.pokedex_detail_order), value = species.order)
+        TaxonomyRow(label = stringResource(R.string.pokedex_detail_genus), value = species.genus)
 
         val summary = species.summary
         when {
@@ -413,7 +418,7 @@ private fun SpeciesHeader(
                         onClick = {
                             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
                         },
-                    ) { Text("Leer más en Wikipedia") }
+                    ) { Text(stringResource(R.string.pokedex_detail_read_more)) }
                 }
             }
 
@@ -423,7 +428,7 @@ private fun SpeciesHeader(
                     CircularProgressIndicator(modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "Buscando la ficha en Wikipedia…",
+                        text = stringResource(R.string.pokedex_detail_loading_encyclopedia),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -437,7 +442,11 @@ private fun SpeciesHeader(
         // unico clasificador. Es lo que convierte la busqueda en el catalogo en
         // algo mas que una guia de consulta.
         OutlinedButton(onClick = onAddManualSighting) {
-            Text(if (isCollected) "Anotar otro avistamiento" else "Lo he visto: anotarlo")
+            Text(
+                stringResource(
+                    if (isCollected) R.string.pokedex_detail_add_another else R.string.pokedex_detail_add_first,
+                ),
+            )
         }
     }
 }
@@ -485,13 +494,13 @@ private fun SightingRow(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Text(
-                        text = buildString {
-                            append(sourceLabel(sighting.source))
+                        text = buildList {
+                            add(sourceLabel(sighting.source))
                             if (sighting.source != ObservationSource.MANUAL) {
-                                append(" · ${(sighting.confidence * 100).toInt()} % de confianza")
+                                add(stringResource(R.string.pokedex_detail_confidence, (sighting.confidence * 100).toInt()))
                             }
-                            append(" · ${rarityLabel(sighting.rarity).lowercase()}")
-                        },
+                            add(rarityText(sighting.rarity).lowercase())
+                        }.joinToString(SEPARATOR),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -501,27 +510,29 @@ private fun SightingRow(
                     IconButton(onClick = onTogglePlay, enabled = canPlayClip) {
                         ClipPlayIcon(
                             isPlaying = isPlaying,
-                            contentDescription = when {
-                                !canPlayClip -> "La grabación ya no está en el dispositivo"
-                                isPlaying -> "Parar la grabación"
-                                else -> "Reproducir la grabación"
-                            },
+                            contentDescription = stringResource(
+                                when {
+                                    !canPlayClip -> R.string.pokedex_detail_clip_missing
+                                    isPlaying -> R.string.pokedex_detail_clip_stop
+                                    else -> R.string.pokedex_detail_clip_play
+                                },
+                            ),
                         )
                     }
                 }
                 IconButton(onClick = onEditNotes) {
-                    Icon(Icons.Filled.Edit, contentDescription = "Editar las notas")
+                    Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.pokedex_detail_edit_notes))
                 }
                 IconButton(onClick = onDelete) {
-                    Icon(Icons.Filled.Delete, contentDescription = "Borrar el avistamiento")
+                    Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.pokedex_detail_delete_sighting))
                 }
             }
 
             if (sighting.mediaPath != null && sighting.source == ObservationSource.IMAGE) {
                 Spacer(Modifier.size(8.dp))
                 AsyncImage(
-                    model = java.io.File(sighting.mediaPath),
-                    contentDescription = "La foto con la que se identificó",
+                    model = File(sighting.mediaPath),
+                    contentDescription = stringResource(R.string.pokedex_detail_photo),
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .size(96.dp)
@@ -553,8 +564,8 @@ private fun NotesDialog(
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
-                label = { Text("Notas (opcional)") },
-                placeholder = { Text("Dónde, cómo, con quién…") },
+                label = { Text(stringResource(R.string.pokedex_detail_notes_label)) },
+                placeholder = { Text(stringResource(R.string.pokedex_detail_notes_placeholder)) },
                 minLines = 2,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -562,15 +573,20 @@ private fun NotesDialog(
         confirmButton = {
             Button(onClick = { onConfirm(text.takeIf { it.isNotBlank() }) }) { Text(confirmLabel) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.pokedex_cancel)) } },
     )
 }
 
-private fun sourceLabel(source: ObservationSource): String = when (source) {
-    ObservationSource.AUDIO -> "Canto"
-    ObservationSource.IMAGE -> "Foto"
-    ObservationSource.MANUAL -> "Anotado a mano"
-}
+@Composable
+private fun sourceLabel(source: ObservationSource): String = stringResource(
+    when (source) {
+        ObservationSource.AUDIO -> R.string.pokedex_source_audio
+        ObservationSource.IMAGE -> R.string.pokedex_source_image
+        ObservationSource.MANUAL -> R.string.pokedex_source_manual
+    },
+)
+
+private const val SEPARATOR = " · "
 
 /**
  * Fecha en la zona y el idioma del dispositivo.

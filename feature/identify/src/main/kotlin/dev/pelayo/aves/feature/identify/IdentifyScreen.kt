@@ -38,9 +38,11 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,9 +53,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -65,8 +68,6 @@ import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
 import dev.pelayo.aves.core.listening.CandidateGlimpse
 import dev.pelayo.aves.core.listening.DetectionNamer
 import dev.pelayo.aves.core.listening.FileAnalysisSaver
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.runtime.LaunchedEffect
 import dev.pelayo.aves.core.listening.StableDetection
 import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
 import kotlin.math.log10
@@ -175,11 +176,11 @@ fun IdentifyScreen(
     ) {
         Text(
             text = when {
-                state.isWarmingUp -> "Preparando el modelo..."
-                state.isAnalyzingFile -> state.analyzedFileName ?: "Analizando fichero"
-                state.isListening -> "Escuchando"
+                state.isWarmingUp -> stringResource(R.string.identify_title_warming)
+                state.isAnalyzingFile -> state.analyzedFileName ?: stringResource(R.string.identify_title_analyzing)
+                state.isListening -> stringResource(R.string.identify_title_listening)
                 state.analyzedFileName != null -> state.analyzedFileName!!
-                else -> "Pulsa para escuchar"
+                else -> stringResource(R.string.identify_title_idle)
             },
             style = MaterialTheme.typography.titleMedium,
         )
@@ -190,14 +191,20 @@ fun IdentifyScreen(
             visible = (state.isListening || state.isAnalyzingFile) && !state.isWarmingUp,
         ) {
             Text(
-                text = buildString {
-                    append("${state.windowsProcessed} ventanas")
-                    // Las saltadas son la medida directa de cuánta batería
-                    // ahorra el gate de energía.
-                    if (state.windowsSkipped > 0) append(" · ${state.windowsSkipped} en silencio")
-                    append(" · ${state.lastInferenceMillis} ms")
-                    if (state.isListening) append(if (state.hasLocation) " · con ubicación" else " · sin ubicación")
-                },
+                text = buildList {
+                    add(pluralStringResource(R.plurals.identify_counter_windows, state.windowsProcessed, state.windowsProcessed))
+                    // Las saltadas son la medida directa de cuanta bateria
+                    // ahorra el gate de energia.
+                    if (state.windowsSkipped > 0) add(stringResource(R.string.identify_counter_silent, state.windowsSkipped))
+                    add(stringResource(R.string.identify_counter_inference, state.lastInferenceMillis))
+                    if (state.isListening) {
+                        add(
+                            stringResource(
+                                if (state.hasLocation) R.string.identify_counter_with_location else R.string.identify_counter_without_location,
+                            ),
+                        )
+                    }
+                }.joinToString(SEPARATOR),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -234,13 +241,13 @@ fun IdentifyScreen(
             val saved = state.savedToReview
             when {
                 saved != null -> Text(
-                    text = if (saved == 1) "1 detección guardada en Revisar" else "$saved detecciones guardadas en Revisar",
+                    text = pluralStringResource(R.plurals.identify_saved_to_review, saved, saved),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
 
                 else -> OutlinedButton(onClick = viewModel::saveFileAnalysis, enabled = !state.isSaving) {
-                    Text("Guardar en Revisar")
+                    Text(stringResource(R.string.identify_save_to_review))
                 }
             }
             Spacer(Modifier.size(12.dp))
@@ -258,7 +265,7 @@ fun IdentifyScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Text(
-                        text = "Nada confirmado todavía.\nHacen falta unos segundos de canto seguido.",
+                        text = stringResource(R.string.identify_nothing_confirmed),
                         style = MaterialTheme.typography.bodyMedium,
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -290,7 +297,9 @@ fun IdentifyScreen(
             ) {
                 Icon(
                     imageVector = if (state.isListening) Icons.Filled.Stop else Icons.Filled.Mic,
-                    contentDescription = if (state.isListening) "Parar" else "Escuchar",
+                    contentDescription = stringResource(
+                        if (state.isListening) R.string.identify_stop else R.string.identify_listen,
+                    ),
                 )
             }
 
@@ -302,7 +311,7 @@ fun IdentifyScreen(
             ) {
                 Icon(
                     imageVector = Icons.Filled.AudioFile,
-                    contentDescription = "Analizar un fichero de audio",
+                    contentDescription = stringResource(R.string.identify_analyze_file),
                 )
             }
 
@@ -315,7 +324,7 @@ fun IdentifyScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.PhotoCamera,
-                        contentDescription = "Identificar con una foto",
+                        contentDescription = stringResource(R.string.identify_by_photo),
                     )
                 }
             }
@@ -333,6 +342,8 @@ fun IdentifyScreen(
         }
     }
 }
+
+private const val SEPARATOR = " · "
 
 private fun Context.hasPermission(permission: String): Boolean =
     ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
@@ -380,7 +391,7 @@ private fun DetectionCard(detection: StableDetection, modifier: Modifier = Modif
             )
             Spacer(Modifier.size(4.dp))
             Text(
-                text = "${(detection.score * 100).toInt()} %",
+                text = stringResource(R.string.identify_percent, (detection.score * 100).toInt()),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -399,7 +410,7 @@ private fun DetectionCard(detection: StableDetection, modifier: Modifier = Modif
 @Composable
 private fun GlimpseRow(glimpse: CandidateGlimpse, modifier: Modifier = Modifier) {
     Text(
-        text = "Oyendo… ¿${glimpse.displayName()}? ${(glimpse.score * 100).toInt()} %",
+        text = stringResource(R.string.identify_glimpse, glimpse.displayName(), (glimpse.score * 100).toInt()),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
@@ -416,23 +427,20 @@ private fun ErrorCard(
 ) {
     val (title, help) = when (error) {
         IdentifyError.NO_MODEL_IN_BUILD ->
-            "Esta versión no incluye modelo de audio" to
-                "El build se compiló sin ningún clasificador de cantos. Revisa el " +
-                "flavor: `personal` enlaza BirdNET v2.4 y `open` BirdNET+."
+            stringResource(R.string.identify_error_no_model_title) to
+                stringResource(R.string.identify_error_no_model_help)
 
         IdentifyError.MODEL_FILES_MISSING ->
-            "Faltan los ficheros del modelo" to
-                "Ejecuta scripts/fetch-models.ps1 y vuelve a compilar. Los modelos " +
-                "no se versionan en el repositorio."
+            stringResource(R.string.identify_error_files_missing_title) to
+                stringResource(R.string.identify_error_files_missing_help)
 
         IdentifyError.MICROPHONE_UNAVAILABLE ->
-            "No se pudo abrir el micrófono" to
-                "Puede que otra aplicación lo tenga ocupado, o que falte el permiso."
+            stringResource(R.string.identify_error_mic_title) to
+                stringResource(R.string.identify_error_mic_help)
 
         IdentifyError.UNSUPPORTED_AUDIO ->
-            "Ese fichero no se puede analizar" to
-                "De momento solo se admite WAV PCM de 16 bits. Conviértelo con: " +
-                "ffmpeg -i entrada -ac 1 -ar ${sampleRate ?: 48_000} -c:a pcm_s16le salida.wav"
+            stringResource(R.string.identify_error_audio_title) to
+                stringResource(R.string.identify_error_audio_help, sampleRate ?: 48_000)
     }
 
     Card(
@@ -577,11 +585,17 @@ private fun AudioLevelMeter(
         Spacer(Modifier.size(4.dp))
 
         Text(
-            text = buildString {
-                append(if (levelRms <= 0f) "sin señal" else "${dbfs.toInt()} dBFS")
-                if (!aboveGate) append(" · por debajo del umbral")
-                sourceName?.let { append(" · $it") }
-            },
+            text = buildList {
+                add(
+                    if (levelRms <= 0f) {
+                        stringResource(R.string.identify_meter_no_signal)
+                    } else {
+                        stringResource(R.string.identify_meter_dbfs, dbfs.toInt())
+                    },
+                )
+                if (!aboveGate) add(stringResource(R.string.identify_meter_below_gate))
+                sourceName?.let { add(it) }
+            }.joinToString(SEPARATOR),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -597,6 +611,3 @@ private const val METER_FLOOR_DBFS = -80f
 
 /** Equivale a EnergyGate.DEFAULT_THRESHOLD_FRACTION (0,001). */
 private const val GATE_THRESHOLD_DBFS = -60f
-
-@Suppress("unused")
-private val previewColor = Color.Unspecified

@@ -237,13 +237,3 @@ internal fun formatThousands(value: Int): String {
         }
     }
 }
-
-/** Nombre visible del tier. */
-internal fun rarityLabel(tier: RarityTier): String = when (tier) {
-    RarityTier.VERY_COMMON -> "Muy común"
-    RarityTier.COMMON -> "Común"
-    RarityTier.UNCOMMON -> "Poco común"
-    RarityTier.RARE -> "Rara"
-    RarityTier.EXCEPTIONAL -> "Excepcional"
-    RarityTier.UNKNOWN -> "Sin datos"
-}

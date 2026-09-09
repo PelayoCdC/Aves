@@ -55,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -390,12 +391,14 @@ internal fun CaptureOverlay(
         Spacer(Modifier.size(12.dp))
 
         OverlayLabel(
-            text = when {
-                state.isWarmingUp -> "Preparando el modelo…"
-                state.isClassifying -> "Identificando…"
-                state.candidates.isNotEmpty() -> "Toca el candidato que hayas visto"
-                else -> "Encuadra al ave dentro del recuadro y dispara"
-            },
+            text = stringResource(
+                when {
+                    state.isWarmingUp -> R.string.camera_warming
+                    state.isClassifying -> R.string.camera_classifying
+                    state.candidates.isNotEmpty() -> R.string.camera_pick_candidate
+                    else -> R.string.camera_frame_hint
+                },
+            ),
         )
 
         // Requisito de licencia, igual que en la pantalla de escucha.
@@ -423,7 +426,7 @@ private fun CandidateList(
     ) {
         Column(Modifier.padding(16.dp)) {
             Text(
-                text = "Puede ser",
+                text = stringResource(R.string.camera_could_be),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -435,7 +438,7 @@ private fun CandidateList(
             }
 
             TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
-                Text("Ninguno de estos")
+                Text(stringResource(R.string.camera_none_of_these))
             }
         }
     }
@@ -455,7 +458,7 @@ private fun CandidateRow(
             .clip(RoundedCornerShape(8.dp))
             .clickable(
                 enabled = selectable,
-                onClickLabel = "Confirmar ${candidate.scientificName}",
+                onClickLabel = stringResource(R.string.camera_confirm_candidate, candidate.scientificName),
                 role = Role.Button,
             ) { onIdentified(candidate) }
             .padding(8.dp),
@@ -468,7 +471,7 @@ private fun CandidateRow(
         )
         Spacer(Modifier.size(4.dp))
         Text(
-            text = "${(candidate.confidence * 100).toInt()} %",
+            text = stringResource(R.string.camera_percent, (candidate.confidence * 100).toInt()),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -485,25 +488,23 @@ private fun NothingRecognized(onDismiss: () -> Unit, modifier: Modifier = Modifi
     ) {
         Column(Modifier.padding(16.dp)) {
             Text(
-                text = "Ningún ave reconocida",
+                text = stringResource(R.string.camera_nothing_title),
                 style = MaterialTheme.typography.titleSmall,
             )
             Spacer(Modifier.size(4.dp))
             Text(
-                text = "Prueba a acercarte o a esperar a que el ave se recorte contra " +
-                    "el cielo. Con la silueta a contraluz o entre ramas, el modelo " +
-                    "no tiene mucho con lo que trabajar.",
+                text = stringResource(R.string.camera_nothing_body),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.size(4.dp))
             Text(
-                text = "Si la oyes cantar, la vía de audio acierta bastante más.",
+                text = stringResource(R.string.camera_nothing_audio_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
-                Text("Volver a intentarlo")
+                Text(stringResource(R.string.camera_retry))
             }
         }
     }
@@ -531,7 +532,7 @@ private fun ShutterButton(
             .border(3.dp, Color.White.copy(alpha = alpha), CircleShape)
             .clickable(
                 enabled = enabled,
-                onClickLabel = "Hacer la foto e identificar",
+                onClickLabel = stringResource(R.string.camera_shutter),
                 role = Role.Button,
                 onClick = onClick,
             ),
@@ -594,30 +595,27 @@ internal fun PermissionRequest(
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            text = "Hace falta la cámara",
+            text = stringResource(R.string.camera_permission_title),
             style = MaterialTheme.typography.headlineSmall,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.size(8.dp))
         Text(
-            text = "Identificar por foto es la vía para cuando ves al ave pero no " +
-                "la oyes. Las fotos se analizan en el propio teléfono y no salen " +
-                "de él.",
+            text = stringResource(R.string.camera_permission_body),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.size(4.dp))
         Text(
-            text = "Sin este permiso el resto de la app sigue funcionando: escuchar " +
-                "cantos no lo necesita.",
+            text = stringResource(R.string.camera_permission_hint),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.size(24.dp))
         Button(onClick = onRequest) {
-            Text("Conceder acceso a la cámara")
+            Text(stringResource(R.string.camera_permission_button))
         }
 
         attribution?.let {
@@ -636,23 +634,20 @@ internal fun PermissionRequest(
 private fun ErrorCard(error: CameraError, detail: String?, modifier: Modifier = Modifier) {
     val (title, help) = when (error) {
         CameraError.NO_MODEL_IN_BUILD ->
-            "Esta versión no incluye modelo de imagen" to
-                "El clasificador de foto es Apache 2.0 y debería estar en los dos " +
-                "flavors. Si falta, es que el módulo :core:ml:vision no entró en " +
-                "el build."
+            stringResource(R.string.camera_error_no_model_title) to
+                stringResource(R.string.camera_error_no_model_help)
 
         CameraError.MODEL_FILES_MISSING ->
-            "Faltan los ficheros del modelo" to
-                "Ejecuta scripts/fetch-models.ps1 y vuelve a compilar. Los modelos " +
-                "no se versionan."
+            stringResource(R.string.camera_error_files_missing_title) to
+                stringResource(R.string.camera_error_files_missing_help)
 
         CameraError.CAMERA_UNAVAILABLE ->
-            "No se pudo abrir la cámara" to
-                "Puede que otra aplicación la tenga ocupada."
+            stringResource(R.string.camera_error_unavailable_title) to
+                stringResource(R.string.camera_error_unavailable_help)
 
         CameraError.CAPTURE_FAILED ->
-            "La foto no se pudo procesar" to
-                "Vuelve a intentarlo. Si se repite, cierra y abre la pantalla."
+            stringResource(R.string.camera_error_capture_title) to
+                stringResource(R.string.camera_error_capture_help)
     }
 
     Card(
@@ -763,7 +758,7 @@ private fun ImageProxy.toModelInput(targetSize: Int): Bitmap {
     }
 
     val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-        ?: error("La cámara devolvió una imagen que no se pudo decodificar")
+        ?: error("La camara devolvio una imagen que no se pudo decodificar")
 
     return prepareModelInput(
         source = decoded,

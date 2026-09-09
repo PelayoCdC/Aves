@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Textos de la pantalla de ajustes. Prefijo `settings_`. Las frases que
+    explican cada deslizador NO estan aqui: viven en SettingsCopy.kt como
+    funciones puras, porque se prueban en la JVM y dependen del valor.
+-->
+<resources>
+    <string name="settings_title">Ajustes</string>
+
+    <string name="settings_identification_title">Identificación</string>
+    <string name="settings_identification_subtitle">Cómo decide la app qué ha oído.</string>
+    <string name="settings_context_influence">Influencia del contexto</string>
+    <string name="settings_confidence_threshold">Umbral de confianza</string>
+
+    <string name="settings_privacy_title">Privacidad</string>
+    <string name="settings_privacy_subtitle">Qué recoge la app y qué sale de tu móvil.</string>
+    <string name="settings_location_disabled">Modo sin ubicación</string>
+    <string name="settings_location_disabled_on">Activado: no se consulta la ubicación, el filtro geográfico y estacional no se aplica y las observaciones se guardan sin coordenadas. Identificarás peor, pero no queda rastro de dónde estabas.</string>
+    <string name="settings_location_disabled_off">Desactivado: se usa una ubicación aproximada, una sola vez al empezar cada escucha, para saber qué aves son plausibles aquí y ahora.</string>
+    <string name="settings_listening_cutoff">Corte automático de escucha</string>
+
+    <string name="settings_data_collected_title">Qué datos se recogen</string>
+    <string name="settings_fact_microphone">El micrófono solo graba mientras la escucha está en marcha, y el audio se analiza dentro del propio móvil, con el modelo que viaja en la app. No se sube a ningún servidor.</string>
+    <string name="settings_fact_clips">De cada detección se guarda un recorte de unos segundos en el almacenamiento privado de la app, para que puedas revisarla después. Ninguna otra aplicación puede leerlo.</string>
+    <string name="settings_fact_location">La ubicación es aproximada por diseño: se pide el permiso de precisión gruesa y además se redondea a una celda de unos 40 x 20 km.</string>
+    <string name="settings_fact_network">Lo único que sale del móvil son consultas a GBIF con esa celda aproximada y el mes, y a Wikipedia con el nombre científico de la especie cuya ficha abres. Van sin clave de API y sin nada que te identifique. Ni el audio, ni las fotos, ni tus observaciones se envían a ninguna parte.</string>
+    <string name="settings_fact_local">Tu colección vive solo en este móvil (y en su copia de seguridad, sin los recortes de audio). Si desinstalas la app, se va con ella.</string>
+
+    <string name="settings_attribution_title">Atribución</string>
+    <string name="settings_attribution_subtitle">Requisito de las licencias de los modelos, no una cortesía.</string>
+    <string name="settings_attribution_none">Esta compilación no enlaza ningún modelo. En cuanto haya uno, aparecerá aquí con su licencia.</string>
+    <string name="settings_attribution_license_species">%1$s · %2$s</string>
+    <string name="settings_non_commercial_badge">No comercial</string>
+    <string name="settings_non_commercial_note">Uso personal, educativo y de investigación. Para uso comercial hay que pedir permiso a quien lo publica.</string>
+
+    <string name="settings_data_title">Datos</string>
+    <string name="settings_data_subtitle">Tu colección, y cómo llevártela.</string>
+    <string name="settings_export">Exportar mis datos</string>
+    <string name="settings_export_help">Se guarda un fichero CSV con todas tus observaciones. Es tuyo: no hace falta una cuenta para recuperarlo.</string>
+</resources>

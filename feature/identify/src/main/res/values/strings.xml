@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Textos de la pantalla de identificar. Prefijo `identify_` en todas: los
+    recursos de las librerias se fusionan en un unico espacio de nombres y una
+    colision se resuelve en silencio, ganando la del modulo equivocado.
+-->
+<resources>
+    <string name="identify_title_warming">Preparando el modelo…</string>
+    <string name="identify_title_analyzing">Analizando fichero</string>
+    <string name="identify_title_listening">Escuchando</string>
+    <string name="identify_title_idle">Pulsa para escuchar</string>
+
+    <plurals name="identify_counter_windows">
+        <item quantity="one">%1$d ventana</item>
+        <item quantity="other">%1$d ventanas</item>
+    </plurals>
+    <string name="identify_counter_silent">%1$d en silencio</string>
+    <string name="identify_counter_inference">%1$d ms</string>
+    <string name="identify_counter_with_location">con ubicación</string>
+    <string name="identify_counter_without_location">sin ubicación</string>
+
+    <plurals name="identify_saved_to_review">
+        <item quantity="one">1 detección guardada en Revisar</item>
+        <item quantity="other">%1$d detecciones guardadas en Revisar</item>
+    </plurals>
+    <string name="identify_save_to_review">Guardar en Revisar</string>
+
+    <string name="identify_nothing_confirmed">Nada confirmado todavía.\nHacen falta unos segundos de canto seguido.</string>
+    <string name="identify_glimpse">Oyendo… ¿%1$s? %2$d %%</string>
+
+    <string name="identify_stop">Parar</string>
+    <string name="identify_listen">Escuchar</string>
+    <string name="identify_analyze_file">Analizar un fichero de audio</string>
+    <string name="identify_by_photo">Identificar con una foto</string>
+
+    <string name="identify_error_no_model_title">Esta versión no incluye modelo de audio</string>
+    <string name="identify_error_no_model_help">El build se compiló sin ningún clasificador de cantos. Revisa el flavor: personal enlaza BirdNET v2.4 y open BirdNET+.</string>
+    <string name="identify_error_files_missing_title">Faltan los ficheros del modelo</string>
+    <string name="identify_error_files_missing_help">Ejecuta scripts/fetch-models.ps1 y vuelve a compilar. Los modelos no se versionan en el repositorio.</string>
+    <string name="identify_error_mic_title">No se pudo abrir el micrófono</string>
+    <string name="identify_error_mic_help">Puede que otra aplicación lo tenga ocupado, o que falte el permiso.</string>
+    <string name="identify_error_audio_title">Ese fichero no se puede analizar</string>
+    <string name="identify_error_audio_help">De momento solo se admite WAV PCM de 16 bits. Conviértelo con: ffmpeg -i entrada -ac 1 -ar %1$d -c:a pcm_s16le salida.wav</string>
+
+    <string name="identify_meter_no_signal">sin señal</string>
+    <string name="identify_meter_dbfs">%1$d dBFS</string>
+    <string name="identify_meter_below_gate">por debajo del umbral</string>
+    <string name="identify_percent">%1$d %%</string>
+</resources>

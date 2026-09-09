@@ -18,27 +18,28 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
-import dev.pelayo.aves.core.media.ClipPlayerState
-import dev.pelayo.aves.core.media.hasPlayableClip
-import dev.pelayo.aves.core.media.rememberClipPlayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
+import dev.pelayo.aves.core.media.rememberClipPlayer
 
 /**
  * Bandeja de revision.
  *
- * @param viewModelFactory lo construye quien tiene los repositorios. Sin Hilt
- *   todavia, mismo patron que `IdentifyScreen` con el clasificador.
+ * @param viewModelFactory lo construye quien tiene los repositorios. Mismo
+ *   patron que `IdentifyScreen` con el clasificador.
  */
 @Composable
 fun ReviewScreen(
@@ -72,6 +73,7 @@ internal fun ReviewContent(
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val undoable = state.undoable
+    val context = LocalContext.current
 
     // Uno para toda la pantalla, no uno por tarjeta: asi solo puede sonar un
     // recorte a la vez y solo hay un reproductor que liberar al salir.
@@ -84,14 +86,18 @@ internal fun ReviewContent(
         if (undoable == null) return@LaunchedEffect
         val name = undoable.observation.commonName
         val message = when (undoable.decision) {
-            ReviewDecision.CONFIRMED ->
-                if (undoable.observation.isLifer) "¡Nueva especie! $name añadido a tu colección" else "$name añadido a tu colección"
-            ReviewDecision.REJECTED -> "$name descartado"
-            ReviewDecision.REASSIGNED -> "Confirmado como ${undoable.reassignTo?.commonName ?: name}"
+            ReviewDecision.CONFIRMED -> context.getString(
+                if (undoable.observation.isLifer) R.string.review_added_lifer else R.string.review_added,
+                name,
+            )
+
+            ReviewDecision.REJECTED -> context.getString(R.string.review_rejected, name)
+            ReviewDecision.REASSIGNED ->
+                context.getString(R.string.review_reassigned, undoable.reassignTo?.commonName ?: name)
         }
         val result = snackbarHostState.showSnackbar(
             message = message,
-            actionLabel = "Deshacer",
+            actionLabel = context.getString(R.string.review_undo),
             withDismissAction = false,
             duration = SnackbarDuration.Short,
         )
@@ -160,17 +166,13 @@ internal fun ReviewContent(
 private fun Header(count: Int, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
-            text = "Por revisar",
+            text = stringResource(R.string.review_header),
             style = MaterialTheme.typography.headlineSmall,
         )
         Text(
-            // El recuento importa: dice cuánto queda, y revisar es una cola de
+            // El recuento importa: dice cuanto queda, y revisar es una cola de
             // trabajo, no un muro infinito.
-            text = if (count == 1) {
-                "1 detección esperando tu veredicto"
-            } else {
-                "$count detecciones esperando tu veredicto"
-            },
+            text = pluralStringResource(R.plurals.review_pending_count, count, count),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -191,21 +193,20 @@ private fun AllCaughtUp(modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "Estás al día",
+            text = stringResource(R.string.review_all_caught_up_title),
             style = MaterialTheme.typography.headlineSmall,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.size(8.dp))
         Text(
-            text = "Nada esperando revisión. Todo lo que ha oído la app ha pasado " +
-                "por tus oídos primero, y por eso tu colección vale algo.",
+            text = stringResource(R.string.review_all_caught_up_body),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.size(16.dp))
         Text(
-            text = "Vuelve a escuchar y aquí aparecerá lo que el modelo crea haber oído.",
+            text = stringResource(R.string.review_all_caught_up_hint),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,

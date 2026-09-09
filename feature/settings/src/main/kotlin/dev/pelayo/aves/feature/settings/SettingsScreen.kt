@@ -26,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -37,6 +38,10 @@ import kotlin.math.roundToInt
 /**
  * Ajustes de la app.
  *
+ * Todo lo que hay aqui LLEGA a alguna parte: la escucha lee estos valores al
+ * arrancar y la camara al disparar. La primera version guardaba los cuatro
+ * controles y nadie los leia.
+ *
  * La seccion de atribucion no es decorativa: los modelos de BirdNET son
  * CC BY-NC-SA 4.0 y citarlos es un requisito de la licencia. Por eso se dibuja
  * siempre que haya modelos, sin plegar ni ocultar, y por eso [modelDescriptors]
@@ -44,7 +49,7 @@ import kotlin.math.roundToInt
  * compilado, no esta pantalla.
  *
  * @param viewModelFactory lo construye quien tiene el almacen y los
- *   repositorios. Sin Hilt todavia, mismo patron que `ReviewScreen`.
+ *   repositorios. Mismo patron que `ReviewScreen`.
  * @param onExportData null cuando la compilacion no ofrece exportacion.
  */
 @Composable
@@ -90,7 +95,7 @@ internal fun SettingsContent(
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
-        Text(text = "Ajustes", style = MaterialTheme.typography.headlineMedium)
+        Text(text = stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineMedium)
 
         // Los controles esperan a la primera lectura del disco. Dibujarlos ya con
         // los valores por defecto haria que el usuario viese saltar sus propios
@@ -130,11 +135,11 @@ private fun IdentificationSection(
     onConfidenceThresholdChange: (Float) -> Unit,
 ) {
     SettingsSection(
-        title = "Identificación",
-        subtitle = "Cómo decide la app qué ha oído.",
+        title = stringResource(R.string.settings_identification_title),
+        subtitle = stringResource(R.string.settings_identification_subtitle),
     ) {
         SliderSetting(
-            label = "Influencia del contexto",
+            label = stringResource(R.string.settings_context_influence),
             value = settings.contextInfluence,
             valueRange = AvesSettings.CONTEXT_INFLUENCE_RANGE,
             steps = CONTEXT_INFLUENCE_STEPS,
@@ -145,7 +150,7 @@ private fun IdentificationSection(
         Spacer(Modifier.size(16.dp))
 
         SliderSetting(
-            label = "Umbral de confianza",
+            label = stringResource(R.string.settings_confidence_threshold),
             value = settings.confidenceThreshold,
             valueRange = AvesSettings.CONFIDENCE_THRESHOLD_RANGE,
             steps = CONFIDENCE_THRESHOLD_STEPS,
@@ -164,22 +169,20 @@ private fun PrivacySection(
     onListeningCutoffChange: (Int) -> Unit,
 ) {
     SettingsSection(
-        title = "Privacidad",
-        subtitle = "Qué recoge la app y qué sale de tu móvil.",
+        title = stringResource(R.string.settings_privacy_title),
+        subtitle = stringResource(R.string.settings_privacy_subtitle),
     ) {
         SwitchSetting(
-            label = "Modo sin ubicación",
+            label = stringResource(R.string.settings_location_disabled),
             checked = settings.locationDisabled,
             onCheckedChange = onLocationDisabledChange,
-            explanation = if (settings.locationDisabled) {
-                "Activado: no se consulta la ubicación, el filtro geográfico y " +
-                    "estacional no se aplica y las observaciones se guardan sin " +
-                    "coordenadas. Identificarás peor, pero no queda rastro de dónde " +
-                    "estabas."
-            } else {
-                "Desactivado: se usa una ubicación aproximada, una sola vez al empezar " +
-                    "cada escucha, para saber qué aves son plausibles aquí y ahora."
-            },
+            explanation = stringResource(
+                if (settings.locationDisabled) {
+                    R.string.settings_location_disabled_on
+                } else {
+                    R.string.settings_location_disabled_off
+                },
+            ),
         )
 
         Spacer(Modifier.size(16.dp))
@@ -198,32 +201,15 @@ private fun PrivacySection(
         // continuo y usa ubicacion se merece esta explicacion, y ademas es lo
         // primero que mira Play Store.
         Text(
-            text = "Qué datos se recogen",
+            text = stringResource(R.string.settings_data_collected_title),
             style = MaterialTheme.typography.titleSmall,
         )
         Spacer(Modifier.size(8.dp))
-        PrivacyFact(
-            "El micrófono solo graba mientras la escucha está en marcha, y el audio se " +
-                "analiza dentro del propio móvil, con el modelo que viaja en la app. " +
-                "No se sube a ningún servidor.",
-        )
-        PrivacyFact(
-            "De cada detección se guarda un recorte de unos segundos en el " +
-                "almacenamiento privado de la app, para que puedas revisarla después. " +
-                "Ninguna otra aplicación puede leerlo.",
-        )
-        PrivacyFact(
-            "La ubicación es aproximada por diseño: se pide el permiso de precisión " +
-                "gruesa y además se redondea a una celda de unos 40 x 20 km.",
-        )
-        PrivacyFact(
-            "Lo único que sale del móvil son consultas a GBIF con esa celda aproximada " +
-                "y el mes. Van sin clave de API y sin nada que te identifique. Ni el " +
-                "audio, ni las fotos, ni tus observaciones se envían a ninguna parte.",
-        )
-        PrivacyFact(
-            "Tu colección vive solo en este móvil. Si desinstalas la app, se va con ella.",
-        )
+        PrivacyFact(stringResource(R.string.settings_fact_microphone))
+        PrivacyFact(stringResource(R.string.settings_fact_clips))
+        PrivacyFact(stringResource(R.string.settings_fact_location))
+        PrivacyFact(stringResource(R.string.settings_fact_network))
+        PrivacyFact(stringResource(R.string.settings_fact_local))
     }
 }
 
@@ -255,13 +241,12 @@ private fun PrivacyFact(text: String) {
 @Composable
 private fun AttributionSection(modelDescriptors: List<ModelDescriptor>) {
     SettingsSection(
-        title = "Atribución",
-        subtitle = "Requisito de las licencias de los modelos, no una cortesía.",
+        title = stringResource(R.string.settings_attribution_title),
+        subtitle = stringResource(R.string.settings_attribution_subtitle),
     ) {
         if (modelDescriptors.isEmpty()) {
             Text(
-                text = "Esta compilación no enlaza ningún modelo. En cuanto haya uno, " +
-                    "aparecerá aquí con su licencia.",
+                text = stringResource(R.string.settings_attribution_none),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -292,7 +277,11 @@ private fun ModelAttributionCard(descriptor: ModelDescriptor) {
 
             Spacer(Modifier.size(4.dp))
             Text(
-                text = "${descriptor.licenseSpdx} · ${speciesCountLabel(descriptor.speciesCount)}",
+                text = stringResource(
+                    R.string.settings_attribution_license_species,
+                    descriptor.licenseSpdx,
+                    speciesCountLabel(descriptor.speciesCount),
+                ),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -306,8 +295,7 @@ private fun ModelAttributionCard(descriptor: ModelDescriptor) {
             if (!descriptor.allowsCommercialUse) {
                 Spacer(Modifier.size(8.dp))
                 Text(
-                    text = "Uso personal, educativo y de investigación. Para uso " +
-                        "comercial hay que pedir permiso a quien lo publica.",
+                    text = stringResource(R.string.settings_non_commercial_note),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -325,7 +313,7 @@ private fun NonCommercialBadge() {
         shape = MaterialTheme.shapes.small,
     ) {
         Text(
-            text = "No comercial",
+            text = stringResource(R.string.settings_non_commercial_badge),
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
         )
@@ -341,8 +329,8 @@ private fun DataSection(
     onExportData: (() -> Unit)?,
 ) {
     SettingsSection(
-        title = "Datos",
-        subtitle = "Tu colección, y cómo llevártela.",
+        title = stringResource(R.string.settings_data_title),
+        subtitle = stringResource(R.string.settings_data_subtitle),
     ) {
         collectionSizeLine(collectedSpecies, collectionBytes)?.let { line ->
             Text(
@@ -354,12 +342,11 @@ private fun DataSection(
 
         if (onExportData != null) {
             Button(onClick = onExportData) {
-                Text("Exportar mis datos")
+                Text(stringResource(R.string.settings_export))
             }
             Spacer(Modifier.size(8.dp))
             Text(
-                text = "Se guarda un fichero con tus observaciones. Es tuyo: no hace " +
-                    "falta una cuenta para recuperarlo.",
+                text = stringResource(R.string.settings_export_help),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -430,7 +417,7 @@ private fun CutoffSetting(minutes: Int, onCommit: (Int) -> Unit) {
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = "Corte automático de escucha",
+            text = stringResource(R.string.settings_listening_cutoff),
             style = MaterialTheme.typography.titleSmall,
         )
         Slider(

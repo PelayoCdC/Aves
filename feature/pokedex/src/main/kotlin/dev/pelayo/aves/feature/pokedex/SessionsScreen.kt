@@ -30,6 +30,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -48,6 +50,7 @@ import dev.pelayo.aves.core.model.Species
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -99,7 +102,7 @@ fun SessionsScreen(
 
     Column(modifier = modifier.fillMaxSize()) {
         Text(
-            text = "Historial de escuchas",
+            text = stringResource(R.string.pokedex_sessions_title),
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         )
@@ -111,7 +114,7 @@ fun SessionsScreen(
 
             state.sessions.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    text = "Aquí aparecerá cada escucha que haya detectado algo.",
+                    text = stringResource(R.string.pokedex_sessions_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
@@ -137,22 +140,19 @@ fun SessionsScreen(
     deleting?.let { row ->
         AlertDialog(
             onDismissRequest = { deleting = null },
-            title = { Text("¿Borrar esta escucha?") },
-            text = {
-                Text(
-                    "Se borran sus ${row.speciesCount} detecciones y sus grabaciones, " +
-                        "incluidas las que ya habías confirmado. No se puede deshacer.",
-                )
-            },
+            title = { Text(stringResource(R.string.pokedex_sessions_delete_title)) },
+            text = { Text(stringResource(R.string.pokedex_sessions_delete_body, row.speciesCount)) },
             confirmButton = {
                 TextButton(
                     onClick = {
                         viewModel.delete(row.session.id)
                         deleting = null
                     },
-                ) { Text("Borrar") }
+                ) { Text(stringResource(R.string.pokedex_delete)) }
             },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancelar") } },
+            dismissButton = {
+                TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.pokedex_cancel)) }
+            },
         )
     }
 }
@@ -178,33 +178,39 @@ private fun SessionCard(
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
-                    text = buildString {
-                        append(durationLabel(session))
-                        append(" · ")
-                        append(if (row.speciesCount == 1) "1 especie" else "${row.speciesCount} especies")
-                        if (row.confirmedCount > 0) append(" · ${row.confirmedCount} confirmadas")
-                        if (row.pendingCount > 0) append(" · ${row.pendingCount} por revisar")
-                        if (session.cellId == null) append(" · sin ubicación")
-                    },
+                    text = buildList {
+                        add(durationText(session))
+                        add(pluralStringResource(R.plurals.pokedex_species_count, row.speciesCount, row.speciesCount.toString()))
+                        if (row.confirmedCount > 0) add(stringResource(R.string.pokedex_session_confirmed, row.confirmedCount))
+                        if (row.pendingCount > 0) add(stringResource(R.string.pokedex_session_pending, row.pendingCount))
+                        if (session.cellId == null) add(stringResource(R.string.pokedex_session_no_location))
+                    }.joinToString(SEPARATOR),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = "Borrar la escucha")
+                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.pokedex_sessions_delete))
             }
         }
     }
 }
 
+private const val SEPARATOR = " · "
+
 /** "12 min", "1 h 05 min" o "en curso". */
-internal fun durationLabel(session: ListeningSessionEntity): String {
-    val ended = session.endedAt ?: return "en curso"
+@Composable
+internal fun durationText(session: ListeningSessionEntity): String {
+    val ended = session.endedAt ?: return stringResource(R.string.pokedex_duration_in_progress)
     val minutes = ((ended - session.startedAt) / 60_000L).coerceAtLeast(0)
     return when {
-        minutes < 1 -> "menos de un minuto"
-        minutes < 60 -> "$minutes min"
-        else -> "${minutes / 60} h ${(minutes % 60).toString().padStart(2, '0')} min"
+        minutes < 1 -> stringResource(R.string.pokedex_duration_under_minute)
+        minutes < 60 -> stringResource(R.string.pokedex_duration_minutes, minutes)
+        else -> stringResource(
+            R.string.pokedex_duration_hours,
+            minutes / 60,
+            (minutes % 60).toString().padStart(2, '0'),
+        )
     }
 }
 
@@ -220,7 +226,7 @@ data class SessionDetailUiState(
 data class SessionObservation(
     val id: Long,
     val speciesId: String,
-    val commonName: String,
+    val commonName: String?,
     val scientificName: String,
     val confidence: Float,
     val mediaPath: String?,
@@ -235,7 +241,7 @@ class SessionDetailViewModel(
     private val speciesRepository: SpeciesRepository,
 ) : ViewModel() {
 
-    private val session = kotlinx.coroutines.flow.flow { emit(observationRepository.session(sessionId)) }
+    private val session = flow { emit(observationRepository.session(sessionId)) }
 
     val uiState: StateFlow<SessionDetailUiState> = combine(
         session,
@@ -252,7 +258,7 @@ class SessionDetailViewModel(
                     SessionObservation(
                         id = observation.id,
                         speciesId = observation.speciesId,
-                        commonName = species?.commonName ?: "Especie sin catalogar",
+                        commonName = species?.commonName,
                         scientificName = species?.scientificName ?: observation.speciesId,
                         confidence = observation.adjustedConfidence,
                         mediaPath = observation.mediaPath,
@@ -282,18 +288,18 @@ fun SessionDetailScreen(
     Column(modifier = modifier.fillMaxSize()) {
         val session = state.session
         Text(
-            text = session?.let { formatSightingDate(it.startedAt) } ?: "Escucha",
+            text = session?.let { formatSightingDate(it.startedAt) } ?: stringResource(R.string.pokedex_session_title),
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         )
         session?.let {
             Text(
-                text = buildString {
-                    append(durationLabel(it))
-                    append(" · ${it.windowsProcessed} ventanas analizadas")
-                    if (it.windowsSkipped > 0) append(", ${it.windowsSkipped} en silencio")
-                    append(" · modelo ${it.modelId}")
-                },
+                text = buildList {
+                    add(durationText(it))
+                    add(stringResource(R.string.pokedex_session_windows, it.windowsProcessed))
+                    if (it.windowsSkipped > 0) add(stringResource(R.string.pokedex_session_silent, it.windowsSkipped))
+                    add(stringResource(R.string.pokedex_session_model, it.modelId))
+                }.joinToString(SEPARATOR),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -320,14 +326,21 @@ fun SessionDetailScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text(text = row.commonName, style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                text = row.commonName ?: stringResource(R.string.pokedex_detail_not_in_catalog),
+                                style = MaterialTheme.typography.titleSmall,
+                            )
                             Text(
                                 text = row.scientificName,
                                 style = ScientificNameStyle,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text(
-                                text = "${(row.confidence * 100).toInt()} % · ${statusLabel(row.status)}",
+                                text = stringResource(
+                                    R.string.pokedex_session_row,
+                                    (row.confidence * 100).toInt(),
+                                    statusText(row.status),
+                                ),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = when (row.status) {
                                     ReviewStatus.CONFIRMED -> MaterialTheme.colorScheme.primary
@@ -343,7 +356,9 @@ fun SessionDetailScreen(
                             ) {
                                 ClipPlayIcon(
                                     isPlaying = clipPlayer.isPlaying(row.id),
-                                    contentDescription = if (canPlay) "Reproducir" else "Sin grabación",
+                                    contentDescription = stringResource(
+                                        if (canPlay) R.string.pokedex_session_play else R.string.pokedex_session_clip_missing,
+                                    ),
                                 )
                             }
                         }
@@ -354,8 +369,11 @@ fun SessionDetailScreen(
     }
 }
 
-private fun statusLabel(status: ReviewStatus): String = when (status) {
-    ReviewStatus.CONFIRMED -> "confirmada"
-    ReviewStatus.PENDING -> "por revisar"
-    ReviewStatus.REJECTED -> "descartada"
-}
+@Composable
+private fun statusText(status: ReviewStatus): String = stringResource(
+    when (status) {
+        ReviewStatus.CONFIRMED -> R.string.pokedex_status_confirmed
+        ReviewStatus.PENDING -> R.string.pokedex_status_pending
+        ReviewStatus.REJECTED -> R.string.pokedex_status_rejected
+    },
+)

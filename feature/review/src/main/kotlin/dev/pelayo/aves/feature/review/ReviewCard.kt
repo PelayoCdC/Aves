@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -129,12 +130,12 @@ fun ReviewCard(
 
             if (observation.level == ConfidenceLevel.DOUBTFUL) {
                 Spacer(Modifier.size(8.dp))
-                Hint("El modelo no lo tiene claro. Compruébalo antes de darlo por bueno.")
+                Hint(stringResource(R.string.review_hint_doubtful))
             }
 
             if (!observation.isResolved) {
                 Spacer(Modifier.size(8.dp))
-                Hint("Esta especie no está en el catálogo, así que no podemos darte su nombre.")
+                Hint(stringResource(R.string.review_hint_unresolved))
             }
 
             // "¿Era otra?" Los otros candidatos de la misma ventana, a un toque.
@@ -143,7 +144,7 @@ fun ReviewCard(
             if (observation.alternatives.isNotEmpty()) {
                 Spacer(Modifier.size(8.dp))
                 Text(
-                    text = "¿Era otra?",
+                    text = stringResource(R.string.review_was_it_another),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -152,7 +153,7 @@ fun ReviewCard(
                         AssistChip(
                             onClick = { onConfirmAs(alternative) },
                             label = {
-                                Text("${alternative.commonName} · ${(alternative.score * 100).toInt()} %")
+                                Text(stringResource(R.string.review_alternative, alternative.commonName, (alternative.score * 100).toInt()))
                             },
                         )
                     }
@@ -180,16 +181,16 @@ fun ReviewCard(
                 Spacer(Modifier.weight(1f))
 
                 TextButton(onClick = onReject) {
-                    Text("Descartar")
+                    Text(stringResource(R.string.review_reject))
                 }
 
                 // Cuando la deteccion es dudosa, confirmar deja de ser el boton
                 // por defecto: no queremos que aceptar a ciegas sea el camino
                 // mas comodo justo en el caso en el que mas suele fallar.
                 if (observation.level == ConfidenceLevel.DOUBTFUL) {
-                    OutlinedButton(onClick = onConfirm) { Text("Confirmar") }
+                    OutlinedButton(onClick = onConfirm) { Text(stringResource(R.string.review_confirm)) }
                 } else {
-                    Button(onClick = onConfirm) { Text("Confirmar") }
+                    Button(onClick = onConfirm) { Text(stringResource(R.string.review_confirm)) }
                 }
             }
         }
@@ -206,7 +207,7 @@ private fun LiferBadge(modifier: Modifier = Modifier) {
         contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
     ) {
         Text(
-            text = "Nueva para ti",
+            text = stringResource(R.string.review_lifer_badge),
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
@@ -239,11 +240,13 @@ private fun ClipButton(
         )
         Spacer(Modifier.size(ButtonDefaults.IconSpacing))
         Text(
-            text = when {
-                !enabled -> "Sin grabación"
-                isPlaying -> "Parar"
-                else -> "Escuchar"
-            },
+            text = stringResource(
+                when {
+                    !enabled -> R.string.review_clip_missing
+                    isPlaying -> R.string.review_clip_stop
+                    else -> R.string.review_clip_play
+                },
+            ),
         )
     }
 }
@@ -258,7 +261,7 @@ private fun ConfidenceBadge(confidence: Float, accent: Color, modifier: Modifier
         color = accent.copy(alpha = 0.16f),
     ) {
         Text(
-            text = "${(confidence * 100).toInt()} %",
+            text = stringResource(R.string.review_percent, (confidence * 100).toInt()),
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
@@ -290,11 +293,14 @@ private fun barHeightFor(level: ConfidenceLevel): Dp = when (level) {
     ConfidenceLevel.DOUBTFUL -> 4.dp
 }
 
-private fun levelLabel(level: ConfidenceLevel): String = when (level) {
-    ConfidenceLevel.SOLID -> "Muy probable"
-    ConfidenceLevel.PROBABLE -> "Probable"
-    ConfidenceLevel.DOUBTFUL -> "Dudosa"
-}
+@Composable
+private fun levelLabel(level: ConfidenceLevel): String = stringResource(
+    when (level) {
+        ConfidenceLevel.SOLID -> R.string.review_level_solid
+        ConfidenceLevel.PROBABLE -> R.string.review_level_probable
+        ConfidenceLevel.DOUBTFUL -> R.string.review_level_doubtful
+    },
+)
 
 @Composable
 private fun formatTimestamp(millis: Long): String {

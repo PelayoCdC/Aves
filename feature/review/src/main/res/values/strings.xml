@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Textos de la bandeja de revision. Prefijo `review_`. -->
+<resources>
+    <string name="review_added">%1$s añadido a tu colección</string>
+    <string name="review_added_lifer">¡Nueva especie! %1$s añadido a tu colección</string>
+    <string name="review_rejected">%1$s descartado</string>
+    <string name="review_reassigned">Confirmado como %1$s</string>
+    <string name="review_undo">Deshacer</string>
+
+    <string name="review_header">Por revisar</string>
+    <plurals name="review_pending_count">
+        <item quantity="one">1 detección esperando tu veredicto</item>
+        <item quantity="other">%1$d detecciones esperando tu veredicto</item>
+    </plurals>
+
+    <string name="review_all_caught_up_title">Estás al día</string>
+    <string name="review_all_caught_up_body">Nada esperando revisión. Todo lo que ha oído la app ha pasado por tus oídos primero, y por eso tu colección vale algo.</string>
+    <string name="review_all_caught_up_hint">Vuelve a escuchar y aquí aparecerá lo que el modelo crea haber oído.</string>
+
+    <string name="review_lifer_badge">Nueva para ti</string>
+    <string name="review_hint_doubtful">El modelo no lo tiene claro. Compruébalo antes de darlo por bueno.</string>
+    <string name="review_hint_unresolved">Esta especie no está en el catálogo, así que no podemos darte su nombre.</string>
+    <string name="review_was_it_another">¿Era otra?</string>
+    <string name="review_alternative">%1$s · %2$d %%</string>
+    <string name="review_percent">%1$d %%</string>
+
+    <string name="review_clip_missing">Sin grabación</string>
+    <string name="review_clip_stop">Parar</string>
+    <string name="review_clip_play">Escuchar</string>
+    <string name="review_reject">Descartar</string>
+    <string name="review_confirm">Confirmar</string>
+
+    <string name="review_level_solid">Muy probable</string>
+    <string name="review_level_probable">Probable</string>
+    <string name="review_level_doubtful">Dudosa</string>
+</resources>

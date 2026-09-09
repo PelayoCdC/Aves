@@ -31,6 +31,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -98,12 +100,12 @@ internal fun PokedexContent(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
             singleLine = true,
-            label = { Text("Buscar en tu colección y en el catálogo") },
+            label = { Text(stringResource(R.string.pokedex_search_label)) },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             trailingIcon = {
                 if (state.query.isNotEmpty()) {
                     IconButton(onClick = { onQueryChange("") }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Borrar la búsqueda")
+                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.pokedex_clear_search))
                     }
                 }
             },
@@ -187,7 +189,10 @@ private fun CollectionGrid(
                 span = { GridItemSpan(maxLineSpan) },
                 contentType = "cabecera",
             ) {
-                FamilyHeader(family = "En el catálogo, aún sin ver", count = state.catalogMatches.size)
+                FamilyHeader(
+                    family = stringResource(R.string.pokedex_catalog_header),
+                    count = state.catalogMatches.size,
+                )
             }
             items(
                 items = state.catalogMatches,
@@ -207,7 +212,7 @@ private fun CollectionGrid(
                 span = { GridItemSpan(maxLineSpan) },
                 contentType = "cabecera",
             ) {
-                FamilyHeader(family = "Por descubrir", count = remaining)
+                FamilyHeader(family = stringResource(R.string.pokedex_to_discover), count = remaining)
             }
 
             // Se pinta un punado, no las miles que faltan: el objetivo es que se
@@ -243,13 +248,13 @@ private fun ProgressHeader(
             Text(
                 // Con un catalogo de miles de especies el porcentaje redondeado
                 // se queda clavado en 0 %; un decimal deja ver que avanzas.
-                text = "${formatPercent(progress.fraction)} %",
+                text = stringResource(R.string.pokedex_percent, formatPercent(progress.fraction)),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (onOpenHistory != null) {
                 IconButton(onClick = onOpenHistory) {
-                    Icon(Icons.Filled.History, contentDescription = "Historial de escuchas")
+                    Icon(Icons.Filled.History, contentDescription = stringResource(R.string.pokedex_history))
                 }
             }
         }
@@ -276,13 +281,13 @@ private fun StatsRow(stats: CollectionStats, modifier: Modifier = Modifier) {
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Stat(value = stats.families, label = "familias")
-            Stat(value = stats.newThisMonth, label = "nuevas este mes")
-            Stat(value = stats.notable, label = "notables")
+            Stat(value = stats.families, label = stringResource(R.string.pokedex_stat_families))
+            Stat(value = stats.newThisMonth, label = stringResource(R.string.pokedex_stat_new_this_month))
+            Stat(value = stats.notable, label = stringResource(R.string.pokedex_stat_notable))
         }
         stats.latestLifer?.let { lifer ->
             Text(
-                text = "Última nueva: ${lifer.species.commonName}",
+                text = stringResource(R.string.pokedex_latest_lifer, lifer.species.commonName),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).padding(bottom = 8.dp),
@@ -314,7 +319,7 @@ private fun FamilyHeader(family: String, count: Int, modifier: Modifier = Modifi
             color = MaterialTheme.colorScheme.primary,
         )
         Text(
-            text = if (count == 1) "1 especie" else "${formatThousands(count)} especies",
+            text = pluralStringResource(R.plurals.pokedex_species_count, count, formatThousands(count)),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -364,21 +369,19 @@ private fun EmptyCollection(modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "Tu colección está vacía",
+            text = stringResource(R.string.pokedex_empty_title),
             style = MaterialTheme.typography.titleMedium,
             textAlign = TextAlign.Center,
         )
         Text(
-            text = "Ahí fuera hay miles de especies cantando. Abre la pestaña de " +
-                "escucha, deja el micrófono abierto un rato y la primera que " +
-                "reconozcas ocupará este hueco.",
+            text = stringResource(R.string.pokedex_empty_body),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.size(8.dp))
         Text(
-            text = "El amanecer es el mejor momento.",
+            text = stringResource(R.string.pokedex_empty_hint),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -390,7 +393,7 @@ private fun EmptyCollection(modifier: Modifier = Modifier) {
 private fun NoSearchResults(query: String, modifier: Modifier = Modifier) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Text(
-            text = "Nada en tu colección ni en el catálogo coincide con \"$query\".",
+            text = stringResource(R.string.pokedex_no_results, query),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
