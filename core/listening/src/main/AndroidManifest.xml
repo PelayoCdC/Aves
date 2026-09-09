@@ -49,6 +49,22 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
+        <!--
+            El tile de ajustes rapidos. exported="true" es obligatorio para que
+            el sistema lo enlace, y el permiso BIND_QUICK_SETTINGS_TILE
+            garantiza que SOLO el sistema puede hacerlo.
+        -->
+        <service
+            android:name="dev.pelayo.aves.core.listening.ListeningTileService"
+            android:exported="true"
+            android:icon="@android:drawable/ic_btn_speak_now"
+            android:label="@string/listening_tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
     </application>
 
 </manifest>

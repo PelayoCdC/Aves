@@ -71,11 +71,18 @@ class ReviewViewModel(
      */
     private val decisionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    private val resolved = observationRepository.pendingReview().map { rows ->
-        // Una sola consulta al catalogo por emision, no una por fila.
-        val ids = rows.map(ObservationEntity::speciesId).distinct()
-        mergePendingWithSpecies(rows, speciesRepository.findAll(ids))
-    }
+    private val resolved = combine(
+        observationRepository.pendingReview(),
+        observationRepository.collectedSpeciesIds(),
+    ) { rows, collected -> rows to collected.toSet() }
+        .map { (rows, collected) ->
+            // Una sola consulta al catalogo por emision, no una por fila: se
+            // piden de golpe las especies de las filas Y las de sus alternativas.
+            val candidates = observationRepository.candidatesFor(rows.map(ObservationEntity::id))
+            val ids = (rows.map(ObservationEntity::speciesId) + candidates.values.flatten().map { it.speciesId })
+                .distinct()
+            mergePendingWithSpecies(rows, speciesRepository.findAll(ids), candidates, collected)
+        }
 
     val uiState: StateFlow<ReviewUiState> =
         combine(resolved, settledIds, undoable) { pending, settled, undo ->
@@ -94,6 +101,10 @@ class ReviewViewModel(
 
     fun reject(observationId: Long) = decide(observationId, ReviewDecision.REJECTED)
 
+    /** "No era esto, era lo otro." Confirma la observacion como la alternativa. */
+    fun confirmAs(observationId: Long, alternative: Alternative) =
+        decide(observationId, ReviewDecision.REASSIGNED, alternative)
+
     /**
      * Revierte la ultima decision.
      *
@@ -111,19 +122,17 @@ class ReviewViewModel(
     /**
      * Aplica una decision de forma optimista y arranca la ventana de deshacer.
      *
-     * La escritura se retrasa en vez de escribir ya y revertir despues porque
-     * `ObservationRepository` no tiene forma de devolver una observacion al
-     * estado "sin revisar": `confirm` y `reject` solo ponen banderas a true. Con
-     * la escritura diferida el problema desaparece de raiz, y ademas el peor
-     * caso (que el proceso muera dentro de la ventana) deja la observacion como
+     * La escritura se retrasa en vez de escribir ya y revertir despues: con la
+     * escritura diferida deshacer es no llegar a escribir, y el peor caso (que
+     * el proceso muera dentro de la ventana) deja la observacion como
      * pendiente, que es el fallo seguro: nada entra en la coleccion sin querer.
      */
-    private fun decide(observationId: Long, decision: ReviewDecision) {
+    private fun decide(observationId: Long, decision: ReviewDecision, reassignTo: Alternative? = null) {
         val target = uiState.value.pending
             .firstOrNull { it.observationId == observationId }
             ?: return
 
-        val action = ReviewAction(target, decision)
+        val action = ReviewAction(target, decision, reassignTo)
         val displaced = synchronized(undoStack) { undoStack.push(action) }
 
         expiryJob?.cancel()
@@ -154,6 +163,10 @@ class ReviewViewModel(
             when (action.decision) {
                 ReviewDecision.CONFIRMED -> observationRepository.confirm(id)
                 ReviewDecision.REJECTED -> observationRepository.reject(id)
+                ReviewDecision.REASSIGNED -> {
+                    val target = action.reassignTo
+                    if (target != null) observationRepository.confirmAs(id, target.speciesId) else observationRepository.confirm(id)
+                }
             }
         }
     }

@@ -1,5 +1,6 @@
 package dev.pelayo.aves.feature.review
 
+import dev.pelayo.aves.core.database.entity.ObservationCandidateEntity
 import dev.pelayo.aves.core.database.entity.ObservationEntity
 import dev.pelayo.aves.core.model.Species
 
@@ -45,6 +46,17 @@ enum class ConfidenceLevel {
 }
 
 /**
+ * "No era esto, era lo otro": un candidato que el modelo tambien considero en
+ * la misma ventana, ya cruzado con el catalogo.
+ */
+data class Alternative(
+    val speciesId: String,
+    val commonName: String,
+    val scientificName: String,
+    val score: Float,
+)
+
+/**
  * Una deteccion esperando el veredicto del usuario, ya cruzada con el catalogo.
  *
  * Lleva las dos confianzas porque son cosas distintas: [confidence] es la que se
@@ -71,12 +83,23 @@ data class PendingObservation(
      * ver [mergePendingWithSpecies].
      */
     val isResolved: Boolean = true,
+    /** Los otros candidatos de la misma ventana, de mas a menos probable. */
+    val alternatives: List<Alternative> = emptyList(),
+    /**
+     * true si la especie no esta todavia en la coleccion: confirmarla seria
+     * una "primera" (un *lifer*, en la jerga). Es el momento de mas ilusion de
+     * toda la app y merece decirse.
+     */
+    val isLifer: Boolean = false,
 ) {
     val level: ConfidenceLevel get() = ConfidenceLevel.of(confidence)
 }
 
 /** Nombre de relleno cuando el catalogo no sabe de que especie hablamos. */
 internal const val UNKNOWN_SPECIES_NAME = "Especie sin catalogar"
+
+/** Cuantas alternativas se ensenan. Mas es ruido con aspecto de dato. */
+internal const val MAX_ALTERNATIVES = 2
 
 /**
  * Cruza las observaciones pendientes con el catalogo de especies y las ordena.
@@ -90,10 +113,17 @@ internal const val UNKNOWN_SPECIES_NAME = "Especie sin catalogar"
  * Una observacion cuya especie NO esta en el catalogo no se descarta: se muestra
  * con un nombre de relleno. Ocultarla seria peor que ensenarla mal, porque
  * quedaria pendiente para siempre sin que el usuario pueda ni rechazarla.
+ *
+ * @param candidates los candidatos alternativos por observacion. Los que no
+ *   esten en el catalogo se omiten: no se puede ofrecer "era esto" sin nombre.
+ * @param collectedSpeciesIds lo que ya esta en la coleccion, para marcar las
+ *   primeras.
  */
 fun mergePendingWithSpecies(
     observations: List<ObservationEntity>,
     species: List<Species>,
+    candidates: Map<Long, List<ObservationCandidateEntity>> = emptyMap(),
+    collectedSpeciesIds: Set<String> = emptySet(),
 ): List<PendingObservation> {
     val byId = species.associateBy(Species::speciesId)
 
@@ -110,6 +140,21 @@ fun mergePendingWithSpecies(
                 timestamp = observation.timestamp,
                 mediaPath = observation.mediaPath,
                 isResolved = match != null,
+                alternatives = candidates[observation.id].orEmpty()
+                    .sortedBy { it.rank }
+                    .filter { it.speciesId != observation.speciesId }
+                    .mapNotNull { candidate ->
+                        val alternative = byId[candidate.speciesId] ?: return@mapNotNull null
+                        Alternative(
+                            speciesId = alternative.speciesId,
+                            commonName = alternative.commonName,
+                            scientificName = alternative.scientificName,
+                            score = candidate.score,
+                        )
+                    }
+                    .distinctBy { it.speciesId }
+                    .take(MAX_ALTERNATIVES),
+                isLifer = observation.speciesId !in collectedSpeciesIds,
             )
         }
         .sortedWith(
@@ -123,12 +168,20 @@ fun mergePendingWithSpecies(
 enum class ReviewDecision {
     CONFIRMED,
     REJECTED,
+
+    /** La confirmo, pero como otra especie: la que el modelo tenia de alternativa. */
+    REASSIGNED,
 }
 
-/** Una decision tomada, con lo necesario para revertirla y para explicarla. */
+/**
+ * Una decision tomada, con lo necesario para revertirla y para explicarla.
+ *
+ * @param reassignTo la especie elegida cuando la decision es [ReviewDecision.REASSIGNED].
+ */
 data class ReviewAction(
     val observation: PendingObservation,
     val decision: ReviewDecision,
+    val reassignTo: Alternative? = null,
 )
 
 /**

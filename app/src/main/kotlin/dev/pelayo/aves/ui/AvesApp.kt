@@ -10,6 +10,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -25,8 +26,20 @@ import dev.pelayo.aves.navigation.AvesNavHost
 import kotlinx.coroutines.flow.map
 
 @Composable
-fun AvesApp(container: AppContainer) {
+fun AvesApp(container: AppContainer, startListeningToken: Int = 0) {
     val navController = rememberNavController()
+
+    // Una peticion de escucha desde fuera lleva a la pantalla de identificar,
+    // que es la que sabe arrancar. Si ya estaba ahi, no navega a ningun sitio.
+    LaunchedEffect(startListeningToken) {
+        if (startListeningToken > 0) {
+            navController.navigate(AvesDestination.IDENTIFY.route) {
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
 
@@ -86,6 +99,7 @@ fun AvesApp(container: AppContainer) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
+            startListeningToken = startListeningToken,
         )
     }
 }

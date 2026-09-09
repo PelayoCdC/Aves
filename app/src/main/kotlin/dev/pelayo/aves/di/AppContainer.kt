@@ -5,12 +5,16 @@ import dev.pelayo.aves.core.data.GbifOccurrenceSource
 import dev.pelayo.aves.core.data.ObservationRepository
 import dev.pelayo.aves.core.data.RegionRepository
 import dev.pelayo.aves.core.data.SpeciesRepository
+import dev.pelayo.aves.core.data.SpeciesEncyclopedia
 import dev.pelayo.aves.core.data.SpeciesResolver
 import dev.pelayo.aves.core.database.AvesDatabase
 import dev.pelayo.aves.core.database.CatalogSeeder
+import dev.pelayo.aves.core.audio.ClipStorage
 import dev.pelayo.aves.core.listening.DetectionNamer
+import dev.pelayo.aves.core.listening.FileAnalysisSaver
 import dev.pelayo.aves.core.ml.api.ContextPriorProvider
 import dev.pelayo.aves.core.network.GbifClient
+import dev.pelayo.aves.core.network.WikipediaClient
 import dev.pelayo.aves.feature.settings.SettingsStore
 import dev.pelayo.aves.feature.settings.settingsStore
 import dev.pelayo.aves.location.LocationProvider
@@ -95,6 +99,26 @@ class AppContainer(
 
     val imageObservationRecorder: ImageObservationRecorder by lazy {
         ImageObservationRecorder(observationRepository, regionRepository, photosDirectory)
+    }
+
+    private val wikipediaClient: WikipediaClient by lazy { WikipediaClient() }
+
+    /** Foto y descripcion de cada especie, pedidas una vez y guardadas en el catalogo. */
+    val encyclopedia: SpeciesEncyclopedia by lazy {
+        SpeciesEncyclopedia(wikipediaClient, speciesRepository)
+    }
+
+    val exporter: ObservationExporter by lazy {
+        ObservationExporter(observationRepository, speciesRepository)
+    }
+
+    /** El analisis de un fichero deja de ser un callejon sin salida. */
+    val fileAnalysisSaver: FileAnalysisSaver by lazy { FileAnalysisSaver(observationRepository) }
+
+    /** Borra una escucha con sus observaciones y sus recortes. */
+    suspend fun deleteSession(sessionId: Long) {
+        observationRepository.deleteSession(sessionId)
+        ClipStorage.deleteClipsFor(clipsDirectory, sessionId)
     }
 
     /**

@@ -52,6 +52,7 @@ fun ReviewScreen(
         state = state,
         onConfirm = viewModel::confirm,
         onReject = viewModel::reject,
+        onConfirmAs = viewModel::confirmAs,
         onUndo = viewModel::undo,
         modifier = modifier,
     )
@@ -67,6 +68,7 @@ internal fun ReviewContent(
     onReject: (Long) -> Unit,
     onUndo: () -> Unit,
     modifier: Modifier = Modifier,
+    onConfirmAs: (Long, Alternative) -> Unit = { _, _ -> },
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val undoable = state.undoable
@@ -82,8 +84,10 @@ internal fun ReviewContent(
         if (undoable == null) return@LaunchedEffect
         val name = undoable.observation.commonName
         val message = when (undoable.decision) {
-            ReviewDecision.CONFIRMED -> "$name añadido a tu colección"
+            ReviewDecision.CONFIRMED ->
+                if (undoable.observation.isLifer) "¡Nueva especie! $name añadido a tu colección" else "$name añadido a tu colección"
             ReviewDecision.REJECTED -> "$name descartado"
+            ReviewDecision.REASSIGNED -> "Confirmado como ${undoable.reassignTo?.commonName ?: name}"
         }
         val result = snackbarHostState.showSnackbar(
             message = message,
@@ -128,6 +132,10 @@ internal fun ReviewContent(
                         onReject = {
                             clipPlayer.stopIfPlaying(observation.observationId)
                             onReject(observation.observationId)
+                        },
+                        onConfirmAs = { alternative ->
+                            clipPlayer.stopIfPlaying(observation.observationId)
+                            onConfirmAs(observation.observationId, alternative)
                         },
                         canPlayClip = canPlay,
                         isPlaying = clipPlayer.isPlaying(observation.observationId),

@@ -20,6 +20,9 @@
     <string name="listening_notification_until">Hasta las %1$s</string>
     <string name="listening_notification_stop">Parar</string>
 
+    <string name="listening_tile_label">Escuchar aves</string>
+    <string name="listening_tile_idle">Toca para escuchar</string>
+
     <plurals name="listening_notification_species">
         <item quantity="one">%1$d especie detectada</item>
         <item quantity="other">%1$d especies detectadas</item>

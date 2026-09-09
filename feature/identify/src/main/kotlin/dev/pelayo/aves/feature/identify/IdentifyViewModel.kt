@@ -11,6 +11,8 @@ import dev.pelayo.aves.core.audio.WavFormatException
 import dev.pelayo.aves.core.audio.audioWindows
 import dev.pelayo.aves.core.listening.CandidateGlimpse
 import dev.pelayo.aves.core.listening.DetectionNamer
+import dev.pelayo.aves.core.listening.DetectionStabilizer
+import dev.pelayo.aves.core.listening.FileAnalysisSaver
 import dev.pelayo.aves.core.listening.ListeningFailure
 import dev.pelayo.aves.core.listening.ListeningService
 import dev.pelayo.aves.core.listening.StableDetection
@@ -76,6 +78,9 @@ data class IdentifyUiState(
     val isAnalyzingFile: Boolean = false,
     /** Frecuencia que pide el modelo, para poder decir "conviertelo a N Hz". */
     val modelSampleRate: Int? = null,
+    /** Cuantas detecciones del fichero se guardaron en la bandeja, o null si aun no se ha guardado. */
+    val savedToReview: Int? = null,
+    val isSaving: Boolean = false,
 )
 
 /**
@@ -99,6 +104,7 @@ class IdentifyViewModel(
     private val appContext: Context,
     private val classifierFactory: () -> AudioBirdClassifier?,
     private val namer: DetectionNamer? = null,
+    private val analysisSaver: FileAnalysisSaver? = null,
 ) : ViewModel() {
 
     /** Estado propio del analisis de fichero, que no pasa por el servicio. */
@@ -281,6 +287,28 @@ class IdentifyViewModel(
             } finally {
                 fileState.update { it.copy(isAnalyzingFile = false, isWarmingUp = false) }
             }
+        }
+    }
+
+    /**
+     * Manda lo que se encontro en el fichero a la bandeja de revision.
+     *
+     * Antes el analisis de fichero se veia y se tiraba. Ahora deja las especies
+     * que pasan el umbral en la bandeja, donde el usuario decide igual que con
+     * el microfono.
+     */
+    fun saveFileAnalysis() {
+        val saver = analysisSaver ?: return
+        val current = fileState.value
+        val modelId = fileClassifier?.descriptor?.modelId ?: return
+        if (current.isSaving || current.savedToReview != null || current.detections.isEmpty()) return
+
+        fileState.update { it.copy(isSaving = true) }
+        viewModelScope.launch {
+            val saved = runCatching {
+                saver.save(modelId, current.detections, DetectionStabilizer.DEFAULT_CONFIRM_THRESHOLD)
+            }.onFailure { Log.e(TAG, "No se pudo guardar el analisis", it) }.getOrDefault(0)
+            fileState.update { it.copy(isSaving = false, savedToReview = saved) }
         }
     }
 

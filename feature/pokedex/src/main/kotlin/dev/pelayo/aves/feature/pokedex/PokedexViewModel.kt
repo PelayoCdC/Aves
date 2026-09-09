@@ -6,13 +6,17 @@ import dev.pelayo.aves.core.data.ObservationRepository
 import dev.pelayo.aves.core.data.SpeciesRepository
 import dev.pelayo.aves.core.database.entity.ObservationEntity
 import dev.pelayo.aves.core.model.RarityTier
+import dev.pelayo.aves.core.model.Species
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 
 /**
  * Lo que la pantalla necesita saber para pintarse.
@@ -27,6 +31,13 @@ data class PokedexUiState(
     val progress: CollectionProgress = CollectionProgress(collected = 0, total = 0),
     val groups: List<FamilyGroup> = emptyList(),
     val hasAnyCollected: Boolean = false,
+    val stats: CollectionStats? = null,
+    /**
+     * Especies del catalogo que casan con la busqueda y NO estan en la
+     * coleccion. Es lo que convierte la busqueda en una guia de campo: se puede
+     * consultar una especie antes de tenerla, y anotarla a mano si se vio.
+     */
+    val catalogMatches: List<Species> = emptyList(),
 )
 
 /**
@@ -36,19 +47,26 @@ data class PokedexUiState(
  * quien los construye y quien decide su ciclo de vida, igual que hace con la
  * fabrica del clasificador en `IdentifyViewModel`.
  */
+@OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class PokedexViewModel(
     private val speciesRepository: SpeciesRepository,
     private val observationRepository: ObservationRepository,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
 
     /**
-     * El tamano del catalogo no cambia en caliente (se siembra al instalar), asi
-     * que se lee una vez y se cachea en lugar de consultarlo en cada emision de
-     * la coleccion.
+     * El total es lo que algun modelo enlazado puede identificar, no el
+     * catalogo entero: prometer 11.000 huecos cuando el clasificador distingue
+     * 6.400 seria prometer una coleccion imposible de completar.
      */
-    private val catalogSize = MutableStateFlow<Int?>(null)
+    private val detectableTotal = speciesRepository.detectableSpeciesCount()
+
+    /** Busqueda en el catalogo entero, con un respiro para no consultar en cada tecla. */
+    private val catalogMatches = query
+        .debounce(SEARCH_DEBOUNCE_MILLIS)
+        .flatMapLatest { text -> speciesRepository.search(text, limit = CATALOG_MATCH_LIMIT) }
 
     val uiState: StateFlow<PokedexUiState> = combine(
         // `collectedSpeciesIds` es el cruce con el catalogo que pide la ficha, y
@@ -58,9 +76,10 @@ class PokedexViewModel(
         observationRepository.collectedSpeciesIds(),
         observationRepository.collection(),
         query,
-        catalogSize,
-    ) { ids, observations, text, total ->
-        Snapshot(ids, observations, text, total)
+        detectableTotal,
+        catalogMatches,
+    ) { ids, observations, text, total, matches ->
+        Snapshot(ids, observations, text, total, matches)
     }
         .map { snapshot ->
             val catalog = speciesRepository.findAll(snapshot.ids).associateBy { it.speciesId }
@@ -68,9 +87,10 @@ class PokedexViewModel(
                 sightings = snapshot.observations.map(ObservationEntity::toSighting),
                 catalog = catalog,
             )
+            val collectedIds = collected.map { it.species.speciesId }.toSet()
 
             PokedexUiState(
-                isLoading = snapshot.total == null,
+                isLoading = false,
                 query = snapshot.query,
                 progress = CollectionProgress(
                     // El numerador sale de las especies que de verdad se pueden
@@ -78,10 +98,12 @@ class PokedexViewModel(
                     // una etiqueta, contarla haria que el progreso no cuadrase
                     // con las tarjetas visibles.
                     collected = collected.size,
-                    total = snapshot.total ?: 0,
+                    total = snapshot.total,
                 ),
                 groups = groupByFamily(filterCollection(collected, snapshot.query)),
                 hasAnyCollected = collected.isNotEmpty(),
+                stats = computeStats(collected, clock()),
+                catalogMatches = snapshot.matches.filterNot { it.speciesId in collectedIds },
             )
         }
         .stateIn(
@@ -92,26 +114,23 @@ class PokedexViewModel(
             initialValue = PokedexUiState(),
         )
 
-    init {
-        viewModelScope.launch {
-            catalogSize.value = speciesRepository.catalogSize()
-        }
-    }
-
     fun onQueryChange(value: String) {
         query.value = value
     }
 
-    /** Agrupa los cuatro flujos sin destructurar tuplas anidadas. */
+    /** Agrupa los flujos sin destructurar tuplas anidadas. */
     private data class Snapshot(
         val ids: List<String>,
         val observations: List<ObservationEntity>,
         val query: String,
-        val total: Int?,
+        val total: Int,
+        val matches: List<Species>,
     )
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
+        const val SEARCH_DEBOUNCE_MILLIS = 250L
+        const val CATALOG_MATCH_LIMIT = 20
     }
 }
 
@@ -130,4 +149,7 @@ internal fun ObservationEntity.toSighting() = Sighting(
     source = source,
     confidence = adjustedConfidence,
     mediaPath = mediaPath,
+    notes = notes,
+    latitude = latitude,
+    longitude = longitude,
 )

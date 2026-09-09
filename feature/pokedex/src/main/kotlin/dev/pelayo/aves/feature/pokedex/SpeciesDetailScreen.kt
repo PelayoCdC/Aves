@@ -1,5 +1,7 @@
 package dev.pelayo.aves.feature.pokedex
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,27 +11,39 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import dev.pelayo.aves.core.media.ClipPlayIcon
-import dev.pelayo.aves.core.media.ClipPlayerState
-import dev.pelayo.aves.core.media.hasPlayableClip
-import dev.pelayo.aves.core.media.rememberClipPlayer
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -38,11 +52,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil3.compose.AsyncImage
 import dev.pelayo.aves.core.data.ObservationRepository
+import dev.pelayo.aves.core.data.SpeciesEncyclopedia
 import dev.pelayo.aves.core.data.SpeciesRepository
 import dev.pelayo.aves.core.database.entity.ObservationEntity
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
+import dev.pelayo.aves.core.media.ClipPlayIcon
+import dev.pelayo.aves.core.media.rememberClipPlayer
+import dev.pelayo.aves.core.model.Coordinates
 import dev.pelayo.aves.core.model.ObservationSource
 import dev.pelayo.aves.core.model.RarityTier
 import dev.pelayo.aves.core.model.Species
@@ -62,10 +81,14 @@ data class SpeciesDetailUiState(
     val species: Species? = null,
     /** Ordenados del mas reciente al mas antiguo. */
     val sightings: List<Sighting> = emptyList(),
+    /** Se esta pidiendo la ficha a Wikipedia. */
+    val isLoadingEncyclopedia: Boolean = false,
 ) {
     /** El mejor tier alcanzado; ver el razonamiento en [CollectedSpecies.rarity]. */
     val rarity: RarityTier
-        get() = sightings.maxByOrNull { it.rarity.level }?.rarity ?: RarityTier.VERY_COMMON
+        get() = sightings.maxByOrNull { it.rarity.level }?.rarity ?: RarityTier.UNKNOWN
+
+    val isCollected: Boolean get() = sightings.isNotEmpty()
 }
 
 /**
@@ -75,21 +98,31 @@ data class SpeciesDetailUiState(
  * porque la coleccion confirmada de un usuario son decenas o cientos de filas,
  * no millones, y asi la ficha reacciona al instante cuando se confirma un
  * avistamiento nuevo sin tocar la capa de datos.
+ *
+ * @param encyclopedia rellena foto y descripcion la primera vez. Nulo deja la
+ *   ficha con lo que trae el catalogo.
+ * @param currentLocation para las observaciones a mano.
+ * @param rarityOf rareza de la especie en un lugar y ahora, para lo anotado a mano.
  */
 class SpeciesDetailViewModel(
     private val speciesId: String,
     private val speciesRepository: SpeciesRepository,
-    observationRepository: ObservationRepository,
+    private val observationRepository: ObservationRepository,
+    private val encyclopedia: SpeciesEncyclopedia? = null,
+    private val currentLocation: suspend () -> Coordinates? = { null },
+    private val rarityOf: suspend (speciesId: String, where: Coordinates) -> RarityTier = { _, _ -> RarityTier.UNKNOWN },
 ) : ViewModel() {
 
     private val species = MutableStateFlow<Species?>(null)
     private val resolved = MutableStateFlow(false)
+    private val loadingEncyclopedia = MutableStateFlow(false)
 
     val uiState: StateFlow<SpeciesDetailUiState> = combine(
         species,
         resolved,
         observationRepository.collection(),
-    ) { found, isResolved, observations ->
+        loadingEncyclopedia,
+    ) { found, isResolved, observations, loading ->
         SpeciesDetailUiState(
             isLoading = !isResolved,
             species = found,
@@ -97,6 +130,7 @@ class SpeciesDetailViewModel(
                 .filter { it.speciesId == speciesId }
                 .map(ObservationEntity::toSighting)
                 .sortedByDescending { it.timestamp },
+            isLoadingEncyclopedia = loading,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -106,9 +140,41 @@ class SpeciesDetailViewModel(
 
     init {
         viewModelScope.launch {
-            species.value = speciesRepository.find(speciesId)
+            val found = speciesRepository.find(speciesId)
+            species.value = found
             resolved.value = true
+            // La enciclopedia se pide DESPUES de pintar lo que ya hay: la ficha
+            // no espera a la red para ensenar el nombre y la familia.
+            if (found != null && !found.hasEncyclopedia && encyclopedia != null) {
+                loadingEncyclopedia.value = true
+                species.value = runCatching { encyclopedia.enrich(found) }.getOrDefault(found)
+                loadingEncyclopedia.value = false
+            }
         }
+    }
+
+    /** "Lo he visto": un avistamiento anotado a mano, ahora y aqui. */
+    fun addManualSighting(notes: String?) {
+        viewModelScope.launch {
+            val where = runCatching { currentLocation() }.getOrNull()
+            val rarity = where?.let { runCatching { rarityOf(speciesId, it) }.getOrNull() } ?: RarityTier.UNKNOWN
+            observationRepository.recordManualObservation(
+                speciesId = speciesId,
+                timestamp = System.currentTimeMillis(),
+                latitude = where?.latitude,
+                longitude = where?.longitude,
+                notes = notes,
+                rarityTier = rarity,
+            )
+        }
+    }
+
+    fun updateNotes(sightingId: Long, notes: String?) {
+        viewModelScope.launch { observationRepository.updateNotes(sightingId, notes) }
+    }
+
+    fun deleteSighting(sightingId: Long) {
+        viewModelScope.launch { observationRepository.delete(sightingId) }
     }
 
     private companion object {
@@ -129,19 +195,32 @@ fun SpeciesDetailScreen(
     }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    SpeciesDetailContent(state = state, modifier = modifier)
+    SpeciesDetailContent(
+        state = state,
+        onAddManualSighting = viewModel::addManualSighting,
+        onUpdateNotes = viewModel::updateNotes,
+        onDeleteSighting = viewModel::deleteSighting,
+        modifier = modifier,
+    )
 }
 
 @Composable
 internal fun SpeciesDetailContent(
     state: SpeciesDetailUiState,
     modifier: Modifier = Modifier,
+    onAddManualSighting: (String?) -> Unit = {},
+    onUpdateNotes: (Long, String?) -> Unit = { _, _ -> },
+    onDeleteSighting: (Long) -> Unit = {},
 ) {
     val species = state.species
 
     // Uno para toda la ficha: dos cantos solapados no se pueden comparar, y asi
     // solo hay un reproductor que liberar al salir.
     val clipPlayer = rememberClipPlayer()
+
+    var showManualDialog by remember { mutableStateOf(false) }
+    var editingNotes by remember { mutableStateOf<Sighting?>(null) }
+    var deleting by remember { mutableStateOf<Sighting?>(null) }
 
     if (species == null) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -166,7 +245,13 @@ internal fun SpeciesDetailContent(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item(key = "cabecera") {
-            SpeciesHeader(species = species, rarity = state.rarity)
+            SpeciesHeader(
+                species = species,
+                rarity = state.rarity,
+                isCollected = state.isCollected,
+                isLoadingEncyclopedia = state.isLoadingEncyclopedia,
+                onAddManualSighting = { showManualDialog = true },
+            )
         }
 
         item(key = "separador") {
@@ -175,10 +260,10 @@ internal fun SpeciesDetailContent(
                 HorizontalDivider()
                 Spacer(Modifier.size(16.dp))
                 Text(
-                    text = if (state.sightings.size == 1) {
-                        "Tu avistamiento"
-                    } else {
-                        "Tus ${state.sightings.size} avistamientos"
+                    text = when (state.sightings.size) {
+                        0 -> "Todavía no la tienes"
+                        1 -> "Tu avistamiento"
+                        else -> "Tus ${state.sightings.size} avistamientos"
                     },
                     style = MaterialTheme.typography.titleSmall,
                 )
@@ -198,8 +283,54 @@ internal fun SpeciesDetailContent(
                 canPlayClip = canPlay,
                 isPlaying = clipPlayer.isPlaying(sighting.id),
                 onTogglePlay = { clipPlayer.toggle(sighting.id, sighting.mediaPath) },
+                onEditNotes = { editingNotes = sighting },
+                onDelete = { deleting = sighting },
             )
         }
+    }
+
+    if (showManualDialog) {
+        NotesDialog(
+            title = "Anotar un avistamiento de ${species.commonName}",
+            initial = "",
+            confirmLabel = "Anotar",
+            onDismiss = { showManualDialog = false },
+            onConfirm = { notes ->
+                onAddManualSighting(notes)
+                showManualDialog = false
+            },
+        )
+    }
+
+    editingNotes?.let { sighting ->
+        NotesDialog(
+            title = "Notas del avistamiento",
+            initial = sighting.notes.orEmpty(),
+            confirmLabel = "Guardar",
+            onDismiss = { editingNotes = null },
+            onConfirm = { notes ->
+                onUpdateNotes(sighting.id, notes)
+                editingNotes = null
+            },
+        )
+    }
+
+    deleting?.let { sighting ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("¿Borrar este avistamiento?") },
+            text = { Text("Se quita de tu colección. No se puede deshacer.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        clipPlayer.stopIfPlaying(sighting.id)
+                        onDeleteSighting(sighting.id)
+                        deleting = null
+                    },
+                ) { Text("Borrar") }
+            },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancelar") } },
+        )
     }
 }
 
@@ -207,11 +338,36 @@ internal fun SpeciesDetailContent(
 private fun SpeciesHeader(
     species: Species,
     rarity: RarityTier,
+    isCollected: Boolean,
+    isLoadingEncyclopedia: Boolean,
+    onAddManualSighting: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val tint = rarityColor(rarity)
+    val context = LocalContext.current
 
     Column(modifier = modifier.fillMaxWidth()) {
+        species.imageUrl?.let { url ->
+            AsyncImage(
+                model = url,
+                contentDescription = species.commonName,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp)
+                    .clip(RoundedCornerShape(16.dp)),
+            )
+            species.imageAttribution?.let { attribution ->
+                Text(
+                    text = "Imagen: $attribution",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            Spacer(Modifier.size(12.dp))
+        }
+
         Text(
             text = species.commonName,
             style = MaterialTheme.typography.headlineSmall,
@@ -226,25 +382,63 @@ private fun SpeciesHeader(
 
         Spacer(Modifier.size(16.dp))
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(12.dp)
-                    .background(tint, CircleShape),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = rarityLabel(rarity),
-                style = MaterialTheme.typography.labelLarge,
-                color = tint,
-            )
+        if (isCollected) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(12.dp)
+                        .background(tint, CircleShape),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = rarityLabel(rarity),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = tint,
+                )
+            }
+            Spacer(Modifier.size(16.dp))
         }
-
-        Spacer(Modifier.size(16.dp))
 
         TaxonomyRow(label = "Familia", value = species.family)
         TaxonomyRow(label = "Orden", value = species.order)
         TaxonomyRow(label = "Género", value = species.genus)
+
+        val summary = species.summary
+        when {
+            !summary.isNullOrBlank() -> {
+                Spacer(Modifier.size(16.dp))
+                Text(text = summary, style = MaterialTheme.typography.bodyMedium)
+                species.wikipediaUrl?.let { url ->
+                    TextButton(
+                        onClick = {
+                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                        },
+                    ) { Text("Leer más en Wikipedia") }
+                }
+            }
+
+            isLoadingEncyclopedia -> {
+                Spacer(Modifier.size(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Buscando la ficha en Wikipedia…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.size(16.dp))
+
+        // "Lo he visto": la via manual. Sin modelo detras, con la persona como
+        // unico clasificador. Es lo que convierte la busqueda en el catalogo en
+        // algo mas que una guia de consulta.
+        OutlinedButton(onClick = onAddManualSighting) {
+            Text(if (isCollected) "Anotar otro avistamiento" else "Lo he visto: anotarlo")
+        }
     }
 }
 
@@ -265,8 +459,9 @@ private fun TaxonomyRow(label: String, value: String, modifier: Modifier = Modif
  * Una fila de avistamiento, con su grabacion si la hay.
  *
  * @param canPlayClip false cuando el recorte ya no esta en disco (datos
- *   borrados, retencion). El boton se sigue viendo, desactivado: saber que hubo
- *   una grabacion es informacion util aunque ya no se pueda oir.
+ *   borrados, copia de seguridad sin recortes). El boton se sigue viendo,
+ *   desactivado: saber que hubo una grabacion es informacion util aunque ya no
+ *   se pueda oir.
  */
 @Composable
 private fun SightingRow(
@@ -275,47 +470,106 @@ private fun SightingRow(
     canPlayClip: Boolean = false,
     isPlaying: Boolean = false,
     onTogglePlay: () -> Unit = {},
+    onEditNotes: () -> Unit = {},
+    onDelete: () -> Unit = {},
 ) {
     Card(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = formatSightingDate(sighting.timestamp),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    text = "${sourceLabel(sighting.source)} · " +
-                        "${(sighting.confidence * 100).toInt()} % de confianza",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = formatSightingDate(sighting.timestamp),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        text = buildString {
+                            append(sourceLabel(sighting.source))
+                            if (sighting.source != ObservationSource.MANUAL) {
+                                append(" · ${(sighting.confidence * 100).toInt()} % de confianza")
+                            }
+                            append(" · ${rarityLabel(sighting.rarity).lowercase()}")
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                if (sighting.mediaPath != null && sighting.source == ObservationSource.AUDIO) {
+                    IconButton(onClick = onTogglePlay, enabled = canPlayClip) {
+                        ClipPlayIcon(
+                            isPlaying = isPlaying,
+                            contentDescription = when {
+                                !canPlayClip -> "La grabación ya no está en el dispositivo"
+                                isPlaying -> "Parar la grabación"
+                                else -> "Reproducir la grabación"
+                            },
+                        )
+                    }
+                }
+                IconButton(onClick = onEditNotes) {
+                    Icon(Icons.Filled.Edit, contentDescription = "Editar las notas")
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Borrar el avistamiento")
+                }
+            }
+
+            if (sighting.mediaPath != null && sighting.source == ObservationSource.IMAGE) {
+                Spacer(Modifier.size(8.dp))
+                AsyncImage(
+                    model = java.io.File(sighting.mediaPath),
+                    contentDescription = "La foto con la que se identificó",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(96.dp)
+                        .clip(RoundedCornerShape(8.dp)),
                 )
             }
 
-            if (sighting.mediaPath != null) {
-                IconButton(onClick = onTogglePlay, enabled = canPlayClip) {
-                    ClipPlayIcon(
-                        isPlaying = isPlaying,
-                        contentDescription = when {
-                            !canPlayClip -> "La grabación ya no está en el dispositivo"
-                            isPlaying -> "Parar la grabación"
-                            else -> "Reproducir la grabación"
-                        },
-                    )
-                }
+            sighting.notes?.takeIf { it.isNotBlank() }?.let { notes ->
+                Spacer(Modifier.size(6.dp))
+                Text(text = notes, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
 }
 
+@Composable
+private fun NotesDialog(
+    title: String,
+    initial: String,
+    confirmLabel: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String?) -> Unit,
+) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("Notas (opcional)") },
+                placeholder = { Text("Dónde, cómo, con quién…") },
+                minLines = 2,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(text.takeIf { it.isNotBlank() }) }) { Text(confirmLabel) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
+}
+
 private fun sourceLabel(source: ObservationSource): String = when (source) {
     ObservationSource.AUDIO -> "Canto"
-    ObservationSource.IMAGE -> "Imagen"
-    ObservationSource.MANUAL -> "Manual"
+    ObservationSource.IMAGE -> "Foto"
+    ObservationSource.MANUAL -> "Anotado a mano"
 }
 
 /**
@@ -328,7 +582,7 @@ private fun sourceLabel(source: ObservationSource): String = when (source) {
 private val SightingDateFormat: DateTimeFormatter =
     DateTimeFormatter.ofPattern("d MMM yyyy · HH:mm", Locale.getDefault())
 
-private fun formatSightingDate(epochMillis: Long): String =
+internal fun formatSightingDate(epochMillis: Long): String =
     SightingDateFormat.format(
         Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()),
     )
@@ -348,7 +602,7 @@ private fun SpeciesDetailPreview() {
                     scientific = "Strix aluco",
                     family = "Strigidae",
                     order = "Strigiformes",
-                ),
+                ).copy(summary = "El cárabo común es una rapaz nocturna de tamaño medio, muy extendida por Europa."),
                 sightings = listOf(
                     previewSighting(
                         id = 1,

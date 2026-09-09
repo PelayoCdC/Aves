@@ -1,5 +1,6 @@
 package dev.pelayo.aves.feature.pokedex
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,27 +17,30 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import dev.pelayo.aves.core.media.ClipPlayerState
-import dev.pelayo.aves.core.media.hasPlayableClip
-import dev.pelayo.aves.core.media.rememberClipPlayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
+import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
 import dev.pelayo.aves.core.model.RarityTier
+import dev.pelayo.aves.core.model.Species
 
 /**
  * La coleccion.
@@ -46,11 +50,13 @@ import dev.pelayo.aves.core.model.RarityTier
  *   donde salen sus dependencias.
  * @param onSpeciesClick navegar es cosa de :app; aqui solo se avisa de que se
  *   ha tocado una especie.
+ * @param onOpenHistory abre el historial de escuchas.
  */
 @Composable
 fun PokedexScreen(
     viewModelFactory: () -> PokedexViewModel,
     onSpeciesClick: (String) -> Unit = {},
+    onOpenHistory: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val viewModel: PokedexViewModel = viewModel { viewModelFactory() }
@@ -60,6 +66,7 @@ fun PokedexScreen(
         state = state,
         onQueryChange = viewModel::onQueryChange,
         onSpeciesClick = onSpeciesClick,
+        onOpenHistory = onOpenHistory,
         modifier = modifier,
     )
 }
@@ -73,10 +80,12 @@ internal fun PokedexContent(
     onQueryChange: (String) -> Unit,
     onSpeciesClick: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenHistory: (() -> Unit)? = null,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         ProgressHeader(
             progress = state.progress,
+            onOpenHistory = onOpenHistory,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         )
 
@@ -89,7 +98,7 @@ internal fun PokedexContent(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
             singleLine = true,
-            label = { Text("Buscar en tu colección") },
+            label = { Text("Buscar en tu colección y en el catálogo") },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             trailingIcon = {
                 if (state.query.isNotEmpty()) {
@@ -103,13 +112,13 @@ internal fun PokedexContent(
         Spacer(Modifier.size(12.dp))
 
         when {
-            !state.hasAnyCollected && !state.isLoading -> EmptyCollection(
+            !state.hasAnyCollected && !state.isLoading && state.catalogMatches.isEmpty() -> EmptyCollection(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 32.dp),
             )
 
-            state.groups.isEmpty() && state.query.isNotEmpty() -> NoSearchResults(
+            state.groups.isEmpty() && state.query.isNotEmpty() && state.catalogMatches.isEmpty() -> NoSearchResults(
                 query = state.query,
                 modifier = Modifier
                     .fillMaxSize()
@@ -140,10 +149,16 @@ private fun CollectionGrid(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // Las estadisticas solo con la coleccion entera a la vista: al filtrar,
+        // hablarian de algo que no se esta viendo.
+        val stats = state.stats
+        if (state.query.isEmpty() && stats != null && stats.species > 0) {
+            item(key = "stats", span = { GridItemSpan(maxLineSpan) }, contentType = "stats") {
+                StatsRow(stats)
+            }
+        }
+
         state.groups.forEach { group ->
-            // TODO: pasar a `stickyHeader` cuando se confirme que la version de
-            // foundation del BOM lo expone para LazyVerticalGrid; de momento la
-            // cabecera scrollea con su bloque.
             item(
                 key = "familia-${group.family}",
                 span = { GridItemSpan(maxLineSpan) },
@@ -164,6 +179,25 @@ private fun CollectionGrid(
             }
         }
 
+        // Lo que casa con la busqueda pero aun no esta en la coleccion: la guia
+        // de campo. Se puede abrir la ficha y anotar la especie a mano.
+        if (state.catalogMatches.isNotEmpty()) {
+            item(
+                key = "cabecera-catalogo",
+                span = { GridItemSpan(maxLineSpan) },
+                contentType = "cabecera",
+            ) {
+                FamilyHeader(family = "En el catálogo, aún sin ver", count = state.catalogMatches.size)
+            }
+            items(
+                items = state.catalogMatches,
+                key = { "catalogo-${it.speciesId}" },
+                contentType = { "catalogo" },
+            ) { species ->
+                CatalogSpeciesCard(species = species, onClick = { onSpeciesClick(species.speciesId) })
+            }
+        }
+
         // Los huecos solo tienen sentido viendo la coleccion entera: al filtrar,
         // "lo que falta" no significa nada.
         val remaining = state.progress.remaining
@@ -176,7 +210,7 @@ private fun CollectionGrid(
                 FamilyHeader(family = "Por descubrir", count = remaining)
             }
 
-            // Se pinta un punado, no las 6.000 que faltan: el objetivo es que se
+            // Se pinta un punado, no las miles que faltan: el objetivo es que se
             // vea el hueco, no simular un catalogo que aun no se conoce.
             items(
                 count = minOf(remaining, LOCKED_SLOTS),
@@ -190,16 +224,21 @@ private fun CollectionGrid(
 }
 
 @Composable
-private fun ProgressHeader(progress: CollectionProgress, modifier: Modifier = Modifier) {
+private fun ProgressHeader(
+    progress: CollectionProgress,
+    onOpenHistory: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Bottom,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = progress.label,
                 style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f),
             )
             Text(
                 // Con un catalogo de miles de especies el porcentaje redondeado
@@ -208,6 +247,11 @@ private fun ProgressHeader(progress: CollectionProgress, modifier: Modifier = Mo
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (onOpenHistory != null) {
+                IconButton(onClick = onOpenHistory) {
+                    Icon(Icons.Filled.History, contentDescription = "Historial de escuchas")
+                }
+            }
         }
 
         Spacer(Modifier.size(8.dp))
@@ -215,6 +259,48 @@ private fun ProgressHeader(progress: CollectionProgress, modifier: Modifier = Mo
         LinearProgressIndicator(
             progress = { progress.fraction },
             modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+/** Los numeros de coleccionista: familias, nuevas este mes, notables, la ultima primera. */
+@Composable
+private fun StatsRow(stats: CollectionStats, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Stat(value = stats.families, label = "familias")
+            Stat(value = stats.newThisMonth, label = "nuevas este mes")
+            Stat(value = stats.notable, label = "notables")
+        }
+        stats.latestLifer?.let { lifer ->
+            Text(
+                text = "Última nueva: ${lifer.species.commonName}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).padding(bottom = 8.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun Stat(value: Int, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(text = formatThousands(value), style = MaterialTheme.typography.titleLarge)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -232,6 +318,37 @@ private fun FamilyHeader(family: String, count: Int, modifier: Modifier = Modifi
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/** Una especie del catalogo que todavia no esta en la coleccion. */
+@Composable
+private fun CatalogSpeciesCard(species: Species, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text(
+                text = species.commonName,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = species.scientificName,
+                style = ScientificNameStyle,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.size(8.dp))
+            Text(
+                text = species.family,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -273,7 +390,7 @@ private fun EmptyCollection(modifier: Modifier = Modifier) {
 private fun NoSearchResults(query: String, modifier: Modifier = Modifier) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Text(
-            text = "Ninguna especie de tu colección coincide con \"$query\".",
+            text = "Nada en tu colección ni en el catálogo coincide con \"$query\".",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -286,66 +403,68 @@ private const val LOCKED_SLOTS = 6
 
 // --- Previews -------------------------------------------------------------
 
-private fun previewState(query: String = "") = PokedexUiState(
-    isLoading = false,
-    query = query,
-    progress = CollectionProgress(collected = 37, total = 6_419),
-    groups = groupByFamily(
-        filterCollection(
-            listOf(
-                previewEntry(
-                    id = "erirub",
-                    common = "Petirrojo europeo",
-                    scientific = "Erithacus rubecula",
-                    family = "Muscicapidae",
-                    tier = RarityTier.VERY_COMMON,
-                    sightings = 12,
-                ),
-                previewEntry(
-                    id = "turmer",
-                    common = "Mirlo común",
-                    scientific = "Turdus merula",
-                    family = "Turdidae",
-                    tier = RarityTier.VERY_COMMON,
-                    sightings = 8,
-                ),
-                previewEntry(
-                    id = "turphi",
-                    common = "Zorzal común",
-                    scientific = "Turdus philomelos",
-                    family = "Turdidae",
-                    tier = RarityTier.COMMON,
-                    sightings = 2,
-                ),
-                previewEntry(
-                    id = "parmaj",
-                    common = "Carbonero común",
-                    scientific = "Parus major",
-                    family = "Paridae",
-                    tier = RarityTier.COMMON,
-                    sightings = 5,
-                ),
-                previewEntry(
-                    id = "cyacae",
-                    common = "Herrerillo común",
-                    scientific = "Cyanistes caeruleus",
-                    family = "Paridae",
-                    tier = RarityTier.UNCOMMON,
-                ),
-                previewEntry(
-                    id = "strala",
-                    common = "Cárabo común",
-                    scientific = "Strix aluco",
-                    family = "Strigidae",
-                    tier = RarityTier.EXCEPTIONAL,
-                    order = "Strigiformes",
-                ),
+private fun previewState(query: String = ""): PokedexUiState {
+    val collected = filterCollection(
+        listOf(
+            previewEntry(
+                id = "erirub",
+                common = "Petirrojo europeo",
+                scientific = "Erithacus rubecula",
+                family = "Muscicapidae",
+                tier = RarityTier.VERY_COMMON,
+                sightings = 12,
             ),
-            query,
+            previewEntry(
+                id = "turmer",
+                common = "Mirlo común",
+                scientific = "Turdus merula",
+                family = "Turdidae",
+                tier = RarityTier.VERY_COMMON,
+                sightings = 8,
+            ),
+            previewEntry(
+                id = "turphi",
+                common = "Zorzal común",
+                scientific = "Turdus philomelos",
+                family = "Turdidae",
+                tier = RarityTier.COMMON,
+                sightings = 2,
+            ),
+            previewEntry(
+                id = "parmaj",
+                common = "Carbonero común",
+                scientific = "Parus major",
+                family = "Paridae",
+                tier = RarityTier.COMMON,
+                sightings = 5,
+            ),
+            previewEntry(
+                id = "cyacae",
+                common = "Herrerillo común",
+                scientific = "Cyanistes caeruleus",
+                family = "Paridae",
+                tier = RarityTier.UNCOMMON,
+            ),
+            previewEntry(
+                id = "strala",
+                common = "Cárabo común",
+                scientific = "Strix aluco",
+                family = "Strigidae",
+                tier = RarityTier.EXCEPTIONAL,
+                order = "Strigiformes",
+            ),
         ),
-    ),
-    hasAnyCollected = true,
-)
+        query,
+    )
+    return PokedexUiState(
+        isLoading = false,
+        query = query,
+        progress = CollectionProgress(collected = 37, total = 6_419),
+        groups = groupByFamily(collected),
+        hasAnyCollected = true,
+        stats = computeStats(collected, 1_755_000_000_000L),
+    )
+}
 
 @Preview(showBackground = true, heightDp = 900)
 @Composable
@@ -355,6 +474,7 @@ private fun PokedexScreenPreview() {
             state = previewState(),
             onQueryChange = {},
             onSpeciesClick = {},
+            onOpenHistory = {},
         )
     }
 }

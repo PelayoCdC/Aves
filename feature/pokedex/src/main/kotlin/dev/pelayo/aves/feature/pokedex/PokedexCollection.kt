@@ -1,9 +1,11 @@
 package dev.pelayo.aves.feature.pokedex
 
+import dev.pelayo.aves.core.common.SearchText
 import dev.pelayo.aves.core.model.ObservationSource
 import dev.pelayo.aves.core.model.RarityTier
 import dev.pelayo.aves.core.model.Species
-import dev.pelayo.aves.core.common.SearchText
+import java.time.Instant
+import java.time.ZoneId
 
 /*
  * Modelo y logica de la coleccion, deliberadamente sin nada de Android ni de
@@ -29,6 +31,9 @@ data class Sighting(
     val source: ObservationSource,
     val confidence: Float,
     val mediaPath: String? = null,
+    val notes: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
 )
 
 /** Una especie ya capturada, con todas las veces que se ha registrado. */
@@ -43,13 +48,18 @@ data class CollectedSpecies(
      * El tier va congelado en cada captura, asi que la misma especie puede
      * valer distinto segun donde y cuando se oyo. Si alguien pillo un mirlo en
      * Islandia, la coleccion tiene que seguir ensenandolo como notable aunque
-     * luego lo haya vuelto a oir cien veces en su jardin.
+     * luego lo haya vuelto a oir cien veces en su jardin. Lo desconocido no
+     * compite: si todos son desconocidos, se dice.
      */
     val rarity: RarityTier
-        get() = sightings.maxByOrNull { it.rarity.level }?.rarity ?: RarityTier.VERY_COMMON
+        get() = sightings.maxByOrNull { it.rarity.level }?.rarity ?: RarityTier.UNKNOWN
 
     val lastSeenAt: Long
         get() = sightings.firstOrNull()?.timestamp ?: 0L
+
+    /** Cuando entro en la coleccion: la primera vez que se vio. */
+    val firstSeenAt: Long
+        get() = sightings.lastOrNull()?.timestamp ?: 0L
 
     val count: Int get() = sightings.size
 }
@@ -80,6 +90,25 @@ data class CollectionProgress(
     val label: String
         get() = "${formatThousands(collected)} de ${formatThousands(total)} especies"
 }
+
+/**
+ * Los numeros que dan ganas de seguir: cuantas familias, cuantas este mes,
+ * cual fue la ultima "primera".
+ *
+ * Son estadisticas de coleccionista, no de ciencia. Existen porque una lista
+ * de lo que ya tienes no invita a salir otra vez; "3 especies nuevas este mes"
+ * si.
+ */
+data class CollectionStats(
+    val species: Int,
+    val families: Int,
+    /** Especies vistas por primera vez en el mes de referencia. */
+    val newThisMonth: Int,
+    /** La ultima especie que entro en la coleccion, o null si esta vacia. */
+    val latestLifer: CollectedSpecies?,
+    /** Cuantas de la coleccion son raras o excepcionales. */
+    val notable: Int,
+)
 
 /**
  * Junta avistamientos y catalogo en las tarjetas de la coleccion.
@@ -142,6 +171,31 @@ internal fun filterCollection(
 }
 
 /**
+ * Estadisticas de la coleccion en el instante [nowMillis].
+ *
+ * "Este mes" es el mes natural del calendario del dispositivo, no los ultimos
+ * 30 dias: es como la gente cuenta ("en abril vi tres nuevas").
+ */
+internal fun computeStats(
+    entries: List<CollectedSpecies>,
+    nowMillis: Long,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): CollectionStats {
+    val now = Instant.ofEpochMilli(nowMillis).atZone(zoneId)
+    val newThisMonth = entries.count { entry ->
+        val first = Instant.ofEpochMilli(entry.firstSeenAt).atZone(zoneId)
+        first.year == now.year && first.month == now.month
+    }
+    return CollectionStats(
+        species = entries.size,
+        families = entries.map { it.species.family }.distinct().size,
+        newThisMonth = newThisMonth,
+        latestLifer = entries.maxByOrNull { it.firstSeenAt },
+        notable = entries.count { it.rarity.level >= RarityTier.RARE.level },
+    )
+}
+
+/**
  * Normaliza para comparar: minusculas y sin diacriticos.
  *
  * Sin esto, buscar "carabo" no encontraria "Carabo comun", que es exactamente
@@ -150,13 +204,6 @@ internal fun filterCollection(
  */
 internal fun foldForSearch(value: String): String = SearchText.fold(value)
 
-/**
- * Separador de millares a la espanola, sin depender del Locale del dispositivo.
- *
- * Se hace a mano porque el numero forma parte de un texto ya en espanol: si el
- * telefono esta en ingles, `NumberFormat` daria "6,419" dentro de una frase
- * castellana.
- */
 /**
  * Porcentaje con un decimal y coma, como se escribe en español.
  *
@@ -172,6 +219,13 @@ internal fun formatPercent(fraction: Float): String {
     return "${tenths / 10},${tenths % 10}"
 }
 
+/**
+ * Separador de millares a la espanola, sin depender del Locale del dispositivo.
+ *
+ * Se hace a mano porque el numero forma parte de un texto ya en espanol: si el
+ * telefono esta en ingles, `NumberFormat` daria "6,419" dentro de una frase
+ * castellana.
+ */
 internal fun formatThousands(value: Int): String {
     val digits = value.coerceAtLeast(0).toString()
     if (digits.length <= 3) return digits

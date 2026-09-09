@@ -64,6 +64,9 @@ import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
 import dev.pelayo.aves.core.listening.CandidateGlimpse
 import dev.pelayo.aves.core.listening.DetectionNamer
+import dev.pelayo.aves.core.listening.FileAnalysisSaver
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.LaunchedEffect
 import dev.pelayo.aves.core.listening.StableDetection
 import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
 import kotlin.math.log10
@@ -75,11 +78,15 @@ import kotlin.math.log10
  *   quien sabe que flavor se ha compilado; devuelve null si el build no incluye
  *   ningun modelo de audio.
  * @param namer nombres del catalogo para el analisis de fichero.
+ * @param analysisSaver guarda el analisis de un fichero en la bandeja. Nulo esconde el boton.
+ * @param startListeningToken cambia cuando algo externo (el tile) pide arrancar.
  */
 @Composable
 fun IdentifyScreen(
     classifierProvider: () -> AudioBirdClassifier?,
     namer: DetectionNamer? = null,
+    analysisSaver: FileAnalysisSaver? = null,
+    startListeningToken: Int = 0,
     /** Abre la camara. La foto es la via secundaria: se usa cuando ves el ave pero no la oyes. */
     onOpenCamera: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -90,9 +97,20 @@ fun IdentifyScreen(
     // los da la Application al servicio, no esta pantalla.
     val appContext = context.applicationContext
     val viewModel: IdentifyViewModel = viewModel {
-        IdentifyViewModel(appContext, classifierProvider, namer)
+        IdentifyViewModel(appContext, classifierProvider, namer, analysisSaver)
     }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // El tile de ajustes rapidos abre la app y pide arrancar. Solo si ya hay
+    // permiso: desde un tile no se puede abrir el dialogo de permisos, y el
+    // usuario acaba de tocar "escuchar", no "dame permisos".
+    LaunchedEffect(startListeningToken) {
+        if (startListeningToken > 0 && !state.isListening &&
+            context.hasPermission(Manifest.permission.RECORD_AUDIO)
+        ) {
+            viewModel.toggleListening()
+        }
+    }
 
     // La atribucion es requisito de la licencia CC BY-NC-SA, no cortesia. Se lee
     // una vez del descriptor y el clasificador se cierra acto seguido: solo se
@@ -207,6 +225,25 @@ fun IdentifyScreen(
         state.error?.let { error ->
             ErrorCard(error = error, detail = state.errorDetail, sampleRate = state.modelSampleRate)
             Spacer(Modifier.size(16.dp))
+        }
+
+        // El analisis de un fichero no es un callejon sin salida: lo que encontro
+        // puede ir a la bandeja, donde se decide igual que con el microfono.
+        val analyzed = state.analyzedFileName != null && !state.isAnalyzingFile && state.detections.isNotEmpty()
+        if (analyzed && analysisSaver != null) {
+            val saved = state.savedToReview
+            when {
+                saved != null -> Text(
+                    text = if (saved == 1) "1 detección guardada en Revisar" else "$saved detecciones guardadas en Revisar",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+
+                else -> OutlinedButton(onClick = viewModel::saveFileAnalysis, enabled = !state.isSaving) {
+                    Text("Guardar en Revisar")
+                }
+            }
+            Spacer(Modifier.size(12.dp))
         }
 
         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {

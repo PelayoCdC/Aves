@@ -18,6 +18,9 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.media3.exoplayer)
+    // Fotos de las fichas, desde Wikipedia.
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 
     testImplementation(libs.kotlinx.coroutines.test)
 }

@@ -269,3 +269,111 @@ class FormatPercentTest {
         assertEquals("100,0", formatPercent(5f))
     }
 }
+
+/**
+ * Los numeros de coleccionista. Se prueban porque "nuevas este mes" es
+ * exactamente el tipo de cuenta que sale mal por una frontera de calendario.
+ */
+class CollectionStatsTest {
+
+    private val zone = java.time.ZoneId.of("Europe/Madrid")
+
+    private fun instant(year: Int, month: Int, day: Int): Long =
+        java.time.ZonedDateTime.of(year, month, day, 10, 0, 0, 0, zone).toInstant().toEpochMilli()
+
+    private fun species(id: String, family: String) = Species(
+        speciesId = id,
+        scientificName = "Genus $id",
+        genus = "Genus",
+        family = family,
+        order = "Passeriformes",
+        commonName = "Especie $id",
+    )
+
+    private fun entry(id: String, family: String, firstSeen: Long, lastSeen: Long = firstSeen, tier: RarityTier = RarityTier.COMMON) =
+        CollectedSpecies(
+            species = species(id, family),
+            sightings = listOf(
+                Sighting(2, id, lastSeen, tier, ObservationSource.AUDIO, 0.9f),
+                Sighting(1, id, firstSeen, tier, ObservationSource.AUDIO, 0.9f),
+            ),
+        )
+
+    @Test
+    fun `cuenta especies, familias y notables`() {
+        val stats = computeStats(
+            listOf(
+                entry("a", "Turdidae", instant(2026, 4, 2)),
+                entry("b", "Turdidae", instant(2026, 3, 2), tier = RarityTier.RARE),
+                entry("c", "Paridae", instant(2026, 1, 2), tier = RarityTier.EXCEPTIONAL),
+            ),
+            nowMillis = instant(2026, 4, 20),
+            zoneId = zone,
+        )
+
+        assertEquals(3, stats.species)
+        assertEquals(2, stats.families)
+        assertEquals(2, stats.notable)
+    }
+
+    @Test
+    fun `nuevas este mes usa la PRIMERA vez que se vio, no la ultima`() {
+        // Una especie de enero que se vuelve a oir en abril no es nueva en abril.
+        val stats = computeStats(
+            listOf(
+                entry("a", "Turdidae", firstSeen = instant(2026, 1, 5), lastSeen = instant(2026, 4, 5)),
+                entry("b", "Turdidae", firstSeen = instant(2026, 4, 1)),
+            ),
+            nowMillis = instant(2026, 4, 20),
+            zoneId = zone,
+        )
+
+        assertEquals(1, stats.newThisMonth)
+    }
+
+    @Test
+    fun `este mes es el mes natural, no los ultimos treinta dias`() {
+        val stats = computeStats(
+            listOf(entry("a", "Turdidae", instant(2026, 3, 31))),
+            nowMillis = instant(2026, 4, 1),
+            zoneId = zone,
+        )
+
+        assertEquals(0, stats.newThisMonth)
+    }
+
+    @Test
+    fun `la ultima nueva es la de primera vista mas reciente`() {
+        val stats = computeStats(
+            listOf(
+                entry("vieja", "Turdidae", instant(2026, 1, 1), lastSeen = instant(2026, 4, 19)),
+                entry("nueva", "Paridae", instant(2026, 4, 10)),
+            ),
+            nowMillis = instant(2026, 4, 20),
+            zoneId = zone,
+        )
+
+        assertEquals("nueva", stats.latestLifer?.species?.speciesId)
+    }
+
+    @Test
+    fun `una coleccion vacia da ceros y ninguna ultima`() {
+        val stats = computeStats(emptyList(), nowMillis = instant(2026, 4, 20), zoneId = zone)
+
+        assertEquals(0, stats.species)
+        assertEquals(0, stats.families)
+        assertEquals(null, stats.latestLifer)
+    }
+
+    @Test
+    fun `lo desconocido no cuenta como notable`() {
+        val stats = computeStats(
+            listOf(entry("a", "Turdidae", instant(2026, 4, 2), tier = RarityTier.UNKNOWN)),
+            nowMillis = instant(2026, 4, 20),
+            zoneId = zone,
+        )
+
+        assertEquals(0, stats.notable)
+        assertEquals(RarityTier.UNKNOWN, stats.latestLifer?.rarity)
+    }
+}

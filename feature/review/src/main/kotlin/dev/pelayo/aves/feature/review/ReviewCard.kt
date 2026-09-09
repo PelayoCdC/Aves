@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -18,10 +19,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import dev.pelayo.aves.core.media.ClipPlayIcon
-import dev.pelayo.aves.core.media.ClipPlayerState
-import dev.pelayo.aves.core.media.hasPlayableClip
-import dev.pelayo.aves.core.media.rememberClipPlayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -34,6 +31,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
+import dev.pelayo.aves.core.media.ClipPlayIcon
 import java.text.DateFormat
 import java.util.Date
 
@@ -51,6 +49,7 @@ import java.util.Date
  * @param canPlayClip false cuando el recorte ya no esta en disco. El boton se
  *   sigue viendo, desactivado: que existio una grabacion es informacion util
  *   aunque ya no se pueda oir.
+ * @param onConfirmAs "no era esto, era lo otro": confirma como la alternativa.
  */
 @Composable
 fun ReviewCard(
@@ -58,6 +57,7 @@ fun ReviewCard(
     onConfirm: () -> Unit,
     onReject: () -> Unit,
     modifier: Modifier = Modifier,
+    onConfirmAs: (Alternative) -> Unit = {},
     canPlayClip: Boolean = false,
     isPlaying: Boolean = false,
     onTogglePlay: () -> Unit = {},
@@ -81,6 +81,10 @@ fun ReviewCard(
                         style = ScientificNameStyle,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (observation.isLifer && observation.isResolved) {
+                        Spacer(Modifier.size(4.dp))
+                        LiferBadge()
+                    }
                 }
 
                 Spacer(Modifier.size(12.dp))
@@ -133,6 +137,28 @@ fun ReviewCard(
                 Hint("Esta especie no está en el catálogo, así que no podemos darte su nombre.")
             }
 
+            // "¿Era otra?" Los otros candidatos de la misma ventana, a un toque.
+            // Existe porque buscar la especie correcta a mano es justo el paso
+            // que hace que la gente descarte en vez de corregir.
+            if (observation.alternatives.isNotEmpty()) {
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    text = "¿Era otra?",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    observation.alternatives.forEach { alternative ->
+                        AssistChip(
+                            onClick = { onConfirmAs(alternative) },
+                            label = {
+                                Text("${alternative.commonName} · ${(alternative.score * 100).toInt()} %")
+                            },
+                        )
+                    }
+                }
+            }
+
             Spacer(Modifier.size(12.dp))
 
             Row(
@@ -167,6 +193,24 @@ fun ReviewCard(
                 }
             }
         }
+    }
+}
+
+/** "Nueva para ti": la especie no esta en la coleccion todavia. */
+@Composable
+private fun LiferBadge(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(percent = 50),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+    ) {
+        Text(
+            text = "Nueva para ti",
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -298,6 +342,7 @@ internal val SampleObservations = listOf(
         rawConfidence = 0.91f,
         timestamp = 1_755_500_000_000L,
         mediaPath = "clips/session_12/turmer.m4a",
+        isLifer = true,
     ),
     PendingObservation(
         observationId = 2L,
@@ -307,6 +352,9 @@ internal val SampleObservations = listOf(
         confidence = 0.66f,
         rawConfidence = 0.72f,
         timestamp = 1_755_400_000_000L,
+        alternatives = listOf(
+            Alternative("phocol", "Colirrojo tizón", "Phoenicurus ochruros", 0.21f),
+        ),
     ),
     PendingObservation(
         observationId = 3L,
@@ -317,5 +365,9 @@ internal val SampleObservations = listOf(
         rawConfidence = 0.55f,
         timestamp = 1_755_300_000_000L,
         mediaPath = "clips/session_12/sedwar.m4a",
+        alternatives = listOf(
+            Alternative("acrpal", "Carricero políglota", "Acrocephalus palustris", 0.33f),
+            Alternative("acrsch", "Carricerín común", "Acrocephalus schoenobaenus", 0.12f),
+        ),
     ),
 )
