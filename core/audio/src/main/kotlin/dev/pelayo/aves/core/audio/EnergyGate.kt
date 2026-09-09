@@ -13,7 +13,7 @@ import kotlin.math.sqrt
  * Y en el campo la mayor parte del tiempo NO canta nada. Calcular la energia de
  * la ventana cuesta microsegundos y evita la inmensa mayoria de las inferencias
  * inutiles. Es la optimizacion con mejor relacion beneficio/esfuerzo de todo el
- * proyecto, por eso se adelanto de la fase de pulido a la Fase 1.5.
+ * proyecto.
  *
  * @param thresholdFraction RMS minimo como fraccion del fondo de escala. El
  *   valor por defecto es deliberadamente permisivo: es preferible gastar alguna

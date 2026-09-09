@@ -35,8 +35,8 @@ data class AvesSettings(
          * A la mitad y no al maximo a proposito: el prior es una estadistica, no
          * una verdad. Si mandara del todo, un divagante autentico quedaria
          * sepultado bajo lo que "deberia" haber en la zona, que es justo lo mas
-         * emocionante que puede pasar con esta app. Mismo valor que
-         * `IdentifyViewModel.DEFAULT_CONTEXT_INFLUENCE`.
+         * emocionante que puede pasar con esta app. Mismo valor de fabrica que
+         * `ListeningSettings.DEFAULT_CONTEXT_INFLUENCE`.
          */
         const val DEFAULT_CONTEXT_INFLUENCE = 0.5f
 

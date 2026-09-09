@@ -56,8 +56,8 @@ import kotlinx.coroutines.launch
  * El historial de escuchas.
  *
  * "La salida del sabado por la manana" es la unidad natural para quien sale al
- * campo; "la deteccion numero 347" no. La tabla de sesiones existia desde la
- * Fase 2 con esa intencion y nunca tuvo pantalla.
+ * campo; "la deteccion numero 347" no. La tabla de sesiones se diseno con esa
+ * intencion y tardo mucho en tener pantalla.
  */
 
 data class SessionsUiState(

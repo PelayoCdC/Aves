@@ -3,6 +3,6 @@
     <string name="app_name">Aves</string>
     <string name="destination_identify">Identificar</string>
     <string name="destination_review">Revisar</string>
-    <string name="destination_pokedex">Pokedex</string>
+    <string name="destination_pokedex">Pokédex</string>
     <string name="destination_settings">Ajustes</string>
 </resources>

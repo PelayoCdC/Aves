@@ -50,7 +50,7 @@ $files = @(
     @{
         Name    = 'BirdNET_GLOBAL_6K_V2.4_MData_Model_V2_FP16.tflite'
         Url     = "$modelsBase/BirdNET_GLOBAL_6K_V2.4_MData_Model_V2_FP16.tflite"
-        Purpose = 'Meta-modelo geo-temporal. No se usa hasta Fase 4.'
+        Purpose = 'Meta-modelo geo-temporal: el prior del flavor personal.'
     },
     @{
         Name    = 'labels_es.txt'
@@ -60,7 +60,7 @@ $files = @(
     @{
         Name    = 'taxo_code.txt'
         Url     = "$labelsBase/taxo_code.txt"
-        Purpose = 'Codigos eBird por clase. Es el cross-walk taxonomico de Fase 2.'
+        Purpose = 'Codigos eBird por clase, para el cross-walk taxonomico.'
     }
 )
 
@@ -111,7 +111,7 @@ if (Test-Path $labelsPath) {
     }
 }
 
-# --- Clasificador de imagen (Fase 5) ----------------------------------------
+# --- Clasificador de imagen (ambos flavors) ----------------------------------
 # El labelmap se publica aparte y es accesible sin cuenta; el .tflite no.
 $visionDir = Join-Path $repoRoot (Join-Path "core" (Join-Path "ml" (Join-Path "vision" (Join-Path "src" (Join-Path "main" "assets")))))
 New-Item -ItemType Directory -Force -Path $visionDir | Out-Null
@@ -144,7 +144,7 @@ Write-Host ''
 Write-Host "Listo. Construye con: gradlew.bat :app:assemblePersonalDebug"
 Write-Host ''
 
-# --- BirdNET+ V3, pesos Apache 2.0 (Fase 7) ---------------------------------
+# --- BirdNET+ V3, pesos Apache 2.0 (flavor open) ----------------------------
 #
 # ESTOS SI SE PUEDEN DISTRIBUIR. Los de BirdNET v2.4 son CC BY-NC-SA; estos los
 # publica el propio equipo de BirdNET bajo Apache 2.0 en birdnet-live-app, y su

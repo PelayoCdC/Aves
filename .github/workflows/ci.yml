@@ -16,7 +16,7 @@ jobs:
   verificar:
     name: Compilar y probar
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -30,14 +30,24 @@ jobs:
       - name: Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # Los modelos y el catalogo NO estan en el repositorio: los de BirdNET son
-      # CC BY-NC-SA y el catalogo deriva de ellos y de eBird. La compilacion y
-      # los tests unitarios no los necesitan, porque son assets que solo hacen
-      # falta en tiempo de ejecucion. Los tests instrumentados si, y por eso no
-      # se ejecutan aqui todavia (ver el TODO de abajo).
+      # Los modelos y el catalogo NO estan en el repositorio: los de BirdNET v2.4
+      # son CC BY-NC-SA y el catalogo deriva de eBird. La compilacion y los tests
+      # unitarios no los necesitan, porque son assets que solo hacen falta en
+      # tiempo de ejecucion. Los tests instrumentados si, y por eso no se
+      # ejecutan aqui todavia (ver el TODO de abajo).
 
       - name: Compilar ambos flavors
         run: ./gradlew assemblePersonalDebug assembleOpenDebug --no-daemon
+
+      # El release NUNCA se habia compilado. R8 con dos runtimes nativos (LiteRT,
+      # ONNX Runtime), Ktor y kotlinx.serialization es exactamente donde
+      # aparecen las clases que faltan; mejor aqui que en el movil de alguien.
+      # Sin firma: el APK sale sin firmar, que basta para saber que R8 pasa.
+      - name: Compilar el release publicable
+        run: ./gradlew :app:assembleOpenRelease --no-daemon
+
+      - name: Lint
+        run: ./gradlew :app:lintOpenDebug --no-daemon
 
       - name: Tests unitarios
         run: ./gradlew test --no-daemon
@@ -54,12 +64,14 @@ jobs:
           done
           echo "### $total tests, $fallos fallos" >> $GITHUB_STEP_SUMMARY
 
-      - name: Informes de test
+      - name: Informes
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: informes-de-test
-          path: '**/build/reports/tests/'
+          name: informes
+          path: |
+            **/build/reports/tests/
+            **/build/reports/lint-results-*.html
           retention-days: 7
 
   licencias:
@@ -81,11 +93,11 @@ jobs:
 
       # ESTE ES EL TRABAJO QUE MAS IMPORTA DE TODA LA CI.
       #
-      # Los modelos de BirdNET son CC BY-NC-SA 4.0: no se pueden distribuir. El
-      # flavor `open` existe para poder publicar algun dia, y basta que alguien
-      # escriba `implementation` en vez de `personalImplementation` en una linea
-      # del build para que un modelo no comercial acabe dentro de un APK
-      # publicable. Nada lo avisaria.
+      # Los modelos de BirdNET v2.4 son CC BY-NC-SA 4.0: no se pueden distribuir.
+      # El flavor `open` existe para poder publicar, y basta que alguien escriba
+      # `implementation` en vez de `personalImplementation` en una linea del
+      # build para que un modelo no comercial acabe dentro de un APK publicable.
+      # Nada lo avisaria.
       #
       # `testOpenDebugUnitTest` comprueba por reflexion que las clases de los
       # modelos restringidos NO estan en el classpath del flavor publicable.
@@ -100,5 +112,5 @@ jobs:
 
   # TODO: tests instrumentados. Necesitan emulador y, sobre todo, los modelos y
   # el catalogo, que no estan en el repositorio. Habria que descargarlos en el
-  # runner (BirdNET si es publico; el clasificador de imagen requiere cuenta de
-  # Kaggle y por tanto un secreto). Son 29 tests que hoy solo corren en local.
+  # runner (BirdNET y BirdNET+ son publicos; el clasificador de imagen requiere
+  # cuenta de Kaggle y por tanto un secreto). Hoy solo corren en local.

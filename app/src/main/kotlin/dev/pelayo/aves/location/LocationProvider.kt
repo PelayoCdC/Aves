@@ -9,6 +9,7 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.CancellationSignal
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import dev.pelayo.aves.core.model.Coordinates
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -86,6 +87,7 @@ class LocationProvider(private val context: Context) {
     }
 
     @SuppressLint("MissingPermission")
+    @RequiresApi(Build.VERSION_CODES.R)
     private suspend fun requestFresh(manager: LocationManager): Coordinates? =
         suspendCancellableCoroutine { continuation ->
             // Red primero: no enciende el GPS y su precision sobra para una
@@ -97,7 +99,7 @@ class LocationProvider(private val context: Context) {
             }
             val signal = CancellationSignal()
             continuation.invokeOnCancellation { signal.cancel() }
-            manager.getCurrentLocation(provider, signal, context.mainExecutor) { location ->
+            manager.getCurrentLocation(provider, signal, ContextCompat.getMainExecutor(context)) { location ->
                 if (continuation.isActive) continuation.resume(location?.toCoordinates())
             }
         }

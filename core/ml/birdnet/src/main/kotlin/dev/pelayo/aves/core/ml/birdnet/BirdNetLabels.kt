@@ -33,11 +33,11 @@ data class BirdNetLabel(
     /**
      * Identificador provisional derivado del nombre cientifico.
      *
-     * Coincide con el `speciesId` canonico que genera `build-catalog.ps1`, asi
-     * que cuando la Fase 2 conecte la base de datos el cambio es transparente.
-     * La tabla `model_labels` pasara a ser la fuente de verdad, porque resuelve
-     * casos que esto no puede: los 38 taxones de BirdNET cuyo codigo eBird
-     * caduco, y agrupaciones como Parus minor dentro de Parus major.
+     * Coincide con el `speciesId` canonico que genera `build-catalog.ps1` en
+     * la inmensa mayoria de los casos. La tabla `model_labels` es la fuente de
+     * verdad, porque resuelve lo que esto no puede: los taxones de BirdNET cuyo
+     * codigo eBird caduco, los renombres de genero y agrupaciones como Parus
+     * minor dentro de Parus major.
      */
     val provisionalSpeciesId: String
         get() = scientificName.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')

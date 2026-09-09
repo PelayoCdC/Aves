@@ -23,13 +23,12 @@ navigationCompose = "2.9.8"
 coreKtx = "1.18.0"
 lifecycle = "2.10.0"
 
-# --- Pendiente de Fase 2+: NO usar todavia ---
-# KSP cambio de esquema de versiones en la 2.3.0 (ahora espeja la de Kotlin).
-# La matriz de compatibilidad de AGP 9 pide KSP 2.3.1+, pero AGP 9.3.1 arrastra
-# KGP 2.2.10 en su POM. Ese emparejamiento hay que resolverlo EMPIRICAMENTE al
-# introducir Room, no adivinarlo. Ver tarea de Fase 2.
+# --- Datos, ML y features ---
+# KSP espeja la version de Kotlin desde la 2.3.0. Room lo necesita; probado con
+# AGP 9.3.1, que arrastra KGP 2.2.10 en su POM y no da problemas con 2.3.10.
 ksp = "2.3.10"
 room = "2.8.4"
+# Hilt: declarado y sin usar. Entrara cuando el contenedor a mano deje de bastar.
 hilt = "2.60.1"
 hiltNavigationCompose = "1.4.0"
 camerax = "1.6.1"
@@ -42,7 +41,7 @@ coil = "3.5.0"
 # LiteRT sustituye a org.tensorflow:tensorflow-lite (congelado en 2.17.0).
 # Linea V1 (1.4.2, API Interpreter): es la que usa toda la referencia existente
 # y la unica con delegado GPU hoy. La V2 (litert 2.1.6, API CompiledModel) se
-# evaluara en Fase 5, con el modelo de imagen, que es donde la GPU aporta.
+# evaluara si hace falta GPU para el modelo de imagen; hoy va sobrado en CPU.
 litert = "1.4.2"
 litertNext = "2.1.6"
 iirj = "1.7"
@@ -86,7 +85,7 @@ androidx-compose-material-icons-extended = { module = "androidx.compose.material
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 
-# --- ML (Fase 1+) ---
+# --- ML ---
 # OJO: el artefacto `litert` publica DOS lineas incompatibles bajo el mismo
 # nombre. 1.4.2 es la V1 (API Interpreter, la que usa toda la referencia
 # existente y la unica con delegado GPU); 2.1.6 es la V2 (API CompiledModel).
@@ -99,7 +98,7 @@ litert-metadata = { module = "com.google.ai.edge.litert:litert-metadata", versio
 iirj = { module = "uk.me.berndporr:iirj", version.ref = "iirj" }
 onnxruntime-android = { module = "com.microsoft.onnxruntime:onnxruntime-android", version.ref = "onnxruntime" }
 
-# --- Datos y features (Fase 2+) ---
+# --- Datos y features ---
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }

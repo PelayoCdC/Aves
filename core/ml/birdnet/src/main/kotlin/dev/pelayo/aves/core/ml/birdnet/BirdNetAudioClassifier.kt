@@ -29,8 +29,8 @@ import kotlin.math.exp
  * probabilidades, y hay que pasarlos por sigmoide (no softmax: una grabacion
  * puede contener varias especies a la vez, es multi-etiqueta).
  *
- * @param priorProvider filtro geo-temporal. En Fase 1 es null y no se aplica
- *   ningun prior; en Fase 4 entra el meta-modelo MData.
+ * @param priorProvider filtro geo-temporal (el meta-modelo MData, o null para
+ *   clasificar sin contexto, que es lo que hace el analisis de ficheros).
  */
 class BirdNetAudioClassifier(
     private val context: Context,
