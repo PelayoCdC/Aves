@@ -17,10 +17,17 @@
     <string name="camera_retry">Volver a intentarlo</string>
     <string name="camera_shutter">Hacer la foto e identificar</string>
 
+    <string name="camera_gallery">Elegir una foto de la galería</string>
+    <string name="camera_pick_another">Elegir otra foto</string>
+    <string name="camera_back_to_camera">Volver a la cámara</string>
+    <string name="camera_picked_hint">Se analiza el cuadrado central de la foto</string>
+    <string name="camera_picked_image">La foto elegida de la galería</string>
+
     <string name="camera_permission_title">Hace falta la cámara</string>
     <string name="camera_permission_body">Identificar por foto es la vía para cuando ves al ave pero no la oyes. Las fotos se analizan en el propio teléfono y no salen de él.</string>
-    <string name="camera_permission_hint">Sin este permiso el resto de la app sigue funcionando: escuchar cantos no lo necesita.</string>
+    <string name="camera_permission_hint">Sin este permiso el resto de la app sigue funcionando: escuchar cantos no lo necesita, e identificar una foto que ya tengas en la galería tampoco.</string>
     <string name="camera_permission_button">Conceder acceso a la cámara</string>
+    <string name="camera_permission_gallery">Elegir una foto de la galería</string>
 
     <string name="camera_error_no_model_title">Esta versión no incluye modelo de imagen</string>
     <string name="camera_error_no_model_help">El clasificador de foto es Apache 2.0 y debería estar en los dos flavors. Si falta, es que el módulo :core:ml:vision no entró en el build.</string>

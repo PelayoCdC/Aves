@@ -9,6 +9,7 @@ import android.graphics.Matrix
 import android.view.OrientationEventListener
 import android.view.Surface
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -19,6 +20,7 @@ import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,6 +28,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,7 +36,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -54,6 +62,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -130,10 +140,58 @@ fun CameraScreen(
         if (hasPermission) viewModel.prepare()
     }
 
+    // La galeria NO necesita el permiso de camara ni ningun otro: el selector de
+    // fotos del sistema entrega solo la imagen que el usuario toca. Por eso
+    // esta disponible tambien cuando la camara se ha denegado.
+    val scope = rememberCoroutineScope()
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            try {
+                val image = context.loadGalleryImage(uri, state.inputSize)
+                viewModel.classifyPicked(
+                    display = image.display,
+                    modelInput = image.modelInput,
+                    context = ObservationContext(
+                        // La fecha de la foto, no la de hoy; y sin ubicacion ni
+                        // prior: una foto de la galeria puede ser de cualquier sitio.
+                        epochMillis = image.takenAtMillis ?: System.currentTimeMillis(),
+                        contextInfluence = 0f,
+                    ),
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                viewModel.reportCaptureFailure(e)
+            }
+        }
+    }
+    val onPickFromGallery: () -> Unit = {
+        galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    }
+
+    val picked = state.pickedImage
+    if (picked != null) {
+        PickedImageContent(
+            image = picked,
+            state = state,
+            onPickFromGallery = onPickFromGallery,
+            onDismissResults = viewModel::dismissResults,
+            onIdentified = { candidate -> onIdentified(viewModel.identification(candidate)) },
+            modifier = modifier,
+        )
+        return
+    }
+
     if (!hasPermission) {
         PermissionRequest(
             attribution = state.attribution,
             onRequest = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+            onPickFromGallery = onPickFromGallery,
+            error = state.error,
+            errorDetail = state.errorDetail,
             modifier = modifier,
         )
         return
@@ -148,6 +206,7 @@ fun CameraScreen(
         onCameraFailed = viewModel::reportCameraFailure,
         onDismissResults = viewModel::dismissResults,
         onIdentified = { candidate -> onIdentified(viewModel.identification(candidate)) },
+        onPickFromGallery = onPickFromGallery,
         modifier = modifier,
     )
 }
@@ -173,6 +232,7 @@ private fun CameraContent(
     onCameraFailed: (Throwable) -> Unit,
     onDismissResults: () -> Unit,
     onIdentified: (ImageCandidate) -> Unit,
+    onPickFromGallery: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -309,6 +369,45 @@ private fun CameraContent(
             onShutter = onShutter,
             onDismissResults = onDismissResults,
             onIdentified = onIdentified,
+            onPickFromGallery = onPickFromGallery,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
+/**
+ * Una foto de la galeria en lugar de la vista previa.
+ *
+ * Se ensena ENTERA (ajustada, sin recortar) aunque el modelo solo vea su
+ * cuadrado central, y el texto lo dice: recortarla en pantalla esconderia al
+ * usuario justo el motivo por el que un ave en una esquina no sale.
+ */
+@Composable
+private fun PickedImageContent(
+    image: Bitmap,
+    state: CameraUiState,
+    onPickFromGallery: () -> Unit,
+    onDismissResults: () -> Unit,
+    onIdentified: (ImageCandidate) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val picture = remember(image) { image.asImageBitmap() }
+
+    Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
+        Image(
+            bitmap = picture,
+            contentDescription = stringResource(R.string.camera_picked_image),
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        CaptureOverlay(
+            state = state,
+            onShutter = {},
+            onDismissResults = onDismissResults,
+            onIdentified = onIdentified,
+            onPickFromGallery = onPickFromGallery,
+            fromGallery = true,
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -349,6 +448,9 @@ internal fun CaptureOverlay(
     onDismissResults: () -> Unit,
     onIdentified: (ImageCandidate) -> Unit,
     modifier: Modifier = Modifier,
+    onPickFromGallery: (() -> Unit)? = null,
+    /** true cuando lo que hay debajo es una foto de la galeria y no la camara. */
+    fromGallery: Boolean = false,
 ) {
     Column(
         modifier = modifier.padding(horizontal = 16.dp, vertical = 24.dp),
@@ -381,11 +483,42 @@ internal fun CaptureOverlay(
             Box(Modifier.size(76.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Color.White)
             }
+        } else if (fromGallery) {
+            // Con una foto de la galeria no hay nada que disparar: se elige otra
+            // o se vuelve a la camara.
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = onDismissResults) {
+                    Text(stringResource(R.string.camera_back_to_camera), color = Color.White)
+                }
+                if (onPickFromGallery != null) {
+                    Button(onClick = onPickFromGallery) {
+                        Text(stringResource(R.string.camera_pick_another))
+                    }
+                }
+            }
         } else {
-            ShutterButton(
-                enabled = state.error == null,
-                onClick = onShutter,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(28.dp),
+            ) {
+                // Hueco del mismo ancho que el boton de galeria, para que el
+                // disparador quede centrado de verdad.
+                Spacer(Modifier.size(48.dp))
+                ShutterButton(
+                    enabled = state.error == null,
+                    onClick = onShutter,
+                )
+                if (onPickFromGallery != null) {
+                    FilledTonalIconButton(onClick = onPickFromGallery, modifier = Modifier.size(48.dp)) {
+                        Icon(
+                            imageVector = Icons.Filled.PhotoLibrary,
+                            contentDescription = stringResource(R.string.camera_gallery),
+                        )
+                    }
+                } else {
+                    Spacer(Modifier.size(48.dp))
+                }
+            }
         }
 
         Spacer(Modifier.size(12.dp))
@@ -396,6 +529,7 @@ internal fun CaptureOverlay(
                     state.isWarmingUp -> R.string.camera_warming
                     state.isClassifying -> R.string.camera_classifying
                     state.candidates.isNotEmpty() -> R.string.camera_pick_candidate
+                    fromGallery -> R.string.camera_picked_hint
                     else -> R.string.camera_frame_hint
                 },
             ),
@@ -586,6 +720,9 @@ internal fun PermissionRequest(
     attribution: String?,
     onRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    onPickFromGallery: (() -> Unit)? = null,
+    error: CameraError? = null,
+    errorDetail: String? = null,
 ) {
     Column(
         modifier = modifier
@@ -616,6 +753,20 @@ internal fun PermissionRequest(
         Spacer(Modifier.size(24.dp))
         Button(onClick = onRequest) {
             Text(stringResource(R.string.camera_permission_button))
+        }
+
+        // La galeria no necesita ningun permiso, asi que negar la camara no deja
+        // a nadie sin identificar por foto.
+        if (onPickFromGallery != null) {
+            Spacer(Modifier.size(8.dp))
+            OutlinedButton(onClick = onPickFromGallery) {
+                Text(stringResource(R.string.camera_permission_gallery))
+            }
+        }
+
+        if (error != null) {
+            Spacer(Modifier.size(16.dp))
+            ErrorCard(error = error, detail = errorDetail)
         }
 
         attribution?.let {

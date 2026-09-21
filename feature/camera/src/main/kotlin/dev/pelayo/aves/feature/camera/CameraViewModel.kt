@@ -90,6 +90,12 @@ data class CameraUiState(
      */
     val inputSize: Int = CameraViewModel.FALLBACK_INPUT_SIZE,
     val lastInferenceMillis: Long = 0L,
+    /**
+     * La foto elegida de la galeria, si lo que se esta clasificando no viene de
+     * la camara. Mientras no sea null, la pantalla la ensena en lugar de la
+     * vista previa.
+     */
+    val pickedImage: Bitmap? = null,
 )
 
 /**
@@ -239,6 +245,29 @@ class CameraViewModel(
     }
 
     /**
+     * Clasifica una foto de la galeria.
+     *
+     * [display] se ensena hasta que se descarten los resultados, y [modelInput]
+     * sigue el mismo camino (y la misma propiedad) que una foto de la camara.
+     *
+     * El contexto llega SIN ubicacion y con el prior apagado a proposito: una
+     * foto de la galeria puede ser de cualquier sitio, y filtrarla con lo que
+     * es plausible AQUI descartaria justo al ave que se trajo de un viaje.
+     */
+    fun classifyPicked(display: Bitmap, modelInput: Bitmap, context: ObservationContext) {
+        if (_uiState.value.isClassifying) {
+            display.recycle()
+            modelInput.recycle()
+            return
+        }
+        // La imagen que se ENSENA no se recicla a mano: Compose puede estar
+        // pintando todavia el fotograma anterior, y dibujar un bitmap reciclado
+        // revienta la app. Son unos pocos MB y el recolector da cuenta de ellos.
+        _uiState.update { it.copy(pickedImage = display, hasResult = false) }
+        classify(modelInput, context)
+    }
+
+    /**
      * Empaqueta la eleccion del usuario con su foto y su contexto.
      *
      * La foto se COPIA: quien la recibe puede guardarla cuando quiera sin que
@@ -266,10 +295,16 @@ class CameraViewModel(
         fail(CameraError.CAPTURE_FAILED, cause)
     }
 
-    /** Vuelve al estado de encuadre, sin candidatos ni error en pantalla. */
+    /** Vuelve al estado de encuadre, sin candidatos, error ni foto de galeria en pantalla. */
     fun dismissResults() {
         _uiState.update {
-            it.copy(candidates = emptyList(), hasResult = false, error = null, errorDetail = null)
+            it.copy(
+                candidates = emptyList(),
+                hasResult = false,
+                error = null,
+                errorDetail = null,
+                pickedImage = null,
+            )
         }
     }
 
