@@ -1,6 +1,7 @@
 package dev.pelayo.aves.feature.pokedex
 
 import dev.pelayo.aves.core.common.SearchText
+import dev.pelayo.aves.core.data.ZoneSpecies
 import dev.pelayo.aves.core.model.ObservationSource
 import dev.pelayo.aves.core.model.RarityTier
 import dev.pelayo.aves.core.model.Species
@@ -74,7 +75,11 @@ data class CollectedSpecies(
 data class FamilyGroup(
     val family: String,
     val members: List<CollectedSpecies>,
-)
+    /** Especies de la familia que hay en la zona y aun no se han visto. */
+    val missing: List<MissingSpecies> = emptyList(),
+) {
+    val size: Int get() = members.size + missing.size
+}
 
 /** Cuanto llevas del catalogo. */
 data class CollectionProgress(
@@ -235,5 +240,115 @@ internal fun formatThousands(value: Int): String {
             if (index > 0 && (digits.length - index) % 3 == 0) append('.')
             append(char)
         }
+    }
+}
+
+// --- Filtro por zona -------------------------------------------------------
+
+/**
+ * Una especie de la zona que todavia no esta en la coleccion.
+ *
+ * @param share cuota de los registros de aves de la zona, o null si no se esta
+ *   filtrando por ninguna. Es lo que permite decir "esta es facil, es comun
+ *   aqui" en vez de ensenar trescientos huecos iguales.
+ */
+data class MissingSpecies(
+    val species: Species,
+    val share: Float?,
+) {
+    /** Lo rara que es EN LA ZONA, no en general. Null sin zona. */
+    val rarityHere: RarityTier? get() = share?.let(RarityTier::fromShare)
+}
+
+/** Lo que se pinta: familias con lo que tienes y, si se pide, lo que te falta. */
+data class ZoneView(
+    val groups: List<FamilyGroup>,
+    val progress: CollectionProgress,
+    /**
+     * Especies de la coleccion que el filtro deja fuera por no ser de la zona.
+     * Se cuenta para poder decirlo: si no, el ave que se trajo de un viaje
+     * "desaparece" y parece un fallo.
+     */
+    val hiddenOutsideZone: Int,
+)
+
+/**
+ * Cruza la coleccion con la lista de una zona.
+ *
+ * @param zoneSpecies las aves de la zona, o null si no hay lista con la que
+ *   filtrar (el mundo sin "ver las que faltan", o una zona cuya lista aun no se
+ *   ha podido descargar). Con null NO se filtra: es preferible ensenar la
+ *   coleccion entera a ensenar una vacia por no tener red.
+ * @param fallbackTotal el total cuando no hay lista: lo que los modelos
+ *   enlazados saben identificar.
+ */
+internal fun buildZoneView(
+    collected: List<CollectedSpecies>,
+    zoneSpecies: List<ZoneSpecies>?,
+    showMissing: Boolean,
+    query: String,
+    fallbackTotal: Int,
+): ZoneView {
+    if (zoneSpecies == null) {
+        return ZoneView(
+            groups = groupByFamily(filterCollection(collected, query)),
+            progress = CollectionProgress(collected = collected.size, total = fallbackTotal),
+            hiddenOutsideZone = 0,
+        )
+    }
+
+    val zoneIds = zoneSpecies.mapTo(HashSet(zoneSpecies.size)) { it.species.speciesId }
+    val inZone = collected.filter { it.species.speciesId in zoneIds }
+    val collectedIds = collected.mapTo(HashSet(collected.size)) { it.species.speciesId }
+
+    val missing = if (showMissing) {
+        filterMissing(
+            zoneSpecies
+                .filter { it.species.speciesId !in collectedIds }
+                .map { MissingSpecies(it.species, it.share) },
+            query,
+        )
+    } else {
+        emptyList()
+    }
+
+    return ZoneView(
+        groups = groupByFamily(filterCollection(inZone, query), missing),
+        progress = CollectionProgress(collected = inZone.size, total = zoneSpecies.size),
+        hiddenOutsideZone = collected.size - inZone.size,
+    )
+}
+
+/** Igual que [groupByFamily], intercalando en cada familia lo que falta por ver. */
+internal fun groupByFamily(
+    entries: List<CollectedSpecies>,
+    missing: List<MissingSpecies>,
+): List<FamilyGroup> {
+    if (missing.isEmpty()) return groupByFamily(entries)
+
+    val collectedByFamily = entries.groupBy { it.species.family }
+    val missingByFamily = missing.groupBy { it.species.family }
+    val byName = compareBy<Species, String>(String.CASE_INSENSITIVE_ORDER) { it.commonName }
+
+    return (collectedByFamily.keys + missingByFamily.keys)
+        .sortedWith(String.CASE_INSENSITIVE_ORDER)
+        .map { family ->
+            FamilyGroup(
+                family = family,
+                members = collectedByFamily[family].orEmpty().sortedWith(compareBy(byName) { it.species }),
+                missing = missingByFamily[family].orEmpty().sortedWith(compareBy(byName) { it.species }),
+            )
+        }
+}
+
+internal fun filterMissing(entries: List<MissingSpecies>, query: String): List<MissingSpecies> {
+    val needle = foldForSearch(query)
+    if (needle.isEmpty()) return entries
+    return entries.filter { entry ->
+        val species = entry.species
+        foldForSearch(species.commonName).contains(needle) ||
+            foldForSearch(species.scientificName).contains(needle) ||
+            foldForSearch(species.family).contains(needle) ||
+            foldForSearch(species.genus).contains(needle)
     }
 }

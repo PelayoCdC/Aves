@@ -1,5 +1,7 @@
 package dev.pelayo.aves.navigation
 
+import android.content.Context
+import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,6 +41,7 @@ import dev.pelayo.aves.ml.createImageClassifier
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Locale
 
 /** Ruta de la ficha de especie. Es un destino de detalle, no de primer nivel. */
 private const val SPECIES_DETAIL_ROUTE = "species"
@@ -60,6 +63,25 @@ private const val SESSION_ID_ARG = "sessionId"
 private const val CAMERA_ROUTE = "camera"
 
 private const val TAG = "AvesNavHost"
+
+/** El idioma de la interfaz, que es castellano fijo: "España" y no "Spain". */
+private val INTERFACE_LOCALE = Locale("es")
+
+/**
+ * El pais del movil, para cuando no hay ubicacion con la que detectar la zona.
+ *
+ * Primero la red movil (donde ESTA el telefono) y despues el idioma (de donde
+ * ES): alguien con el movil en ingles en Oviedo quiere las aves de España. No
+ * pide ningun permiso.
+ */
+private fun deviceCountryCode(context: Context): String? {
+    val telephony = context.getSystemService(TelephonyManager::class.java)
+    // Sin cobertura (o en una tablet sin SIM) devuelven cadena vacia, no null.
+    val fromNetwork = runCatching { telephony?.networkCountryIso }.getOrNull()?.takeIf { it.length == 2 }
+        ?: runCatching { telephony?.simCountryIso }.getOrNull()?.takeIf { it.length == 2 }
+    return fromNetwork?.uppercase()
+        ?: Locale.getDefault().country.takeIf { it.length == 2 }?.uppercase()
+}
 
 /**
  * @param startListeningToken cambia cada vez que algo externo (el tile de
@@ -134,7 +156,16 @@ fun AvesNavHost(
         composable(AvesDestination.POKEDEX.route) {
             PokedexScreen(
                 viewModelFactory = {
-                    PokedexViewModel(container.speciesRepository, container.observationRepository)
+                    PokedexViewModel(
+                        speciesRepository = container.speciesRepository,
+                        observationRepository = container.observationRepository,
+                        checklistRepository = container.checklistRepository,
+                        // Ya respeta el modo sin ubicacion: con el apagado, la
+                        // zona sale del pais del movil y no de donde esta.
+                        currentLocation = currentLocation,
+                        deviceCountryCode = { deviceCountryCode(appContext) },
+                        countryDisplayName = { code -> Locale("", code).getDisplayCountry(INTERFACE_LOCALE) },
+                    )
                 },
                 onSpeciesClick = { speciesId ->
                     navController.navigate("$SPECIES_DETAIL_ROUTE/$speciesId")

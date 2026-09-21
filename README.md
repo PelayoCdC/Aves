@@ -5,9 +5,12 @@ App Android de identificación de aves por **canto** y por **foto**, con una
 
 Estado: **funcional en los dos flavors.** Escucha en segundo plano con
 BirdNET v2.4 (`personal`) o BirdNET+ V3 (`open`, publicable), identificación
-por foto, catálogo de 11.167 especies, prior geo-temporal, rarezas sobre GBIF,
-bandeja de revisión con alternativas, historial de escuchas, fichas con foto y
-descripción de Wikipedia, exportación a CSV y tile de ajustes rápidos.
+por foto (cámara o galería), análisis de grabaciones en cualquier formato que
+decodifique el móvil, catálogo de 11.167 especies, prior geo-temporal, rarezas
+sobre GBIF, Pokédex filtrada por tu provincia, región o país con las especies
+que te faltan, bandeja de revisión con alternativas, historial de escuchas,
+fichas con foto y descripción de Wikipedia, exportación a CSV y tile de ajustes
+rápidos.
 
 ---
 
@@ -253,6 +256,45 @@ defecto y cada gorrión sin GPS salía dorado.
 La ubicación es aproximada (permiso *coarse*, una lectura de red al empezar
 cada escucha con tope de 8 s, y luego la celda de 40 km). Se puede apagar del
 todo en Ajustes.
+
+### La Pokédex por zona
+
+No hay cuentas, así que "tu zona" se **detecta**: la ubicación (redondeada a un
+decimal, ~10 km) se pasa al geocodificador inverso de GBIF, que devuelve los
+identificadores GADM de país, región y provincia. Sin ubicación se usa el país
+de la red móvil, la SIM o el idioma, en ese orden. Se guarda en Room
+(`pokedex_preferences`) y no se vuelve a preguntar salvo que el usuario pulse
+"Actualizar mi zona", o que la primera vez solo saliera el país (la Pokédex se
+abrió antes de conceder la ubicación): entonces se reintenta al abrirla, y el
+filtro se afina solo a la provincia. Un intento fallido nunca borra lo que ya
+se sabía (`HomePlace.merge`).
+
+La lista de aves de cada zona son las especies con **al menos 5 registros** en
+GBIF dentro de ese `gadmGid` o país (`ChecklistRepository`, caché de 90 días).
+El umbral quita las divagantes de un solo día, que convertirían la lista de
+León en la de media Europa. Se cruza con lo que los modelos enlazados saben
+identificar, y los nombres antiguos de GBIF pasan por `GbifSpeciesNames.ALIASES`
+(*Bubulcus ibis* → *Ardea ibis*…).
+
+Por defecto se filtra por el nivel más fino conocido y se enseñan las que
+faltan, con lo frecuentes que son *ahí*. Lo que se vio fuera de la zona no se
+pierde: se avisa de cuántas especies quedan ocultas. Sin red la primera vez, la
+colección se enseña entera en vez de vacía.
+
+---
+
+## Ficheros de audio y fotos de la galería
+
+`AudioFileDecoder` abre cualquier cosa que decodifique `MediaCodec` (WAV, MP3,
+M4A/AAC, OGG, Opus, FLAC, AMR/3GP), mezcla a mono y remuestrea con un FIR
+antialias al vuelo. Tope de 5 minutos por fichero; si se corta, se dice. Los
+WAV PCM siguen por el decodificador propio, que no depende del códec del
+fabricante.
+
+La galería usa el selector de fotos del sistema (`PickVisualMedia`), que **no
+pide ningún permiso**. Se respeta la orientación EXIF y la fecha es la de la
+foto, no la de hoy. Como una foto de la galería puede ser de cualquier sitio,
+va sin ubicación y sin prior de contexto. Se analiza el cuadrado central.
 
 ---
 

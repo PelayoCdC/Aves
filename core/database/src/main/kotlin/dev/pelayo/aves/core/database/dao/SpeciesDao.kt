@@ -59,6 +59,18 @@ interface SpeciesDao {
     )
     fun search(foldedQuery: String, limit: Int = 50): Flow<List<SpeciesEntity>>
 
+    /**
+     * Todo lo que algun modelo enlazado sabe identificar: la Pokedex "del
+     * mundo" cuando se piden tambien las que faltan.
+     */
+    @Query(
+        """
+        SELECT * FROM species
+        WHERE speciesId IN (SELECT DISTINCT speciesId FROM model_labels WHERE speciesId IS NOT NULL)
+        """,
+    )
+    fun detectableSpecies(): Flow<List<SpeciesEntity>>
+
     @Upsert(entity = SpeciesEntity::class)
     suspend fun upsertTaxonomy(rows: List<SpeciesTaxonomy>)
 

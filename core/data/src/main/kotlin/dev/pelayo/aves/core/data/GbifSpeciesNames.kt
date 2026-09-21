@@ -10,7 +10,7 @@ package dev.pelayo.aves.core.data
  *
  * POR QUE POR NOMBRE Y NO POR CLAVE
  * GBIF permite facetar por `speciesKey`, que seria lo natural. Pero nuestro
- * catalogo tiene `gbifSpeciesKey` a null en las 6.419 especies: poblarlo
+ * catalogo tiene `gbifSpeciesKey` a null en todas las especies: poblarlo
  * exigiria miles de llamadas de emparejamiento taxonomico. Facetando por nombre
  * el cruce es directo y gratis, porque el `speciesId` YA se deriva del nombre
  * cientifico.
@@ -18,7 +18,8 @@ package dev.pelayo.aves.core.data
  * La contrapartida esta asumida: los nombres cambian con las revisiones
  * taxonomicas, asi que algunas especies no cruzaran. El efecto es que esas
  * caen al suelo del prior y se tratan como raras, que es el fallo seguro:
- * peor seria darlas por comunes y ocultar una rareza de verdad.
+ * peor seria darlas por comunes y ocultar una rareza de verdad. Los cambios de
+ * genero mas sonados se cubren con [ALIASES].
  */
 object GbifSpeciesNames {
 
@@ -50,7 +51,8 @@ object GbifSpeciesNames {
         // Marcadores de identificacion incierta: "Turdus sp.", "Turdus cf. merula".
         if (epithet.trimEnd('.') in UNCERTAIN_MARKERS) return null
 
-        return slug("$genus $epithet")
+        val id = slug("$genus $epithet")
+        return ALIASES[id] ?: id
     }
 
     /**
@@ -65,4 +67,57 @@ object GbifSpeciesNames {
     private val NON_ALPHANUMERIC = Regex("[^a-z0-9]+")
     private const val HYBRID_MARKER = "×"
     private val UNCERTAIN_MARKERS = setOf("sp", "spp", "cf", "aff")
+
+    /**
+     * Nombre que usa (o ha usado) GBIF -> nombre del catalogo.
+     *
+     * El catalogo sigue a eBird/Clements, que entre 2022 y 2024 cambio de
+     * genero a un punado de aves muy comunes; el backbone de GBIF no siempre va
+     * al mismo paso. Sin esto, la garcilla bueyera o la curruca zarcera
+     * desaparecian de las listas por zona y salian como "excepcionales" en la
+     * rareza. Es seguro aplicarlo siempre: los ids de la izquierda NO existen
+     * en el catalogo, asi que no pisan a nadie.
+     *
+     * Es la misma lista de excepciones auditadas de `build-catalog.ps1`.
+     */
+    private val ALIASES: Map<String, String> = mapOf(
+        "bubulcus_ibis" to "ardea_ibis",
+        "charadrius_mongolus" to "anarhynchus_mongolus",
+        "charadrius_montanus" to "anarhynchus_montanus",
+        "charadrius_wilsonia" to "anarhynchus_wilsonia",
+        "charadrius_nivosus" to "anarhynchus_nivosus",
+        "charadrius_alexandrinus" to "anarhynchus_alexandrinus",
+        "charadrius_dubius" to "thinornis_dubius",
+        "phaeomyias_murina" to "nesotriccus_murinus",
+        "psilorhinus_morio" to "cyanocorax_morio",
+        "calocitta_formosa" to "cyanocorax_formosus",
+        "calocitta_colliei" to "cyanocorax_colliei",
+        "euphonia_elegantissima" to "chlorophonia_elegantissima",
+        "phalacrocorax_pelagicus" to "urile_pelagicus",
+        "phalacrocorax_penicillatus" to "urile_penicillatus",
+        "phalacrocorax_auritus" to "nannopterum_auritum",
+        "phalacrocorax_brasilianus" to "nannopterum_brasilianum",
+        "sylvia_communis" to "curruca_communis",
+        "sylvia_melanocephala" to "curruca_melanocephala",
+        "sylvia_undata" to "curruca_undata",
+        "sylvia_cantillans" to "curruca_cantillans",
+        "sylvia_hortensis" to "curruca_hortensis",
+        "sylvia_conspicillata" to "curruca_conspicillata",
+        "sylvia_curruca" to "curruca_curruca",
+        "regulus_calendula" to "corthylio_calendula",
+        "ixobrychus_exilis" to "botaurus_exilis",
+        "ixobrychus_minutus" to "botaurus_minutus",
+        "milvago_chimachima" to "daptrius_chimachima",
+        "accipiter_gentilis" to "astur_gentilis",
+        "accipiter_cooperii" to "astur_cooperii",
+        "haliaeetus_vocifer" to "icthyophaga_vocifer",
+        "haliaeetus_leucogaster" to "icthyophaga_leucogaster",
+        "amazilia_violiceps" to "ramosomyia_violiceps",
+        "lonchura_oryzivora" to "padda_oryzivora",
+        "corvus_caurinus" to "corvus_brachyrhynchos",
+        "empidonax_occidentalis" to "empidonax_difficilis",
+    )
+
+    /** Para poder comprobar en un test que ningun alias apunta a un id inexistente. */
+    internal val aliasTargets: Collection<String> get() = ALIASES.values
 }

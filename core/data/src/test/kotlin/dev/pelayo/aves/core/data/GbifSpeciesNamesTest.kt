@@ -91,3 +91,42 @@ class GbifSpeciesNamesTest {
         assertEquals("parus_major", GbifSpeciesNames.slug("Parus major"))
     }
 }
+
+/**
+ * Los cambios de genero entre GBIF y el catalogo (que sigue a eBird).
+ */
+class GbifSpeciesAliasTest {
+
+    @org.junit.Test
+    fun `un nombre antiguo de GBIF llega a la especie del catalogo`() {
+        // Sin esto la garcilla bueyera y la curruca zarcera desaparecian de las
+        // listas por zona y salian como excepcionales en la rareza.
+        org.junit.Assert.assertEquals("ardea_ibis", GbifSpeciesNames.toSpeciesId("Bubulcus ibis (Linnaeus, 1758)"))
+        org.junit.Assert.assertEquals("curruca_communis", GbifSpeciesNames.toSpeciesId("Sylvia communis Latham, 1787"))
+        org.junit.Assert.assertEquals("astur_gentilis", GbifSpeciesNames.toSpeciesId("Accipiter gentilis (Linnaeus, 1758)"))
+    }
+
+    @org.junit.Test
+    fun `una subespecie del nombre antiguo tambien llega`() {
+        org.junit.Assert.assertEquals(
+            "curruca_melanocephala",
+            GbifSpeciesNames.toSpeciesId("Sylvia melanocephala melanocephala (Gmelin, 1789)"),
+        )
+    }
+
+    @org.junit.Test
+    fun `lo que no ha cambiado sigue igual`() {
+        org.junit.Assert.assertEquals("turdus_merula", GbifSpeciesNames.toSpeciesId("Turdus merula Linnaeus, 1758"))
+        // Sylvia atricapilla SIGUE en Sylvia: el alias es por especie, no por genero.
+        org.junit.Assert.assertEquals("sylvia_atricapilla", GbifSpeciesNames.toSpeciesId("Sylvia atricapilla (Linnaeus, 1758)"))
+    }
+
+    @org.junit.Test
+    fun `ningun alias es una cadena de dos saltos`() {
+        // Si un destino fuera a su vez origen de otro alias, el primero se quedaria a medias.
+        val targets = GbifSpeciesNames.aliasTargets
+        for (target in targets) {
+            org.junit.Assert.assertEquals(target, GbifSpeciesNames.toSpeciesId(target.replace('_', ' ').replaceFirstChar(Char::uppercase)))
+        }
+    }
+}

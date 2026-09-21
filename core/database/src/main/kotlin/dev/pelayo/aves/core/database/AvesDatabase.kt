@@ -6,6 +6,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import dev.pelayo.aves.core.database.dao.ChecklistDao
 import dev.pelayo.aves.core.database.dao.ListeningSessionDao
 import dev.pelayo.aves.core.database.dao.ModelLabelDao
 import dev.pelayo.aves.core.database.dao.ObservationDao
@@ -15,7 +16,10 @@ import dev.pelayo.aves.core.database.entity.ListeningSessionEntity
 import dev.pelayo.aves.core.database.entity.ModelLabelEntity
 import dev.pelayo.aves.core.database.entity.ObservationCandidateEntity
 import dev.pelayo.aves.core.database.entity.ObservationEntity
+import dev.pelayo.aves.core.database.entity.PokedexPreferencesEntity
 import dev.pelayo.aves.core.database.entity.RegionCellEntity
+import dev.pelayo.aves.core.database.entity.RegionChecklistEntity
+import dev.pelayo.aves.core.database.entity.RegionChecklistSpeciesEntity
 import dev.pelayo.aves.core.database.entity.RegionMonthEntity
 import dev.pelayo.aves.core.database.entity.SpeciesEntity
 import dev.pelayo.aves.core.database.entity.SpeciesFrequencyEntity
@@ -33,6 +37,8 @@ import dev.pelayo.aves.core.database.entity.SpeciesNameEntity
  *  1. Esquema inicial.
  *  2. `species.searchName/summary/imageAttribution`, tabla
  *     `region_cell_months` e indice unico en los candidatos.
+ *  3. Listas de especies por zona (`region_checklists`,
+ *     `region_checklist_species`) y preferencias de la Pokedex.
  */
 @Database(
     entities = [
@@ -45,11 +51,15 @@ import dev.pelayo.aves.core.database.entity.SpeciesNameEntity
         RegionCellEntity::class,
         RegionMonthEntity::class,
         SpeciesFrequencyEntity::class,
+        RegionChecklistEntity::class,
+        RegionChecklistSpeciesEntity::class,
+        PokedexPreferencesEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
+        AutoMigration(from = 2, to = 3),
     ],
 )
 @TypeConverters(Converters::class)
@@ -60,6 +70,7 @@ abstract class AvesDatabase : RoomDatabase() {
     abstract fun listeningSessionDao(): ListeningSessionDao
     abstract fun observationDao(): ObservationDao
     abstract fun regionDao(): RegionDao
+    abstract fun checklistDao(): ChecklistDao
 
     companion object {
         const val NAME = "aves.db"

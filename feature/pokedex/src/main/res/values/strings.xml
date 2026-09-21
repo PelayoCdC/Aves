@@ -26,6 +26,28 @@
     <string name="pokedex_empty_hint">El amanecer es el mejor momento.</string>
     <string name="pokedex_no_results">Nada en tu colección ni en el catálogo coincide con \"%1$s\".</string>
 
+    <!-- Filtro por zona -->
+    <string name="pokedex_zone_world">Todo el mundo</string>
+    <string name="pokedex_zone_change">Cambiar de zona</string>
+    <string name="pokedex_zone_level_province">Tu provincia</string>
+    <string name="pokedex_zone_level_region">Tu región</string>
+    <string name="pokedex_zone_level_country">Tu país</string>
+    <string name="pokedex_zone_level_world">Sin filtrar por zona</string>
+    <string name="pokedex_zone_redetect">Actualizar mi zona</string>
+    <string name="pokedex_zone_detecting">Detectando tu zona…</string>
+    <string name="pokedex_show_missing">Ver las que faltan</string>
+    <string name="pokedex_zone_loading">Descargando las aves de %1$s…</string>
+    <string name="pokedex_zone_unavailable">Sin conexión: no se pudo descargar la lista de %1$s. Se enseña toda tu colección.</string>
+    <string name="pokedex_zone_retry">Reintentar</string>
+    <plurals name="pokedex_zone_hidden">
+        <item quantity="one">1 especie de tu colección no es de %2$s y no se enseña aquí</item>
+        <item quantity="other">%1$d especies de tu colección no son de %2$s y no se enseñan aquí</item>
+    </plurals>
+    <string name="pokedex_progress_in_zone">%1$s · %2$s</string>
+    <string name="pokedex_family_progress">%1$d de %2$d</string>
+    <string name="pokedex_missing_label">Sin ver</string>
+    <string name="pokedex_missing_rarity_here">Sin ver · %1$s aquí</string>
+
     <!-- Rareza -->
     <string name="pokedex_rarity_very_common">Muy común</string>
     <string name="pokedex_rarity_common">Común</string>

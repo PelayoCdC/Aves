@@ -142,6 +142,68 @@ fun LockedSpeciesCard(modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Una especie de la zona que todavia no se ha visto.
+ *
+ * A diferencia de [LockedSpeciesCard] tiene nombre y se puede tocar: es un
+ * objetivo concreto, no un hueco anonimo. Va sin relleno y en gris para que la
+ * rejilla se lea de un vistazo (lo que tienes pesa, lo que falta es contorno), y
+ * dice lo frecuente que es AQUI: "comun" es una invitacion a salir manana;
+ * "rara" es un premio.
+ */
+@Composable
+fun MissingSpeciesCard(
+    missing: MissingSpecies,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        onClick = onClick,
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = CardMinHeight)
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(12.dp),
+            ),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(12.dp)
+                .fillMaxWidth(),
+        ) {
+            Text(
+                text = missing.rarityHere?.let { stringResource(R.string.pokedex_missing_rarity_here, rarityText(it)) }
+                    ?: stringResource(R.string.pokedex_missing_label),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            Spacer(Modifier.size(8.dp))
+
+            Text(
+                text = missing.species.commonName,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = missing.species.scientificName,
+                style = ScientificNameStyle,
+                color = MaterialTheme.colorScheme.outline,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
 /** Sin datos no hay color de rareza: un gris neutro, que es lo que significa. */
 @Composable
 internal fun rarityColor(tier: RarityTier): Color =

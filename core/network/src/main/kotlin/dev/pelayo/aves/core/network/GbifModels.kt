@@ -147,3 +147,29 @@ internal fun GbifOccurrenceResponse.toNameSummary(): GbifOccurrenceSummary =
 
 internal fun GbifOccurrenceResponse.toSpeciesKeySummary(): GbifSpeciesKeySummary =
     GbifSpeciesKeySummary(total = count, speciesCounts = countsByIntKey(FACET_FIELD_SPECIES_KEY))
+
+/**
+ * Una capa de la respuesta de `GET /v1/geocode/reverse`.
+ *
+ * GBIF devuelve varias capas para el mismo punto (GADM a cuatro niveles,
+ * continente, regiones marinas...). Aqui interesan las GADM: su [id] es justo
+ * lo que acepta el filtro `gadmGid` de las busquedas de ocurrencias.
+ */
+@Serializable
+data class GbifLocation(
+    /** "ESP", "ESP.3_1", "ESP.3.1_1"... */
+    val id: String = "",
+    /** "GADM0" (pais), "GADM1" (region), "GADM2" (provincia), y otras que se ignoran. */
+    val type: String = "",
+    /** El nombre local de la zona: "Principado de Asturias". */
+    @SerialName("title") val name: String = "",
+    val isoCountryCode2Digit: String = "",
+    /** 0 si el punto cae dentro; mayor si es la zona mas cercana (mar adentro, por ejemplo). */
+    val distance: Double = 0.0,
+) {
+    companion object {
+        const val TYPE_COUNTRY = "GADM0"
+        const val TYPE_REGION = "GADM1"
+        const val TYPE_PROVINCE = "GADM2"
+    }
+}

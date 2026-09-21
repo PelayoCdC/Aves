@@ -1,6 +1,8 @@
 package dev.pelayo.aves.di
 
 import android.content.Context
+import dev.pelayo.aves.core.data.ChecklistRepository
+import dev.pelayo.aves.core.data.GbifChecklistSource
 import dev.pelayo.aves.core.data.GbifOccurrenceSource
 import dev.pelayo.aves.core.data.ObservationRepository
 import dev.pelayo.aves.core.data.RegionRepository
@@ -99,6 +101,15 @@ class AppContainer(
 
     val imageObservationRecorder: ImageObservationRecorder by lazy {
         ImageObservationRecorder(observationRepository, regionRepository, photosDirectory)
+    }
+
+    /**
+     * Las aves de tu provincia, tu region y tu pais: lo que permite que la
+     * Pokedex diga que te falta por ver AQUI y no en el planeta. Sale de GBIF,
+     * igual que la rareza, asi que vale para los dos flavors.
+     */
+    val checklistRepository: ChecklistRepository by lazy {
+        ChecklistRepository(database, GbifChecklistSource(gbifClient))
     }
 
     private val wikipediaClient: WikipediaClient by lazy { WikipediaClient() }

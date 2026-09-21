@@ -12,8 +12,10 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.delay
+import kotlinx.serialization.builtins.ListSerializer
 import java.io.Closeable
 import java.io.IOException
+import kotlin.math.round
 
 /**
  * GBIF no ha podido responder AHORA.
@@ -133,6 +135,83 @@ class GbifClient(
         url.parameter("facetLimit", 12)
     }.countsByIntKey(FACET_FIELD_MONTH)
 
+    /**
+     * Todas las especies de ave con registros en una zona administrativa: la
+     * "lista de la provincia" o "del pais".
+     *
+     * Es lo que alimenta el filtro por zona de la Pokedex. A diferencia de
+     * [occurrencesInCell] aqui NO hay tope de 500: un pais tiene mas especies
+     * que eso, asi que se pagina la faceta hasta agotarla.
+     *
+     * @param countryCode ISO de dos letras ("ES"), o null.
+     * @param gadmGid identificador GADM de una region o provincia
+     *   ("ESP.3_1", "ESP.3.1_1"), o null. Tiene prioridad sobre el pais.
+     * @param minCount registros minimos para que una especie cuente. Con 1, la
+     *   lista de un pais se llena de escapes de jaula y errores de
+     *   identificacion de un solo registro.
+     */
+    suspend fun speciesInRegion(
+        countryCode: String? = null,
+        gadmGid: String? = null,
+        minCount: Int = DEFAULT_REGION_MIN_COUNT,
+    ): GbifOccurrenceSummary {
+        require(countryCode != null || gadmGid != null) { "Hace falta un pais o una region" }
+
+        val counts = LinkedHashMap<String, Long>()
+        var total = 0L
+        var offset = 0
+        while (offset < MAX_REGION_FACETS) {
+            val page = request { url ->
+                url.parameter("taxonKey", GBIF_TAXON_KEY_AVES)
+                if (gadmGid != null) url.parameter("gadmGid", gadmGid) else url.parameter("country", countryCode)
+                url.parameter("limit", 0)
+                url.parameter("facet", FACET_PARAM_SCIENTIFIC_NAME)
+                url.parameter("facetLimit", REGION_FACET_PAGE)
+                url.parameter("facetOffset", offset)
+                url.parameter("facetMincount", minCount)
+            }
+            total = page.count
+            val names = page.countsByName(FACET_FIELD_SCIENTIFIC_NAME)
+            counts.putAll(names)
+            if (names.size < REGION_FACET_PAGE) break
+            offset += REGION_FACET_PAGE
+        }
+        return GbifOccurrenceSummary(total = total, speciesCounts = counts)
+    }
+
+    /**
+     * A que pais, region y provincia pertenece un punto, segun GADM.
+     *
+     * Devuelve los identificadores que despues entiende [speciesInRegion], que
+     * es lo que hace util esta llamada frente al geocodificador del sistema: no
+     * hay que traducir "Asturias" a nada.
+     *
+     * Las coordenadas se redondean a un decimal (~10 km) antes de salir del
+     * movil: la app promete que la ubicacion es aproximada por diseno, y para
+     * saber la provincia sobra. A cambio, a menos de unos kilometros de una
+     * linde puede salir la provincia vecina; el menu de zonas deja corregirlo
+     * subiendo a la region o al pais.
+     */
+    suspend fun reverseGeocode(latitude: Double, longitude: Double): List<GbifLocation> {
+        val response = try {
+            client.get(REVERSE_GEOCODE_URL) {
+                parameter("lat", roundCoordinate(latitude))
+                parameter("lng", roundCoordinate(longitude))
+            }
+        } catch (e: IOException) {
+            throw GbifUnavailableException("No se pudo contactar con GBIF", e)
+        }
+        if (!response.status.isSuccess()) {
+            throw GbifUnavailableException("GBIF respondio ${response.status} al geocodificar")
+        }
+        return GbifJson.decodeFromString(
+            ListSerializer(GbifLocation.serializer()),
+            response.bodyAsText(),
+        )
+    }
+
+    private fun roundCoordinate(value: Double): Double = round(value * 10.0) / 10.0
+
     private suspend fun search(
         latitude: Double,
         longitude: Double,
@@ -232,6 +311,16 @@ class GbifClient(
 
     companion object {
         const val OCCURRENCE_SEARCH_URL = "https://api.gbif.org/v1/occurrence/search"
+        const val REVERSE_GEOCODE_URL = "https://api.gbif.org/v1/geocode/reverse"
+
+        /** Registros minimos para que una especie entre en la lista de una zona. */
+        const val DEFAULT_REGION_MIN_COUNT = 5
+
+        /** Tamano de pagina de la faceta al listar una zona. */
+        private const val REGION_FACET_PAGE = 1000
+
+        /** Tope de seguridad: ningun pais tiene 5.000 nombres de ave distintos con 5 registros. */
+        private const val MAX_REGION_FACETS = 5000
 
         /** Ojo: el parametro va en camelCase, la respuesta lo rotula en mayusculas. */
         const val FACET_PARAM_SCIENTIFIC_NAME = "scientificName"

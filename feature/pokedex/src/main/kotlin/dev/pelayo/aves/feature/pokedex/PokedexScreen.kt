@@ -16,19 +16,29 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
@@ -39,6 +49,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.pelayo.aves.core.data.PokedexZone
+import dev.pelayo.aves.core.data.ZoneLevel
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
 import dev.pelayo.aves.core.model.RarityTier
@@ -69,6 +81,10 @@ fun PokedexScreen(
         onQueryChange = viewModel::onQueryChange,
         onSpeciesClick = onSpeciesClick,
         onOpenHistory = onOpenHistory,
+        onZoneLevelChange = viewModel::onZoneLevelChange,
+        onShowMissingChange = viewModel::onShowMissingChange,
+        onRedetectZone = viewModel::redetectZone,
+        onRetryChecklist = viewModel::retryChecklist,
         modifier = modifier,
     )
 }
@@ -83,12 +99,31 @@ internal fun PokedexContent(
     onSpeciesClick: (String) -> Unit,
     modifier: Modifier = Modifier,
     onOpenHistory: (() -> Unit)? = null,
+    onZoneLevelChange: (ZoneLevel) -> Unit = {},
+    onShowMissingChange: (Boolean) -> Unit = {},
+    onRedetectZone: () -> Unit = {},
+    onRetryChecklist: () -> Unit = {},
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         ProgressHeader(
             progress = state.progress,
+            zone = state.zone,
             onOpenHistory = onOpenHistory,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        )
+
+        ZoneFilterRow(
+            state = state,
+            onZoneLevelChange = onZoneLevelChange,
+            onShowMissingChange = onShowMissingChange,
+            onRedetectZone = onRedetectZone,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+
+        ZoneStatusLine(
+            state = state,
+            onRetry = onRetryChecklist,
+            modifier = Modifier.padding(horizontal = 16.dp),
         )
 
         // La busqueda queda fija fuera de la rejilla: si se va con el scroll,
@@ -114,7 +149,11 @@ internal fun PokedexContent(
         Spacer(Modifier.size(12.dp))
 
         when {
-            !state.hasAnyCollected && !state.isLoading && state.catalogMatches.isEmpty() -> EmptyCollection(
+            // El vacio inicial solo cuando de verdad no hay nada que pintar: con
+            // "ver las que faltan" la rejilla tiene contenido aunque la
+            // coleccion este a cero, y eso invita mas que un parrafo.
+            state.groups.isEmpty() && !state.hasAnyCollected && !state.isLoading &&
+                state.catalogMatches.isEmpty() && state.query.isEmpty() -> EmptyCollection(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 32.dp),
@@ -166,7 +205,11 @@ private fun CollectionGrid(
                 span = { GridItemSpan(maxLineSpan) },
                 contentType = "cabecera",
             ) {
-                FamilyHeader(family = group.family, count = group.members.size)
+                FamilyHeader(
+                    family = group.family,
+                    count = group.size,
+                    collected = group.members.size.takeIf { group.missing.isNotEmpty() },
+                )
             }
 
             items(
@@ -177,6 +220,19 @@ private fun CollectionGrid(
                 SpeciesCard(
                     entry = entry,
                     onClick = { onSpeciesClick(entry.species.speciesId) },
+                )
+            }
+
+            // Lo que hay en la zona y aun no se ha visto, dentro de su familia:
+            // asi se ve de un vistazo que ramas del arbol estan a medias.
+            items(
+                items = group.missing,
+                key = { "falta-${it.species.speciesId}" },
+                contentType = { "falta" },
+            ) { missing ->
+                MissingSpeciesCard(
+                    missing = missing,
+                    onClick = { onSpeciesClick(missing.species.speciesId) },
                 )
             }
         }
@@ -206,7 +262,9 @@ private fun CollectionGrid(
         // Los huecos solo tienen sentido viendo la coleccion entera: al filtrar,
         // "lo que falta" no significa nada.
         val remaining = state.progress.remaining
-        if (state.query.isEmpty() && remaining > 0) {
+        // Y solo si no se estan ensenando ya las que faltan de verdad: entonces
+        // los huecos anonimos sobran.
+        if (state.query.isEmpty() && remaining > 0 && !state.showMissing) {
             item(
                 key = "cabecera-pendientes",
                 span = { GridItemSpan(maxLineSpan) },
@@ -228,9 +286,154 @@ private fun CollectionGrid(
     }
 }
 
+/** El nombre de una zona tal y como se le ensena al usuario. El mundo no trae nombre propio. */
+@Composable
+private fun zoneDisplayName(level: ZoneLevel, name: String): String =
+    if (level == ZoneLevel.WORLD || name.isBlank()) stringResource(R.string.pokedex_zone_world) else name
+
+/**
+ * Por donde se filtra y si se ensenan las que faltan.
+ *
+ * Dos chips y no un dialogo de filtros: son las dos unicas decisiones, y las
+ * dos se cambian a menudo (mirar la provincia, abrir al pais, volver).
+ */
+@Composable
+private fun ZoneFilterRow(
+    state: PokedexUiState,
+    onZoneLevelChange: (ZoneLevel) -> Unit,
+    onShowMissingChange: (Boolean) -> Unit,
+    onRedetectZone: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box {
+            FilterChip(
+                selected = state.zone.level != ZoneLevel.WORLD,
+                onClick = { menuOpen = true },
+                label = {
+                    Text(
+                        text = zoneDisplayName(state.zone.level, state.zone.name),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                leadingIcon = { Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                trailingIcon = {
+                    Icon(
+                        Icons.Filled.ArrowDropDown,
+                        contentDescription = stringResource(R.string.pokedex_zone_change),
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+            )
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                state.zoneOptions.forEach { option ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(zoneDisplayName(option.level, option.name))
+                                Text(
+                                    text = zoneLevelLabel(option.level),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                        onClick = {
+                            menuOpen = false
+                            onZoneLevelChange(option.level)
+                        },
+                    )
+                }
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            stringResource(
+                                if (state.isDetectingZone) R.string.pokedex_zone_detecting else R.string.pokedex_zone_redetect,
+                            ),
+                        )
+                    },
+                    enabled = !state.isDetectingZone,
+                    onClick = {
+                        menuOpen = false
+                        onRedetectZone()
+                    },
+                )
+            }
+        }
+
+        FilterChip(
+            selected = state.showMissing,
+            onClick = { onShowMissingChange(!state.showMissing) },
+            label = { Text(stringResource(R.string.pokedex_show_missing)) },
+        )
+    }
+}
+
+@Composable
+private fun zoneLevelLabel(level: ZoneLevel): String = stringResource(
+    when (level) {
+        ZoneLevel.PROVINCE -> R.string.pokedex_zone_level_province
+        ZoneLevel.REGION -> R.string.pokedex_zone_level_region
+        ZoneLevel.COUNTRY -> R.string.pokedex_zone_level_country
+        ZoneLevel.WORLD -> R.string.pokedex_zone_level_world
+    },
+)
+
+/**
+ * Lo que el filtro esta haciendo y no se ve: que la lista se esta bajando, que
+ * no se pudo, o que ha dejado fuera parte de la coleccion. Sin esta linea, el
+ * ave que alguien se trajo de un viaje "desaparece" y parece un fallo.
+ */
+@Composable
+private fun ZoneStatusLine(state: PokedexUiState, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    val zoneName = zoneDisplayName(state.zone.level, state.zone.name)
+    when {
+        state.zoneStatus == ZoneStatus.LOADING -> Text(
+            text = stringResource(R.string.pokedex_zone_loading, zoneName),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = modifier.padding(top = 4.dp),
+        )
+
+        state.zoneStatus == ZoneStatus.UNAVAILABLE -> Row(
+            modifier = modifier,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.pokedex_zone_unavailable, zoneName),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.pokedex_zone_retry)) }
+        }
+
+        state.hiddenOutsideZone > 0 -> Text(
+            text = pluralStringResource(
+                R.plurals.pokedex_zone_hidden,
+                state.hiddenOutsideZone,
+                state.hiddenOutsideZone,
+                zoneName,
+            ),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = modifier.padding(top = 4.dp),
+        )
+    }
+}
+
 @Composable
 private fun ProgressHeader(
     progress: CollectionProgress,
+    zone: PokedexZone,
     onOpenHistory: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
@@ -241,7 +444,11 @@ private fun ProgressHeader(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = progress.label,
+                text = if (zone.level == ZoneLevel.WORLD) {
+                    progress.label
+                } else {
+                    stringResource(R.string.pokedex_progress_in_zone, progress.label, zone.name)
+                },
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f),
             )
@@ -310,8 +517,17 @@ private fun Stat(value: Int, label: String) {
     }
 }
 
+/**
+ * @param collected cuantas de las [count] se tienen. Null cuando no se estan
+ *   ensenando las que faltan y el recuento a secas ya lo dice todo.
+ */
 @Composable
-private fun FamilyHeader(family: String, count: Int, modifier: Modifier = Modifier) {
+private fun FamilyHeader(
+    family: String,
+    count: Int,
+    modifier: Modifier = Modifier,
+    collected: Int? = null,
+) {
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = family,
@@ -319,7 +535,11 @@ private fun FamilyHeader(family: String, count: Int, modifier: Modifier = Modifi
             color = MaterialTheme.colorScheme.primary,
         )
         Text(
-            text = pluralStringResource(R.plurals.pokedex_species_count, count, formatThousands(count)),
+            text = if (collected != null) {
+                stringResource(R.string.pokedex_family_progress, collected, count)
+            } else {
+                pluralStringResource(R.plurals.pokedex_species_count, count, formatThousands(count))
+            },
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
