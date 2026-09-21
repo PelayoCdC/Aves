@@ -211,6 +211,7 @@ fun AvesNavHost(
                         store = container.settingsStore,
                         observationRepository = container.observationRepository,
                         clipsDirectory = container.clipsDirectory,
+                        photosDirectory = container.photosDirectory,
                     )
                 },
                 // Los descriptores salen del flavor compilado: :app es el unico

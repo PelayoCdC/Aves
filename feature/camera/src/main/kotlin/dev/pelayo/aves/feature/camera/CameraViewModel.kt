@@ -55,14 +55,17 @@ data class ImageCandidate(
  * Lo que sale de la pantalla cuando el usuario elige un candidato: todo lo que
  * hace falta para guardar la observacion, incluida la foto que la justifica.
  *
- * @param photo copia propia de la imagen que vio el modelo (224 px). Quien la
- *   recibe es su dueno.
+ * @param photo copia propia de la imagen que vio el modelo (224 px): la
+ *   miniatura. Quien la recibe es su dueno.
+ * @param fullPhoto el encuadre entero, para poder mirar la foto despues. Nadie
+ *   lo recicla a mano, asi que se puede guardar sin prisa.
  */
 data class ImageIdentification(
     val candidate: ImageCandidate,
     val modelId: String,
     val context: ObservationContext,
     val photo: Bitmap?,
+    val fullPhoto: Bitmap? = null,
 )
 
 data class CameraUiState(
@@ -141,6 +144,15 @@ class CameraViewModel(
     private var lastContext: ObservationContext? = null
 
     /**
+     * El encuadre entero de la ultima foto, para guardarlo junto a la miniatura.
+     * A diferencia de [lastInput], este NO se recicla a mano: el de la galeria
+     * lo esta pintando Compose, y el de la camara puede estar comprimiendose a
+     * disco cuando llega el siguiente disparo. Son unos MB y el recolector da
+     * cuenta de ellos.
+     */
+    private var lastFullPhoto: Bitmap? = null
+
+    /**
      * Carga el modelo por adelantado.
      *
      * Se llama al conceder el permiso, no al pulsar el disparador: el usuario
@@ -175,8 +187,10 @@ class CameraViewModel(
      * TOMA LA PROPIEDAD de [bitmap]: lo conserva hasta la siguiente foto o
      * hasta que muera la pantalla, por si el usuario elige un candidato y hay
      * que guardarlo junto a la observacion. A este tamano son unos 200 KB.
+     *
+     * @param fullPhoto el encuadre entero del que salio [bitmap], si lo hay.
      */
-    fun classify(bitmap: Bitmap, context: ObservationContext) {
+    fun classify(bitmap: Bitmap, context: ObservationContext, fullPhoto: Bitmap? = null) {
         // Un disparo a la vez. El boton se deshabilita mientras tanto, pero un
         // doble toque rapido llegaria igual hasta aqui.
         if (_uiState.value.isClassifying) {
@@ -193,6 +207,7 @@ class CameraViewModel(
         lastInput?.recycle()
         lastInput = bitmap
         lastContext = context
+        lastFullPhoto = fullPhoto
 
         _uiState.update {
             it.copy(
@@ -264,7 +279,7 @@ class CameraViewModel(
         // pintando todavia el fotograma anterior, y dibujar un bitmap reciclado
         // revienta la app. Son unos pocos MB y el recolector da cuenta de ellos.
         _uiState.update { it.copy(pickedImage = display, hasResult = false) }
-        classify(modelInput, context)
+        classify(modelInput, context, fullPhoto = display)
     }
 
     /**
@@ -282,6 +297,7 @@ class CameraViewModel(
             modelId = _uiState.value.modelId ?: UNKNOWN_MODEL_ID,
             context = lastContext ?: ObservationContext(epochMillis = System.currentTimeMillis()),
             photo = photo,
+            fullPhoto = lastFullPhoto?.takeIf { !it.isRecycled },
         )
     }
 
@@ -372,6 +388,7 @@ class CameraViewModel(
         warmUpJob = null
         lastInput?.recycle()
         lastInput = null
+        lastFullPhoto = null
         // Sin esto se queda vivo el modelo mapeado en memoria.
         classifier?.close()
         classifier = null

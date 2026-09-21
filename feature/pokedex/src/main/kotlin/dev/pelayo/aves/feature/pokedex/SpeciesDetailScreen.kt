@@ -3,6 +3,7 @@ package dev.pelayo.aves.feature.pokedex
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
+import dev.pelayo.aves.core.common.PhotoStorage
 import dev.pelayo.aves.core.data.ObservationRepository
 import dev.pelayo.aves.core.data.SpeciesEncyclopedia
 import dev.pelayo.aves.core.data.SpeciesRepository
@@ -67,12 +70,14 @@ import dev.pelayo.aves.core.model.Coordinates
 import dev.pelayo.aves.core.model.ObservationSource
 import dev.pelayo.aves.core.model.RarityTier
 import dev.pelayo.aves.core.model.Species
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
@@ -92,6 +97,13 @@ data class SpeciesDetailUiState(
         get() = sightings.maxByOrNull { it.rarity.level }?.rarity ?: RarityTier.UNKNOWN
 
     val isCollected: Boolean get() = sightings.isNotEmpty()
+
+    /** Cuantas veces se ha visto, fotografiado y oido. */
+    val sources: CaptureSources get() = CaptureSources.of(sightings)
+
+    /** Los avistamientos con foto, en el mismo orden: lo que recorre el visor. */
+    val photos: List<Sighting>
+        get() = sightings.filter { it.source == ObservationSource.IMAGE && it.mediaPath != null }
 }
 
 /**
@@ -176,8 +188,22 @@ class SpeciesDetailViewModel(
         viewModelScope.launch { observationRepository.updateNotes(sightingId, notes) }
     }
 
+    /**
+     * Borra el avistamiento Y lo que capturo. Antes solo se borraba la fila y la
+     * foto o el recorte se quedaban en disco para siempre, sin nada que los
+     * ensenara ni los pudiera borrar.
+     */
     fun deleteSighting(sightingId: Long) {
-        viewModelScope.launch { observationRepository.delete(sightingId) }
+        val sighting = uiState.value.sightings.firstOrNull { it.id == sightingId }
+        viewModelScope.launch {
+            observationRepository.delete(sightingId)
+            val path = sighting?.mediaPath ?: return@launch
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    if (sighting.source == ObservationSource.IMAGE) PhotoStorage.delete(path) else File(path).delete()
+                }
+            }
+        }
     }
 
     private companion object {
@@ -224,6 +250,25 @@ internal fun SpeciesDetailContent(
     var showManualDialog by remember { mutableStateOf(false) }
     var editingNotes by remember { mutableStateOf<Sighting?>(null) }
     var deleting by remember { mutableStateOf<Sighting?>(null) }
+
+    // El filtro por origen. Si se borra el ultimo avistamiento del tipo elegido
+    // se vuelve a "todos": un filtro sobre nada dejaria la lista vacia sin que
+    // se entendiera por que.
+    var sourceFilter by rememberSaveable { mutableStateOf<ObservationSource?>(null) }
+    val sources = state.sources
+    val activeFilter = sourceFilter?.takeIf(sources::has)
+    val visibleSightings = remember(state.sightings, activeFilter) {
+        if (activeFilter == null) state.sightings else state.sightings.filter { it.source == activeFilter }
+    }
+
+    // El id y no el indice: si se borra una foto con el visor abierto, el indice
+    // apuntaria a otra.
+    // Solo las que siguen en disco: una foto perdida no tiene nada que ensenar
+    // en el visor, y su fila ya dice que falta.
+    val photos = remember(state.sightings) {
+        state.photos.filter { PhotoStorage.forThumbnail(it.mediaPath.orEmpty()) != null }
+    }
+    var viewingPhotoId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     if (species == null) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -273,7 +318,29 @@ internal fun SpeciesDetailContent(
             }
         }
 
-        items(state.sightings, key = { it.id }) { sighting ->
+        if (photos.isNotEmpty()) {
+            item(key = "fotos") {
+                PhotoStrip(
+                    photos = photos,
+                    onOpen = { viewingPhotoId = it.id },
+                )
+            }
+        }
+
+        item(key = "filtros") {
+            if (state.sightings.isEmpty()) {
+                // Las tres casillas apagadas: lo que hay por conseguir.
+                SourceIcons(sources = sources, iconSize = 22.dp)
+            } else {
+                SourceFilterRow(
+                    sources = sources,
+                    selected = activeFilter,
+                    onSelect = { sourceFilter = it },
+                )
+            }
+        }
+
+        items(visibleSightings, key = { it.id }) { sighting ->
             // Comprobar si el recorte sigue en disco toca el sistema de
             // ficheros: se hace una vez por avistamiento, no en cada
             // recomposicion de la lista.
@@ -286,10 +353,21 @@ internal fun SpeciesDetailContent(
                 canPlayClip = canPlay,
                 isPlaying = clipPlayer.isPlaying(sighting.id),
                 onTogglePlay = { clipPlayer.toggle(sighting.id, sighting.mediaPath) },
+                onOpenPhoto = { viewingPhotoId = sighting.id },
                 onEditNotes = { editingNotes = sighting },
                 onDelete = { deleting = sighting },
             )
         }
+    }
+
+    val viewingIndex = photos.indexOfFirst { it.id == viewingPhotoId }
+    if (viewingIndex >= 0) {
+        PhotoViewer(
+            photos = photos,
+            startIndex = viewingIndex,
+            title = species.commonName,
+            onDismiss = { viewingPhotoId = null },
+        )
     }
 
     if (showManualDialog) {
@@ -479,6 +557,7 @@ private fun SightingRow(
     canPlayClip: Boolean = false,
     isPlaying: Boolean = false,
     onTogglePlay: () -> Unit = {},
+    onOpenPhoto: () -> Unit = {},
     onEditNotes: () -> Unit = {},
     onDelete: () -> Unit = {},
 ) {
@@ -488,6 +567,16 @@ private fun SightingRow(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // El mismo dibujo que en la rejilla: se ve de un vistazo si esta
+                // fila es una vista, una foto o un canto. El texto de debajo ya
+                // lo dice con palabras, asi que el icono va mudo.
+                Icon(
+                    imageVector = sourceIcon(sighting.source),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
                         text = formatSightingDate(sighting.timestamp),
@@ -530,14 +619,27 @@ private fun SightingRow(
 
             if (sighting.mediaPath != null && sighting.source == ObservationSource.IMAGE) {
                 Spacer(Modifier.size(8.dp))
-                AsyncImage(
-                    model = File(sighting.mediaPath),
-                    contentDescription = stringResource(R.string.pokedex_detail_photo),
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(96.dp)
-                        .clip(RoundedCornerShape(8.dp)),
-                )
+                // Tocar el sistema de ficheros una vez por foto, no por recomposicion.
+                val thumbnail = remember(sighting.mediaPath) { PhotoStorage.forThumbnail(sighting.mediaPath) }
+                if (thumbnail != null) {
+                    AsyncImage(
+                        model = thumbnail,
+                        contentDescription = stringResource(R.string.pokedex_detail_open_photo),
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(96.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onOpenPhoto),
+                    )
+                } else {
+                    // Igual que con los recortes de audio: saber que hubo una
+                    // foto es informacion aunque ya no se pueda ver.
+                    Text(
+                        text = stringResource(R.string.pokedex_detail_photo_missing),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             sighting.notes?.takeIf { it.isNotBlank() }?.let { notes ->

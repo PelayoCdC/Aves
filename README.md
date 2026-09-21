@@ -296,6 +296,23 @@ pide ningún permiso**. Se respeta la orientación EXIF y la fecha es la de la
 foto, no la de hoy. Como una foto de la galería puede ser de cualquier sitio,
 va sin ubicación y sin prior de contexto. Se analiza el cuadrado central.
 
+### Vista, fotografiada, oída
+
+Cada tarjeta de la colección lleva tres iconos fijos (`AvesIcons`): ojo para lo
+anotado a mano, cámara para lo identificado por foto y clave de sol para lo
+detectado por canto. El que no se tiene **se apaga en vez de desaparecer**: el
+hueco es el mensaje. Salen de `CaptureSources`, que cuenta los avistamientos
+confirmados por origen. En la ficha, los mismos tres son filtros de la lista
+("Fotos · 2", "Cantos · 14"), las fotos tienen su tira y un visor a pantalla
+completa con zoom, y cada canto se reproduce desde su fila.
+
+La foto se guarda en dos tamaños (`PhotoStorage`): la miniatura de 224 px que
+vio el modelo, que es la ruta que anota la observación, y en `photos/full/` el
+encuadre entero a 1.600 px para mirarla. La entera se localiza por convención,
+sin columna nueva: una observación antigua o restaurada de una copia enseña su
+miniatura en vez de un hueco. Borrar un avistamiento borra también su foto o su
+recorte.
+
 ---
 
 ## Ajustes que hacen algo
@@ -309,10 +326,10 @@ Los valores de fábrica son los del motor (0,5 / 0,35 / 1 h).
 
 ## Copia de seguridad
 
-`clips/` queda fuera de la copia en la nube (`res/xml/backup_rules.xml` y
+`clips/` y `photos/full/` quedan fuera de la copia en la nube (`res/xml/backup_rules.xml` y
 `data_extraction_rules.xml`): Auto Backup tiene una cuota de 25 MB y con los
 recortes dentro fallaba **entera**, colección incluida. La base de datos, las
-fotos (224 px) y los ajustes caben de sobra. Los modelos copiados a disco viven
+miniaturas de las fotos (224 px, ~15 KB) y los ajustes caben de sobra. Los modelos copiados a disco viven
 en `noBackupFilesDir`.
 
 ---
@@ -365,6 +382,10 @@ Identificación por canto mediante **BirdNET** (Stefan Kahl, Connor Wood,
 Maximilian Eibl, Holger Klinck) y **BirdNET+**, K. Lisa Yang Center for
 Conservation Bioacoustics, Cornell Lab of Ornithology. Identificación por
 imagen con **Google AIY Vision Classifier birds_V1**.
+
+El icono de la clave de sol es `music-clef-treble` de
+[Material Design Icons](https://pictogrammers.com/library/mdi/) (Pictogrammers,
+Apache 2.0).
 
 Los parámetros de captura de audio se contrastaron con
 [whoBIRD](https://github.com/woheller69/whoBIRD) (GPLv3), que resuelve el mismo

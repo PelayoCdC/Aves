@@ -37,12 +37,50 @@ data class Sighting(
     val longitude: Double? = null,
 )
 
+/**
+ * De que maneras se ha conseguido una especie: vista, fotografiada, oida.
+ *
+ * Son tres logros distintos y asi se ensenan. Haber oido un carabo no es haberlo
+ * visto, y quien colecciona quiere saber cual de las tres casillas le falta. Se
+ * cuentan (y no solo se marcan) porque la ficha ensena cuantas hay de cada una.
+ */
+data class CaptureSources(
+    /** Avistamientos anotados a mano: "lo he visto". */
+    val seen: Int = 0,
+    /** Identificaciones por foto, de la camara o de la galeria. */
+    val photographed: Int = 0,
+    /** Detecciones por canto confirmadas. */
+    val heard: Int = 0,
+) {
+    fun count(source: ObservationSource): Int = when (source) {
+        ObservationSource.MANUAL -> seen
+        ObservationSource.IMAGE -> photographed
+        ObservationSource.AUDIO -> heard
+    }
+
+    fun has(source: ObservationSource): Boolean = count(source) > 0
+
+    companion object {
+        /** Ninguna: lo que tiene una especie que aun no esta en la coleccion. */
+        val None = CaptureSources()
+
+        fun of(sightings: List<Sighting>): CaptureSources = CaptureSources(
+            seen = sightings.count { it.source == ObservationSource.MANUAL },
+            photographed = sightings.count { it.source == ObservationSource.IMAGE },
+            heard = sightings.count { it.source == ObservationSource.AUDIO },
+        )
+    }
+}
+
 /** Una especie ya capturada, con todas las veces que se ha registrado. */
 data class CollectedSpecies(
     val species: Species,
     /** Ordenados del mas reciente al mas antiguo. */
     val sightings: List<Sighting>,
 ) {
+    /** Se calcula una vez: la rejilla lo pide en cada tarjeta y en cada recomposicion. */
+    val sources: CaptureSources by lazy { CaptureSources.of(sightings) }
+
     /**
      * El mejor tier alcanzado, no el ultimo.
      *

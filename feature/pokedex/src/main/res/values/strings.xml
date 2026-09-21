@@ -92,6 +92,22 @@
     <string name="pokedex_source_image">Foto</string>
     <string name="pokedex_source_manual">Anotado a mano</string>
 
+    <!-- Cómo se ha conseguido: ojo, cámara y clave de sol -->
+    <string name="pokedex_source_seen">Vista</string>
+    <string name="pokedex_source_photographed">Fotografiada</string>
+    <string name="pokedex_source_heard">Oída</string>
+    <string name="pokedex_sources_none">Todavía sin ver, fotografiar ni oír</string>
+    <string name="pokedex_sources_joined">%1$s y %2$s</string>
+    <string name="pokedex_filter_all">Todos</string>
+    <string name="pokedex_filter_seen">Vistas · %1$d</string>
+    <string name="pokedex_filter_photos">Fotos · %1$d</string>
+    <string name="pokedex_filter_recordings">Cantos · %1$d</string>
+    <string name="pokedex_detail_photos_title">Tus fotos</string>
+    <string name="pokedex_detail_open_photo">Ver la foto a pantalla completa</string>
+    <string name="pokedex_detail_photo_missing">La foto ya no está en el dispositivo</string>
+    <string name="pokedex_viewer_close">Cerrar</string>
+    <string name="pokedex_viewer_position">%1$d de %2$d</string>
+
     <!-- Historial -->
     <string name="pokedex_sessions_title">Historial de escuchas</string>
     <string name="pokedex_sessions_empty">Aquí aparecerá cada escucha que haya detectado algo.</string>

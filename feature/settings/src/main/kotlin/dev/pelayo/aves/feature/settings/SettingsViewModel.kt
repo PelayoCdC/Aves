@@ -40,6 +40,8 @@ class SettingsViewModel(
     observationRepository: ObservationRepository? = null,
     /** Carpeta de recortes. Null desactiva el contador de tamaño. */
     private val clipsDirectory: File? = null,
+    /** Carpeta de fotos: desde que se guardan a tamano completo, tambien pesan. */
+    private val photosDirectory: File? = null,
 ) : ViewModel() {
 
     private val collectionBytes = MutableStateFlow<Long?>(null)
@@ -81,24 +83,25 @@ class SettingsViewModel(
     fun setListeningCutoff(minutes: Int) = edit { it.copy(listeningCutoffMinutes = minutes) }
 
     /**
-     * Recorre la carpeta de recortes.
+     * Recorre las carpetas de recortes y de fotos.
      *
      * Se mide bajo peticion y no de forma continua: es E/S sobre potencialmente
      * cientos de ficheros y el dato solo cambia cuando el usuario ha estado
      * escuchando, no mientras mira los ajustes.
      */
     fun refreshCollectionSize() {
-        val directory = clipsDirectory ?: return
+        val directories = listOfNotNull(clipsDirectory, photosDirectory)
+        if (directories.isEmpty()) return
         viewModelScope.launch {
             val measured = withContext(Dispatchers.IO) {
                 try {
-                    directorySizeBytes(directory)
+                    directories.sumOf(::directorySizeBytes)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: SecurityException) {
                     // Un contador es informativo: que falle no puede impedir
                     // abrir los ajustes.
-                    Log.w(TAG, "No se pudo medir la carpeta de recortes", e)
+                    Log.w(TAG, "No se pudo medir lo que ocupa la coleccion", e)
                     null
                 }
             }

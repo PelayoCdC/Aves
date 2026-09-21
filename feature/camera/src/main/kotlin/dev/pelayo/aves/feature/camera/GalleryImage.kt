@@ -26,8 +26,65 @@ internal class GalleryImage(
     val takenAtMillis: Long?,
 )
 
+/**
+ * Una foto recien disparada, en los dos mismos tamanos que [GalleryImage].
+ *
+ * Antes la camara solo producia el recorte del modelo y eso era lo que se
+ * guardaba: la "foto" de un avistamiento eran 224 pixeles de lado, que valen
+ * para una miniatura pero no para mirarla.
+ *
+ * @param display el encuadre entero, derecho. Es lo que se guarda para verla.
+ * @param modelInput el recorte cuadrado central a la resolucion del modelo.
+ */
+internal class CapturedPhoto(
+    val display: Bitmap,
+    val modelInput: Bitmap,
+)
+
 /** Lado largo maximo de la imagen que se ensena. Mas no se ve y si se paga en memoria. */
 private const val DISPLAY_TARGET_PX = 1280
+
+/**
+ * Decodifica el JPEG de la camara.
+ *
+ * La foto sale a doce megapixeles: entera serian ~48 MB por disparo, asi que se
+ * submuestrea al decodificar. Se gira la imagen ENTERA (y no solo el recorte,
+ * como cuando solo importaba el modelo) porque ahora tambien se guarda para
+ * verla; a este tamano son unos milisegundos.
+ *
+ * `rotationDegrees` no es opcional: dice como estaba sujeto el telefono, e
+ * ignorarlo le entrega al modelo un ave tumbada, que no da error ninguno: solo
+ * devuelve peores candidatos, en silencio, para siempre.
+ */
+internal fun decodeCapturedPhoto(jpeg: ByteArray, rotationDegrees: Int, inputSize: Int): CapturedPhoto {
+    // Primera pasada solo a la cabecera: dice el tamano sin reservar memoria.
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, bounds)
+
+    val options = BitmapFactory.Options().apply {
+        inSampleSize = if (bounds.outWidth > 0 && bounds.outHeight > 0) {
+            val longSide = maxOf(bounds.outWidth, bounds.outHeight)
+            inSampleSizeFor(width = longSide, height = longSide, targetSize = DISPLAY_TARGET_PX)
+        } else {
+            // Si la cabecera no se dejo leer, mejor decodificar entero y que
+            // falle por memoria que descartar una foto que quiza si valia.
+            1
+        }
+    }
+    val decoded = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, options)
+        ?: error("La camara devolvio una imagen que no se pudo decodificar")
+
+    val display = upright(decoded, normalizeRotationDegrees(rotationDegrees))
+    return CapturedPhoto(display = display, modelInput = squareModelInput(display, inputSize))
+}
+
+/** Endereza [source] y lo recicla si hizo falta crear otro. */
+private fun upright(source: Bitmap, rotationDegrees: Int): Bitmap {
+    if (!isRotationNeeded(rotationDegrees)) return source
+    val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+    return Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+        .also { if (it !== source) source.recycle() }
+}
 
 /**
  * Carga una foto de la galeria.
@@ -68,13 +125,7 @@ internal suspend fun Context.loadGalleryImage(uri: Uri, inputSize: Int): Gallery
                 ?: ExifInterface.ORIENTATION_NORMAL,
         )
 
-        val display = if (isRotationNeeded(rotation)) {
-            val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
-            Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
-                .also { if (it !== decoded) decoded.recycle() }
-        } else {
-            decoded
-        }
+        val display = upright(decoded, rotation)
 
         GalleryImage(
             display = display,

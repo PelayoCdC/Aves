@@ -21,10 +21,10 @@
 
     <string name="settings_data_collected_title">Qué datos se recogen</string>
     <string name="settings_fact_microphone">El micrófono solo graba mientras la escucha está en marcha, y el audio se analiza dentro del propio móvil, con el modelo que viaja en la app. No se sube a ningún servidor.</string>
-    <string name="settings_fact_clips">De cada detección se guarda un recorte de unos segundos en el almacenamiento privado de la app, para que puedas revisarla después. Ninguna otra aplicación puede leerlo.</string>
+    <string name="settings_fact_clips">De cada detección se guarda un recorte de unos segundos, y de cada identificación por foto la foto, en el almacenamiento privado de la app, para que puedas revisarlos después desde la ficha de la especie. Ninguna otra aplicación puede leerlos.</string>
     <string name="settings_fact_location">La ubicación es aproximada por diseño: se pide el permiso de precisión gruesa y además se redondea a una celda de unos 40 x 20 km.</string>
     <string name="settings_fact_network">Lo único que sale del móvil son consultas a GBIF con esa celda aproximada y el mes (y, para saber de qué provincia enseñarte las aves en la colección, tu posición redondeada a unos 10 km), y a Wikipedia con el nombre científico de la especie cuya ficha abres. Van sin clave de API y sin nada que te identifique. Ni el audio, ni las fotos, ni tus observaciones se envían a ninguna parte.</string>
-    <string name="settings_fact_local">Tu colección vive solo en este móvil (y en su copia de seguridad, sin los recortes de audio). Si desinstalas la app, se va con ella.</string>
+    <string name="settings_fact_local">Tu colección vive solo en este móvil (y en su copia de seguridad, que lleva las observaciones y las miniaturas de las fotos, pero no los recortes de audio ni las fotos a tamaño completo). Si desinstalas la app, se va con ella.</string>
 
     <string name="settings_attribution_title">Atribución</string>
     <string name="settings_attribution_subtitle">Requisito de las licencias de los modelos, no una cortesía.</string>

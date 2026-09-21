@@ -2,12 +2,14 @@
 <!--
     Copia de seguridad automatica (Android 11 y anteriores).
 
-    Los recortes de audio quedan fuera: pesan (decenas de KB cada uno, MB a la
-    semana) y la cuota de Auto Backup son 25 MB por app. Con ellos dentro, la
-    copia FALLABA ENTERA y la coleccion no sobrevivia a un cambio de movil. Sin
-    ellos, la base de datos, las fotos y los ajustes caben de sobra. Los modelos
-    copiados a disco viven en noBackupFilesDir y ni aparecen aqui.
+    Los recortes de audio y las fotos a tamano completo quedan fuera: pesan
+    (decenas de KB cada recorte, cientos cada foto) y la cuota de Auto Backup son
+    25 MB por app. Con ellos dentro, la copia FALLABA ENTERA y la coleccion no
+    sobrevivia a un cambio de movil. Sin ellos, la base de datos, las miniaturas
+    de las fotos (photos/, ~15 KB cada una) y los ajustes caben de sobra. Los
+    modelos copiados a disco viven en noBackupFilesDir y ni aparecen aqui.
 -->
 <full-backup-content>
     <exclude domain="file" path="clips" />
+    <exclude domain="file" path="photos/full" />
 </full-backup-content>

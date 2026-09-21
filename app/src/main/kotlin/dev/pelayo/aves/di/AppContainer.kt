@@ -144,7 +144,11 @@ class AppContainer(
         File(context.filesDir, "clips").apply { mkdirs() }
     }
 
-    /** Las fotos con las que se identifico por imagen: 224 px, unos KB cada una. */
+    /**
+     * Las fotos con las que se identifico por imagen: la miniatura de 224 px que
+     * vio el modelo y, en `full/`, el encuadre entero para mirarla. Ver
+     * `PhotoStorage`.
+     */
     val photosDirectory: File by lazy {
         File(context.filesDir, "photos").apply { mkdirs() }
     }

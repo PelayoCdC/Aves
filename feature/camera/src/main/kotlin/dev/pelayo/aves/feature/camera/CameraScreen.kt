@@ -201,7 +201,7 @@ fun CameraScreen(
         state = state,
         locationProvider = locationProvider,
         contextInfluence = contextInfluence,
-        onCapture = viewModel::classify,
+        onCapture = { photo, where -> viewModel.classify(photo.modelInput, where, fullPhoto = photo.display) },
         onCaptureFailed = viewModel::reportCaptureFailure,
         onCameraFailed = viewModel::reportCameraFailure,
         onDismissResults = viewModel::dismissResults,
@@ -227,7 +227,7 @@ private fun CameraContent(
     state: CameraUiState,
     locationProvider: (suspend () -> Coordinates?)?,
     contextInfluence: Float,
-    onCapture: (Bitmap, ObservationContext) -> Unit,
+    onCapture: (CapturedPhoto, ObservationContext) -> Unit,
     onCaptureFailed: (Throwable) -> Unit,
     onCameraFailed: (Throwable) -> Unit,
     onDismissResults: () -> Unit,
@@ -332,7 +332,7 @@ private fun CameraContent(
     val onShutter: () -> Unit = {
         scope.launch {
             try {
-                val input = imageCapture.captureModelInput(captureExecutor, state.inputSize)
+                val photo = imageCapture.capturePhoto(captureExecutor, state.inputSize)
                 // Se consulta en el momento del disparo y no al abrir la
                 // pantalla: entre encuadrar y disparar puede pasar un rato, y
                 // una foto tomada tras andar un trecho merece la ubicacion de
@@ -340,7 +340,7 @@ private fun CameraContent(
                 // dar latitud y longitud de lecturas distintas.
                 val where = locationProvider?.invoke()
                 onCapture(
-                    input,
+                    photo,
                     ObservationContext(
                         latitude = where?.latitude,
                         longitude = where?.longitude,
@@ -847,24 +847,24 @@ private suspend fun Context.awaitCameraProvider(): ProcessCameraProvider =
     }
 
 /**
- * Dispara y devuelve la imagen ya lista para el modelo: cuadrada, derecha y de
- * [targetSize] pixeles de lado.
+ * Dispara y devuelve la foto en sus dos tamanos: la entera para guardarla y el
+ * recorte cuadrado de [targetSize] pixeles para el modelo.
  *
  * Toda la conversion ocurre dentro del callback, en el hilo de [executor], para
  * que el [ImageProxy] se cierre en el mismo `finally` que lo abrio. CameraX
  * trabaja con un numero fijo de buffers: una sola ruta de salida que no cierre
  * y la camara deja de disparar tras unas pocas fotos, sin error visible.
  */
-private suspend fun ImageCapture.captureModelInput(
+private suspend fun ImageCapture.capturePhoto(
     executor: Executor,
     targetSize: Int,
-): Bitmap = suspendCancellableCoroutine { continuation ->
+): CapturedPhoto = suspendCancellableCoroutine { continuation ->
     takePicture(
         executor,
         object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
                 try {
-                    val prepared = image.toModelInput(targetSize)
+                    val prepared = image.toCapturedPhoto(targetSize)
                     if (continuation.isActive) continuation.resume(prepared)
                 } catch (e: Exception) {
                     if (continuation.isActive) continuation.resumeWithException(e)
@@ -881,100 +881,19 @@ private suspend fun ImageCapture.captureModelInput(
 }
 
 /**
- * Saca el JPEG del plano 0 y lo convierte en la entrada del modelo.
+ * Saca el JPEG del plano 0 y lo convierte en la foto y en la entrada del modelo.
  *
  * `OnImageCapturedCallback` entrega JPEG por defecto, no YUV: el plano 0 no es
  * un plano de luminancia sino el fichero comprimido entero, y hay que
  * decodificarlo.
  */
-private fun ImageProxy.toModelInput(targetSize: Int): Bitmap {
+private fun ImageProxy.toCapturedPhoto(targetSize: Int): CapturedPhoto {
     val buffer = planes[0].buffer
     // El buffer puede llegar con la posicion consumida si alguien lo miro antes.
     buffer.rewind()
     val bytes = ByteArray(buffer.remaining())
     buffer.get(bytes)
-
-    // Primera pasada solo a la cabecera: dice el tamano sin reservar memoria.
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-
-    val options = BitmapFactory.Options().apply {
-        inSampleSize = if (bounds.outWidth > 0 && bounds.outHeight > 0) {
-            inSampleSizeFor(bounds.outWidth, bounds.outHeight, targetSize)
-        } else {
-            // Si la cabecera no se dejo leer, mejor decodificar entero y que
-            // falle por memoria que descartar una foto que quiza si valia.
-            1
-        }
-    }
-
-    val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-        ?: error("La camara devolvio una imagen que no se pudo decodificar")
-
-    return prepareModelInput(
-        source = decoded,
-        rotationDegrees = imageInfo.rotationDegrees,
-        targetSize = targetSize,
-    )
-}
-
-/**
- * Recorta, escala y gira, EN ESE ORDEN.
- *
- * El orden importa por coste, no por resultado: para giros de 90 grados el
- * recorte cuadrado centrado conmuta con la rotacion, asi que girar al final
- * mueve 224x224 pixeles en vez de los doce megapixeles del original.
- *
- * Y la rotacion no es opcional. `rotationDegrees` dice como estaba sujeto el
- * telefono; ignorarlo le entrega al modelo un ave tumbada, que no da error
- * ninguno: solo devuelve peores candidatos, en silencio, para siempre.
- *
- * TOMA LA PROPIEDAD de [source] y de todos los intermedios: los recicla segun
- * deja de necesitarlos. Una foto de 12 MP son ~48 MB en memoria y esperar al GC
- * entre disparos es la via directa al OutOfMemory.
- */
-internal fun prepareModelInput(
-    source: Bitmap,
-    rotationDegrees: Int,
-    targetSize: Int,
-): Bitmap {
-    var current = source
-
-    val crop = centerSquareCrop(current.width, current.height)
-    current = replacing(
-        current,
-        Bitmap.createBitmap(current, crop.left, crop.top, crop.size, crop.size),
-    )
-
-    current = replacing(
-        current,
-        Bitmap.createScaledBitmap(current, targetSize, targetSize, true),
-    )
-
-    if (isRotationNeeded(rotationDegrees)) {
-        val matrix = Matrix().apply {
-            postRotate(normalizeRotationDegrees(rotationDegrees).toFloat())
-        }
-        current = replacing(
-            current,
-            Bitmap.createBitmap(current, 0, 0, current.width, current.height, matrix, true),
-        )
-    }
-
-    return current
-}
-
-/**
- * Sustituye un bitmap por el siguiente y suelta el anterior.
- *
- * La comparacion por identidad no sobra: `createBitmap` y `createScaledBitmap`
- * devuelven el MISMO objeto cuando no hay nada que hacer (un recorte que ya
- * ocupa toda la imagen, un escalado al tamano que ya tenia). Reciclarlo
- * entonces destruiria justo el bitmap que se acaba de devolver.
- */
-private fun replacing(previous: Bitmap, next: Bitmap): Bitmap {
-    if (next !== previous) previous.recycle()
-    return next
+    return decodeCapturedPhoto(bytes, imageInfo.rotationDegrees, targetSize)
 }
 
 /** Valor de fabrica del peso del contexto cuando la pantalla no recibe los ajustes. */
