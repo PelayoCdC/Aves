@@ -40,7 +40,8 @@
     <string name="identify_error_mic_title">No se pudo abrir el micrófono</string>
     <string name="identify_error_mic_help">Puede que otra aplicación lo tenga ocupado, o que falte el permiso.</string>
     <string name="identify_error_audio_title">Ese fichero no se puede analizar</string>
-    <string name="identify_error_audio_help">De momento solo se admite WAV PCM de 16 bits. Conviértelo con: ffmpeg -i entrada -ac 1 -ar %1$d -c:a pcm_s16le salida.wav</string>
+    <string name="identify_error_audio_help">No se pudo decodificar. Se admiten %1$s. Si es una grabación protegida o de un formato raro, expórtala antes a uno de esos.</string>
+    <string name="identify_analysis_truncated">El fichero es largo: se han analizado los primeros %1$d minutos.</string>
 
     <string name="identify_meter_no_signal">sin señal</string>
     <string name="identify_meter_dbfs">%1$d dBFS</string>

@@ -10,6 +10,8 @@ data class DecodedAudio(
     val sampleRate: Int,
     val originalSampleRate: Int,
     val originalChannels: Int,
+    /** true si el fichero era mas largo que el tope y solo se decodifico el principio. */
+    val truncated: Boolean = false,
 ) {
     val durationMillis: Long get() = samples.size * 1000L / sampleRate
 
@@ -19,6 +21,7 @@ data class DecodedAudio(
         return sampleRate == other.sampleRate &&
             originalSampleRate == other.originalSampleRate &&
             originalChannels == other.originalChannels &&
+            truncated == other.truncated &&
             samples.contentEquals(other.samples)
     }
 
@@ -40,12 +43,12 @@ class WavFormatException(message: String) : IllegalArgumentException(message)
  * en el pipeline, el riesgo #1 (¿normaliza BirdNET internamente?) no se puede
  * cerrar. Con solo microfono no hay forma de comparar contra una referencia.
  *
- * De paso habilita analizar grabaciones ajenas, que es una funcion real.
- *
- * Deliberadamente **solo WAV PCM**. Para MP3/OGG/M4A haria falta
- * MediaExtractor + MediaCodec, que ata el codigo a Android y no se puede probar
- * en la JVM. Como el objetivo inmediato es un test de regresion reproducible,
- * WAV puro es la eleccion correcta; lo otro puede venir despues.
+ * Deliberadamente **solo WAV PCM de 16 bits**, en Kotlin puro: se prueba en la
+ * JVM y no depende del codec de ningun fabricante, que es lo que se quiere para
+ * los ficheros de referencia. Todo lo demas (MP3, M4A, OGG, Opus, FLAC, AMR, y
+ * los WAV de 24 bits o en coma flotante) lo decodifica [AudioFileDecoder] con
+ * `MediaExtractor` + `MediaCodec`, y es quien decide cual de los dos caminos
+ * toma cada fichero.
  */
 object WavDecoder {
 

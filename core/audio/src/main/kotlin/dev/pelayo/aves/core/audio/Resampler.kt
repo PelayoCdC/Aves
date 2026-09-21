@@ -18,6 +18,11 @@ import kotlin.math.sin
  * Solucion clasica y suficiente: un paso-bajo FIR de ventana de Hamming antes
  * de interpolar. Al SUBIR de frecuencia no hay aliasing posible y se salta el
  * filtro.
+ *
+ * El filtro se evalua AL VUELO, solo en las posiciones que la interpolacion
+ * necesita, en vez de filtrar la senal entera a un array intermedio. Con
+ * grabaciones de varios minutos (que es lo que sale de una app de grabadora)
+ * ese intermedio en `Double` eran mas de cien megas.
  */
 object Resampler {
 
@@ -30,37 +35,52 @@ object Resampler {
      */
     private const val CUTOFF_FRACTION = 0.45
 
-    fun resample(input: ShortArray, from: Int, to: Int): ShortArray {
-        require(from > 0 && to > 0) { "Frecuencias invalidas: $from -> $to" }
-        if (input.isEmpty() || from == to) return input
-
-        val filtered = if (from > to) lowPass(input, cutoffHz = CUTOFF_FRACTION * to, sampleRate = from) else null
-        return interpolate(filtered, input, from, to)
-    }
-
     /**
-     * Interpolacion lineal sobre la senal ya filtrada. La lineal basta una vez
-     * quitado lo que podia solaparse: lo que queda por debajo del corte se
-     * reconstruye con error inaudible a estas frecuencias.
+     * @param length cuantas muestras de [input] son validas. Permite pasar un
+     *   buffer mas grande que su contenido sin copiarlo.
      */
-    private fun interpolate(filtered: DoubleArray?, raw: ShortArray, from: Int, to: Int): ShortArray {
+    fun resample(input: ShortArray, from: Int, to: Int, length: Int = input.size): ShortArray {
+        require(from > 0 && to > 0) { "Frecuencias invalidas: $from -> $to" }
+        require(length in 0..input.size) { "length fuera de rango: $length" }
+        if (length == 0) return ShortArray(0)
+        if (from == to) return if (length == input.size) input else input.copyOf(length)
+
+        val kernel = if (from > to) lowPassKernel(cutoffHz = CUTOFF_FRACTION * to, sampleRate = from) else null
         val ratio = from.toDouble() / to
-        val outputSize = (raw.size / ratio).toInt()
+        val outputSize = (length / ratio).toInt()
         val output = ShortArray(outputSize)
-        val size = raw.size
+
+        // La interpolacion pide el valor filtrado en `index` y en `index + 1`,
+        // y el `index + 1` de una salida suele ser el `index` de la siguiente:
+        // se recuerda para no convolucionar dos veces la misma posicion.
+        var cachedIndex = -1
+        var cachedValue = 0.0
+
         for (i in 0 until outputSize) {
             val position = i * ratio
             val index = position.toInt()
             val fraction = position - index
-            val a = if (filtered != null) filtered[index] else raw[index].toDouble()
-            val b = when {
-                index + 1 >= size -> a
-                filtered != null -> filtered[index + 1]
-                else -> raw[index + 1].toDouble()
-            }
+
+            val a = if (index == cachedIndex) cachedValue else valueAt(input, length, index, kernel)
+            val b = if (index + 1 >= length) a else valueAt(input, length, index + 1, kernel)
+            cachedIndex = index + 1
+            cachedValue = b
+
             output[i] = (a + (b - a) * fraction).roundToInt().coerceIn(-32768, 32767).toShort()
         }
         return output
+    }
+
+    /** La muestra [index], filtrada si hay filtro. Convolucion directa de 63 coeficientes. */
+    private fun valueAt(input: ShortArray, length: Int, index: Int, kernel: DoubleArray?): Double {
+        if (kernel == null) return input[index].toDouble()
+        val half = kernel.size / 2
+        var acc = 0.0
+        for (k in kernel.indices) {
+            val j = index + k - half
+            if (j in 0 until length) acc += input[j] * kernel[k]
+        }
+        return acc
     }
 
     /** Coeficientes de un paso-bajo FIR de ventana de Hamming, normalizados a ganancia 1 en continua. */
@@ -78,21 +98,5 @@ object Resampler {
         }
         for (n in kernel.indices) kernel[n] /= sum
         return kernel
-    }
-
-    /** Convolucion directa. Para los tamanos de aqui (segundos de audio) sobra. */
-    internal fun lowPass(input: ShortArray, cutoffHz: Double, sampleRate: Int): DoubleArray {
-        val kernel = lowPassKernel(cutoffHz, sampleRate)
-        val half = kernel.size / 2
-        val output = DoubleArray(input.size)
-        for (i in input.indices) {
-            var acc = 0.0
-            for (k in kernel.indices) {
-                val j = i + k - half
-                if (j in input.indices) acc += input[j] * kernel[k]
-            }
-            output[i] = acc
-        }
-        return output
     }
 }

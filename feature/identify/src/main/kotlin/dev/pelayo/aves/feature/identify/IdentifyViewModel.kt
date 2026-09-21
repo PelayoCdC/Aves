@@ -1,12 +1,13 @@
 package dev.pelayo.aves.feature.identify
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.pelayo.aves.core.audio.EnergyGate
 import dev.pelayo.aves.core.audio.PcmScaling
-import dev.pelayo.aves.core.audio.WavDecoder
+import dev.pelayo.aves.core.audio.AudioFileDecoder
 import dev.pelayo.aves.core.audio.WavFormatException
 import dev.pelayo.aves.core.audio.audioWindows
 import dev.pelayo.aves.core.listening.CandidateGlimpse
@@ -19,7 +20,6 @@ import dev.pelayo.aves.core.listening.StableDetection
 import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
 import dev.pelayo.aves.core.ml.api.ObservationContext
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -30,7 +30,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.FileNotFoundException
 import java.io.IOException
 
@@ -45,7 +44,7 @@ enum class IdentifyError {
     /** El microfono no se pudo abrir. */
     MICROPHONE_UNAVAILABLE,
 
-    /** El fichero elegido no es un WAV PCM de 16 bits. */
+    /** El fichero elegido no trae audio que este dispositivo sepa decodificar. */
     UNSUPPORTED_AUDIO,
 }
 
@@ -81,6 +80,8 @@ data class IdentifyUiState(
     /** Cuantas detecciones del fichero se guardaron en la bandeja, o null si aun no se ha guardado. */
     val savedToReview: Int? = null,
     val isSaving: Boolean = false,
+    /** El fichero era mas largo que el tope y solo se analizo el principio. */
+    val analysisTruncated: Boolean = false,
 )
 
 /**
@@ -177,7 +178,7 @@ class IdentifyViewModel(
      * solapadas y se agrega quedandose con la mejor puntuacion de cada especie,
      * que es lo que hace BirdNET-Analyzer.
      */
-    fun analyzeFile(fileName: String, openStream: () -> java.io.InputStream) {
+    fun analyzeFile(fileName: String, uri: Uri) {
         // Analizar un fichero y escuchar el microfono a la vez no tiene sentido:
         // compiten por el mismo modelo y la pantalla solo puede enseñar uno.
         stopListening()
@@ -203,15 +204,15 @@ class IdentifyViewModel(
                 active.warmUp()
                 fileState.update { it.copy(isWarmingUp = false) }
 
-                val decoded = withContext(Dispatchers.IO) {
-                    openStream().use { stream ->
-                        WavDecoder.decode(
-                            input = stream,
-                            targetSampleRate = active.requiredSampleRate,
-                            scaling = INPUT_SCALING,
-                        )
-                    }
-                }
+                // Cualquier formato que sepa el dispositivo: M4A de la grabadora,
+                // MP3, OGG, Opus de una nota de voz, FLAC, AMR... y WAV.
+                val decoded = AudioFileDecoder.decode(
+                    context = appContext,
+                    uri = uri,
+                    targetSampleRate = active.requiredSampleRate,
+                    scaling = INPUT_SCALING,
+                )
+                fileState.update { it.copy(analysisTruncated = decoded.truncated) }
 
                 val gate = EnergyGate(INPUT_SCALING)
                 val best = LinkedHashMap<String, StableDetection>()

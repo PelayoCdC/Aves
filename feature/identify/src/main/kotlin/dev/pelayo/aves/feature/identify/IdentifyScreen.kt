@@ -3,6 +3,8 @@ package dev.pelayo.aves.feature.identify
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -63,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.pelayo.aves.core.audio.AudioFileDecoder
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
 import dev.pelayo.aves.core.listening.CandidateGlimpse
@@ -159,13 +162,7 @@ fun IdentifyScreen(
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
-        if (uri != null) {
-            val name = uri.lastPathSegment?.substringAfterLast('/') ?: "audio.wav"
-            viewModel.analyzeFile(name) {
-                context.contentResolver.openInputStream(uri)
-                    ?: error("No se pudo abrir el fichero seleccionado")
-            }
-        }
+        if (uri != null) viewModel.analyzeFile(context.displayNameOf(uri), uri)
     }
 
     Column(
@@ -230,12 +227,25 @@ fun IdentifyScreen(
         Spacer(Modifier.size(16.dp))
 
         state.error?.let { error ->
-            ErrorCard(error = error, detail = state.errorDetail, sampleRate = state.modelSampleRate)
+            ErrorCard(error = error, detail = state.errorDetail)
             Spacer(Modifier.size(16.dp))
         }
 
         // El analisis de un fichero no es un callejon sin salida: lo que encontro
         // puede ir a la bandeja, donde se decide igual que con el microfono.
+        if (state.analysisTruncated) {
+            Text(
+                text = stringResource(
+                    R.string.identify_analysis_truncated,
+                    (AudioFileDecoder.DEFAULT_MAX_DURATION_MILLIS / 60_000L).toInt(),
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.size(8.dp))
+        }
+
         val analyzed = state.analyzedFileName != null && !state.isAnalyzingFile && state.detections.isNotEmpty()
         if (analyzed && analysisSaver != null) {
             val saved = state.savedToReview
@@ -306,7 +316,7 @@ fun IdentifyScreen(
             // Analizar un fichero no es solo una comodidad: es lo que permite
             // reproducir un resultado y comparar contra una referencia conocida.
             SmallFloatingActionButton(
-                onClick = { filePicker.launch(arrayOf("audio/*", "application/octet-stream")) },
+                onClick = { filePicker.launch(AUDIO_MIME_TYPES) },
                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
             ) {
                 Icon(
@@ -344,6 +354,32 @@ fun IdentifyScreen(
 }
 
 private const val SEPARATOR = " · "
+
+/**
+ * Lo que se le pide al selector de ficheros. El comodin de audio cubre casi todo, pero
+ * hay grabadoras que etiquetan mal lo que producen: los 3GP de voz salen como
+ * video, los OGG como `application/ogg`, y los ficheros copiados desde un PC
+ * llegan muchas veces como `octet-stream`.
+ */
+private val AUDIO_MIME_TYPES = arrayOf(
+    "audio/*",
+    "application/ogg",
+    "video/3gpp",
+    "video/mp4",
+    "application/octet-stream",
+)
+
+/** El nombre que ve el usuario en su gestor de ficheros, no el ultimo tramo de un URI opaco. */
+private fun Context.displayNameOf(uri: Uri): String {
+    val fromProvider = runCatching {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+    }.getOrNull()
+    return fromProvider?.takeIf { it.isNotBlank() }
+        ?: uri.lastPathSegment?.substringAfterLast('/')
+        ?: "audio"
+}
 
 private fun Context.hasPermission(permission: String): Boolean =
     ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
@@ -422,7 +458,6 @@ private fun GlimpseRow(glimpse: CandidateGlimpse, modifier: Modifier = Modifier)
 private fun ErrorCard(
     error: IdentifyError,
     detail: String?,
-    sampleRate: Int?,
     modifier: Modifier = Modifier,
 ) {
     val (title, help) = when (error) {
@@ -440,7 +475,7 @@ private fun ErrorCard(
 
         IdentifyError.UNSUPPORTED_AUDIO ->
             stringResource(R.string.identify_error_audio_title) to
-                stringResource(R.string.identify_error_audio_help, sampleRate ?: 48_000)
+                stringResource(R.string.identify_error_audio_help, AudioFileDecoder.SUPPORTED_FORMATS)
     }
 
     Card(
