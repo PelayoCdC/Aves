@@ -1,6 +1,7 @@
 package dev.pelayo.aves.feature.pokedex
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -44,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
@@ -56,8 +58,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.Image
 import coil3.compose.AsyncImage
 import dev.pelayo.aves.core.common.PhotoStorage
+import dev.pelayo.aves.core.common.WikipediaImages
 import dev.pelayo.aves.core.data.ObservationRepository
 import dev.pelayo.aves.core.data.SpeciesEncyclopedia
 import dev.pelayo.aves.core.data.SpeciesRepository
@@ -211,11 +215,27 @@ class SpeciesDetailViewModel(
     }
 }
 
+/**
+ * Una foto identificada que espera a que el usuario diga si es esta especie.
+ *
+ * Existe porque antes tocar un candidato GUARDABA el avistamiento y abria la
+ * ficha con el ya dentro. Lo que se quiere es lo contrario: abrir la ficha para
+ * comparar la foto con la imagen y la descripcion, y anotar solo si cuadra.
+ *
+ * @param preview la foto del usuario, para tenerla al lado de la de Wikipedia.
+ */
+class PendingPhotoConfirmation(
+    val preview: Bitmap?,
+    val onConfirm: () -> Unit,
+    val onReject: () -> Unit,
+)
+
 @Composable
 fun SpeciesDetailScreen(
     speciesId: String,
     viewModelFactory: (String) -> SpeciesDetailViewModel,
     modifier: Modifier = Modifier,
+    pendingPhoto: PendingPhotoConfirmation? = null,
 ) {
     // La clave evita que al navegar de una especie a otra se reutilice el
     // ViewModel de la anterior y la ficha se quede con los datos viejos.
@@ -230,6 +250,7 @@ fun SpeciesDetailScreen(
         onUpdateNotes = viewModel::updateNotes,
         onDeleteSighting = viewModel::deleteSighting,
         modifier = modifier,
+        pendingPhoto = pendingPhoto,
     )
 }
 
@@ -240,6 +261,7 @@ internal fun SpeciesDetailContent(
     onAddManualSighting: (String?) -> Unit = {},
     onUpdateNotes: (Long, String?) -> Unit = { _, _ -> },
     onDeleteSighting: (Long) -> Unit = {},
+    pendingPhoto: PendingPhotoConfirmation? = null,
 ) {
     val species = state.species
 
@@ -292,6 +314,12 @@ internal fun SpeciesDetailContent(
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        pendingPhoto?.let { pending ->
+            item(key = "confirmar-foto") {
+                PendingPhotoCard(pending = pending, speciesName = species.commonName)
+            }
+        }
+
         item(key = "cabecera") {
             SpeciesHeader(
                 species = species,
@@ -431,15 +459,29 @@ private fun SpeciesHeader(
 
     Column(modifier = modifier.fillMaxWidth()) {
         species.imageUrl?.let { url ->
+            // ENTERA (ajustada, no recortada): las fotos de Commons son de
+            // cualquier proporcion, y con recorte a un ave vertical se le iba
+            // la cabeza. Al tocarla, a pantalla completa y con zoom.
+            var showViewer by remember { mutableStateOf(false) }
             AsyncImage(
-                model = url,
-                contentDescription = species.commonName,
-                contentScale = ContentScale.Crop,
+                model = WikipediaImages.sized(url, WikipediaImages.HEADER_WIDTH_PX),
+                contentDescription = stringResource(R.string.pokedex_detail_open_image),
+                contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(220.dp)
-                    .clip(RoundedCornerShape(16.dp)),
+                    .height(240.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable { showViewer = true },
             )
+            if (showViewer) {
+                ImageViewer(
+                    model = WikipediaImages.sized(url, WikipediaImages.VIEWER_WIDTH_PX),
+                    title = species.commonName,
+                    caption = species.imageAttribution,
+                    onDismiss = { showViewer = false },
+                )
+            }
             species.imageAttribution?.let { attribution ->
                 Text(
                     text = stringResource(R.string.pokedex_detail_image_credit, attribution),
@@ -645,6 +687,63 @@ private fun SightingRow(
             sighting.notes?.takeIf { it.isNotBlank() }?.let { notes ->
                 Spacer(Modifier.size(6.dp))
                 Text(text = notes, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+
+/**
+ * "¿Es esta?": la foto del usuario al lado de la ficha, y dos botones.
+ *
+ * Va arriba de todo, antes incluso de la imagen de Wikipedia, porque es la
+ * pregunta que hay que responder antes de mirar nada mas. Al confirmar, el
+ * avistamiento aparece abajo, en la lista, y esta tarjeta desaparece.
+ */
+@Composable
+private fun PendingPhotoCard(
+    pending: PendingPhotoConfirmation,
+    speciesName: String,
+    modifier: Modifier = Modifier,
+) {
+    val preview = remember(pending.preview) { pending.preview?.takeIf { !it.isRecycled }?.asImageBitmap() }
+
+    Card(modifier = modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (preview != null) {
+                    Image(
+                        bitmap = preview,
+                        contentDescription = stringResource(R.string.pokedex_detail_photo),
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(96.dp)
+                            .clip(RoundedCornerShape(12.dp)),
+                    )
+                    Spacer(Modifier.width(16.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.pokedex_detail_photo_pending_title),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Spacer(Modifier.size(4.dp))
+                    Text(
+                        text = stringResource(R.string.pokedex_detail_photo_pending_body, speciesName),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Spacer(Modifier.size(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = pending.onReject) { Text(stringResource(R.string.pokedex_detail_photo_reject)) }
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = pending.onConfirm) { Text(stringResource(R.string.pokedex_detail_photo_confirm)) }
             }
         }
     }

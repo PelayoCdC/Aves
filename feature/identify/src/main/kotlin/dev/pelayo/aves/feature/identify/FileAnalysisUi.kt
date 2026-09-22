@@ -5,11 +5,14 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.AssistChip
@@ -53,6 +56,7 @@ import java.util.Locale
  * resultado (descarta lo que alli no hay) y el analisis de una grabacion larga
  * tarda: repetirlo por haberse olvidado del lugar es pagar dos veces.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PendingFileCard(
     file: PendingFile,
@@ -75,8 +79,16 @@ internal fun PendingFileCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (canPickPlace) PlaceChip(place = place, onClick = onPickPlace)
+            // Los dos chips en una fila que se PARTE si no caben: con un lugar
+            // largo ("Parque Nacional de Doñana, Huelva, Andalucía") la fecha se
+            // quedaba aplastada al lado. Y el lugar tiene tope de ancho.
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                if (canPickPlace) {
+                    PlaceChip(place = place, onClick = onPickPlace, modifier = Modifier.widthIn(max = 260.dp))
+                }
                 AssistChip(
                     onClick = onPickDate,
                     label = { Text(formatRecordingDate(file.recordedAt)) },

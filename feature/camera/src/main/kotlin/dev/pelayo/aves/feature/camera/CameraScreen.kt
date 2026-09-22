@@ -120,9 +120,11 @@ fun CameraScreen(
     modifier: Modifier = Modifier,
     /** Para decir donde se hizo una foto de la galeria. Nulo esconde el selector. */
     placePicker: PlacePickerActions? = null,
+    /** Nombre comun del catalogo para cada candidato. Ver [CameraViewModel]. */
+    nameCandidates: suspend (modelId: String, List<ImageCandidate>) -> List<ImageCandidate> = { _, c -> c },
 ) {
     val viewModel: CameraViewModel = viewModel {
-        CameraViewModel(classifierFactory = classifierProvider)
+        CameraViewModel(classifierFactory = classifierProvider, nameCandidates = nameCandidates)
     }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -415,19 +417,11 @@ private fun PickedImageContent(
             modifier = Modifier.fillMaxSize(),
         )
 
-        // "¿Donde fue?" arriba, fuera del camino de los candidatos. Una foto de
-        // la galeria no se hizo aqui, y sin lugar el modelo decide a ciegas
-        // entre las aves de todo el planeta.
-        if (placePicker != null) {
-            PlaceChip(
-                place = state.pickedPlace,
-                onClick = { showPlacePicker = true },
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 16.dp),
-            )
-        }
-
+        // "¿Donde fue?" va ABAJO, junto a los candidatos, que es donde se mira.
+        // La primera version lo ponia arriba y quedaba debajo de la barra de
+        // estado (la app dibuja de borde a borde): nadie lo vio. Una foto de la
+        // galeria no se hizo aqui, y sin lugar el modelo decide a ciegas entre
+        // las aves de todo el planeta.
         CaptureOverlay(
             state = state,
             onShutter = {},
@@ -435,6 +429,11 @@ private fun PickedImageContent(
             onIdentified = onIdentified,
             onPickFromGallery = onPickFromGallery,
             fromGallery = true,
+            placeChip = if (placePicker != null) {
+                { PlaceChip(place = state.pickedPlace, onClick = { showPlacePicker = true }) }
+            } else {
+                null
+            },
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -489,6 +488,8 @@ internal fun CaptureOverlay(
     onPickFromGallery: (() -> Unit)? = null,
     /** true cuando lo que hay debajo es una foto de la galeria y no la camara. */
     fromGallery: Boolean = false,
+    /** El chip de "¿donde fue?", que se pinta encima de los resultados. Solo con galeria. */
+    placeChip: (@Composable () -> Unit)? = null,
 ) {
     Column(
         modifier = modifier.padding(horizontal = 16.dp, vertical = 24.dp),
@@ -497,6 +498,14 @@ internal fun CaptureOverlay(
     ) {
         state.error?.let { error ->
             ErrorCard(error = error, detail = state.errorDetail)
+            Spacer(Modifier.size(12.dp))
+        }
+
+        placeChip?.let { chip ->
+            MaterialSurface(
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            ) { chip() }
             Spacer(Modifier.size(12.dp))
         }
 
@@ -630,20 +639,30 @@ private fun CandidateRow(
     modifier: Modifier = Modifier,
 ) {
     val selectable = candidate.speciesId != null
+    val common = candidate.commonName
 
-    Text(
-        text = candidate.scientificName,
-        style = ScientificNameStyle,
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .clickable(
                 enabled = selectable,
-                onClickLabel = stringResource(R.string.camera_confirm_candidate, candidate.scientificName),
+                onClickLabel = stringResource(R.string.camera_confirm_candidate, common ?: candidate.scientificName),
                 role = Role.Button,
             ) { onIdentified(candidate) }
-            .padding(horizontal = 8.dp, vertical = 12.dp),
-    )
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+    ) {
+        // El nombre en castellano manda; el cientifico, debajo, como en la
+        // Pokedex. Si el catalogo no lo conoce, solo hay cientifico.
+        if (common != null) {
+            Text(text = common, style = MaterialTheme.typography.titleMedium)
+        }
+        Text(
+            text = candidate.scientificName,
+            style = ScientificNameStyle,
+            color = if (common != null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+        )
+    }
 }
 
 @Composable

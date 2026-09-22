@@ -335,9 +335,13 @@ banda; eso pide un modelo de separación de fuentes.
 La galería usa el selector de fotos del sistema (`PickVisualMedia`), que **no
 pide ningún permiso**. Se respeta la orientación EXIF y la fecha es la de la
 foto, no la de hoy. Como una foto de la galería puede ser de cualquier sitio,
-va sin ubicación hasta que el usuario dice dónde fue (mismo selector); entonces
-se vuelve a clasificar la misma imagen con ese contexto. Se analiza el cuadrado
-central.
+va sin ubicación hasta que el usuario dice dónde fue (chip "¿Dónde fue?" junto
+a los candidatos); entonces se vuelve a clasificar la misma imagen con ese
+contexto. Se analiza el cuadrado central. Los candidatos salen con su nombre
+en castellano (`ImageCandidateNamer`, vía `model_labels` y el catálogo) y
+**tocar uno no guarda nada**: abre la ficha con la foto al lado de la de
+Wikipedia y pregunta "¿es esta?"; solo al confirmar se anota el avistamiento.
+Desde Revisar, el nombre de cada detección abre también la ficha.
 
 ### Vista, fotografiada, oída
 

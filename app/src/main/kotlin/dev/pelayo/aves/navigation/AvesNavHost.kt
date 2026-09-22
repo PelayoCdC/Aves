@@ -7,6 +7,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -23,9 +26,11 @@ import dev.pelayo.aves.di.AppContainer
 import dev.pelayo.aves.di.ObservationExporter
 import dev.pelayo.aves.di.toListeningSettings
 import dev.pelayo.aves.feature.camera.CameraScreen
+import dev.pelayo.aves.feature.camera.ImageIdentification
 import dev.pelayo.aves.feature.identify.IdentifyScreen
 import dev.pelayo.aves.feature.pokedex.AchievementsScreen
 import dev.pelayo.aves.feature.pokedex.AchievementsViewModel
+import dev.pelayo.aves.feature.pokedex.PendingPhotoConfirmation
 import dev.pelayo.aves.feature.pokedex.PokedexScreen
 import dev.pelayo.aves.feature.pokedex.PokedexViewModel
 import dev.pelayo.aves.feature.pokedex.SessionDetailScreen
@@ -50,6 +55,12 @@ import java.util.Locale
 /** Ruta de la ficha de especie. Es un destino de detalle, no de primer nivel. */
 private const val SPECIES_DETAIL_ROUTE = "species"
 private const val SPECIES_ID_ARG = "speciesId"
+
+/**
+ * Una foto identificada que espera confirmacion en la ficha. El token evita que
+ * la misma ficha, abierta despues desde la Pokedex, vuelva a ensenar la tarjeta.
+ */
+private const val PHOTO_TOKEN_ARG = "photo"
 
 /** Las medallas. Cuelgan de la Pokedex, igual que el historial. */
 private const val ACHIEVEMENTS_ROUTE = "achievements"
@@ -145,6 +156,13 @@ fun AvesNavHost(
         if (settings.locationDisabled) null else container.locationProvider.current()
     }
 
+    // La foto identificada que esta esperando a que el usuario la confirme
+    // desde la ficha. Antes se guardaba al tocar el candidato y la ficha se
+    // abria con el avistamiento ya dentro; ahora la ficha se abre para
+    // COMPROBAR, y solo se guarda si el usuario dice que si.
+    var photoToken by remember { mutableIntStateOf(0) }
+    var pendingPhoto by remember { mutableStateOf<Pair<Int, ImageIdentification>?>(null) }
+
     // "¿Donde fue?" para las fotos de la galeria y las grabaciones: lo que no se
     // hizo ahora y aqui necesita que alguien diga donde.
     val placePicker = remember(container) {
@@ -207,6 +225,7 @@ fun AvesNavHost(
                 viewModelFactory = {
                     ReviewViewModel(container.observationRepository, container.speciesRepository)
                 },
+                onSpeciesClick = { speciesId -> navController.navigate("$SPECIES_DETAIL_ROUTE/$speciesId") },
             )
         }
 
@@ -216,18 +235,16 @@ fun AvesNavHost(
                 locationProvider = currentLocation,
                 contextInfluence = settings.contextInfluence,
                 placePicker = placePicker,
+                nameCandidates = container.imageCandidateNamer::name,
                 onIdentified = { identification ->
-                    // Se guarda ANTES de navegar: la ficha tiene que abrirse ya
-                    // con el avistamiento dentro, y con el id canonico del
-                    // catalogo, no con el provisional del modelo.
+                    // NO se guarda todavia: se abre la ficha (con el id canonico
+                    // del catalogo, no el provisional del modelo) para que el
+                    // usuario compare la foto con la especie y decida.
                     scope.launch {
-                        val speciesId = runCatching {
-                            container.imageObservationRecorder.record(identification)
-                        }.onFailure { Log.e(TAG, "No se pudo guardar la foto", it) }
-                            .getOrNull() ?: identification.candidate.speciesId
-                        if (speciesId != null) {
-                            navController.navigate("$SPECIES_DETAIL_ROUTE/$speciesId")
-                        }
+                        val speciesId = container.imageCandidateNamer.speciesIdOf(identification) ?: return@launch
+                        photoToken += 1
+                        pendingPhoto = photoToken to identification
+                        navController.navigate("$SPECIES_DETAIL_ROUTE/$speciesId?$PHOTO_TOKEN_ARG=$photoToken")
                     }
                 },
             )
@@ -282,12 +299,36 @@ fun AvesNavHost(
         }
 
         composable(
-            route = "$SPECIES_DETAIL_ROUTE/{$SPECIES_ID_ARG}",
-            arguments = listOf(navArgument(SPECIES_ID_ARG) { type = NavType.StringType }),
+            route = "$SPECIES_DETAIL_ROUTE/{$SPECIES_ID_ARG}?$PHOTO_TOKEN_ARG={$PHOTO_TOKEN_ARG}",
+            arguments = listOf(
+                navArgument(SPECIES_ID_ARG) { type = NavType.StringType },
+                navArgument(PHOTO_TOKEN_ARG) {
+                    type = NavType.IntType
+                    defaultValue = 0
+                },
+            ),
         ) { entry ->
             val speciesId = entry.arguments?.getString(SPECIES_ID_ARG).orEmpty()
+            val token = entry.arguments?.getInt(PHOTO_TOKEN_ARG) ?: 0
+            val awaiting = pendingPhoto?.takeIf { token != 0 && it.first == token }?.second
             SpeciesDetailScreen(
                 speciesId = speciesId,
+                pendingPhoto = awaiting?.let { identification ->
+                    PendingPhotoConfirmation(
+                        preview = identification.fullPhoto ?: identification.photo,
+                        onConfirm = {
+                            scope.launch {
+                                runCatching { container.imageObservationRecorder.record(identification) }
+                                    .onFailure { Log.e(TAG, "No se pudo guardar la foto", it) }
+                                pendingPhoto = null
+                            }
+                        },
+                        onReject = {
+                            pendingPhoto = null
+                            navController.popBackStack()
+                        },
+                    )
+                },
                 viewModelFactory = { id ->
                     SpeciesDetailViewModel(
                         speciesId = id,

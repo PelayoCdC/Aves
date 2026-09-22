@@ -1,5 +1,6 @@
 package dev.pelayo.aves.core.data
 
+import dev.pelayo.aves.core.common.WikipediaImages
 import android.util.Log
 import dev.pelayo.aves.core.model.Species
 import dev.pelayo.aves.core.network.WikipediaClient
@@ -47,7 +48,10 @@ class SpeciesEncyclopedia(
             target.copy(
                 summary = summary.extract,
                 wikipediaUrl = summary.pageUrl,
-                imageUrl = summary.originalImageUrl ?: summary.thumbnailUrl,
+                // La miniatura, pedida mas grande, y no la original: la original
+                // puede ser una foto de 5.000 px y varios MB. Ver WikipediaImages.
+                imageUrl = summary.thumbnailUrl?.let { WikipediaImages.sized(it, WikipediaImages.HEADER_WIDTH_PX) }
+                    ?: summary.originalImageUrl,
                 imageAttribution = "Wikimedia Commons · ${summary.language}.wikipedia.org",
             )
         }

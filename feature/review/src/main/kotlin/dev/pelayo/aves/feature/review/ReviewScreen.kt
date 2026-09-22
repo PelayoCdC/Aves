@@ -45,6 +45,8 @@ import dev.pelayo.aves.core.media.rememberClipPlayer
 fun ReviewScreen(
     viewModelFactory: () -> ReviewViewModel,
     modifier: Modifier = Modifier,
+    /** Abre la ficha de una especie: para comprobarla antes de decidir. Navegar es cosa de :app. */
+    onSpeciesClick: (String) -> Unit = {},
 ) {
     val viewModel: ReviewViewModel = viewModel { viewModelFactory() }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -55,6 +57,7 @@ fun ReviewScreen(
         onReject = viewModel::reject,
         onConfirmAs = viewModel::confirmAs,
         onUndo = viewModel::undo,
+        onOpenSpecies = onSpeciesClick,
         modifier = modifier,
     )
 }
@@ -70,6 +73,7 @@ internal fun ReviewContent(
     onUndo: () -> Unit,
     modifier: Modifier = Modifier,
     onConfirmAs: (Long, Alternative) -> Unit = { _, _ -> },
+    onOpenSpecies: (String) -> Unit = {},
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val undoable = state.undoable
@@ -147,6 +151,11 @@ internal fun ReviewContent(
                         isPlaying = clipPlayer.isPlaying(observation.observationId),
                         onTogglePlay = {
                             clipPlayer.toggle(observation.observationId, observation.mediaPath)
+                        },
+                        onOpenSpecies = if (observation.isResolved) {
+                            { onOpenSpecies(observation.speciesId) }
+                        } else {
+                            null
                         },
                     )
                 }

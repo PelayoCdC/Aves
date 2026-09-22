@@ -127,6 +127,11 @@
     <string name="pokedex_detail_edit_notes">Editar las notas</string>
     <string name="pokedex_detail_delete_sighting">Borrar el avistamiento</string>
     <string name="pokedex_detail_photo">La foto con la que se identificó</string>
+    <string name="pokedex_detail_open_image">Ver la imagen a pantalla completa</string>
+    <string name="pokedex_detail_photo_pending_title">Identificada por foto: ¿es esta?</string>
+    <string name="pokedex_detail_photo_pending_body">Compara tu foto con la imagen y la descripción de %1$s antes de anotarla. Todavía no se ha guardado nada.</string>
+    <string name="pokedex_detail_photo_confirm">Sí, anotar el avistamiento</string>
+    <string name="pokedex_detail_photo_reject">No es esta</string>
     <string name="pokedex_detail_notes_label">Notas (opcional)</string>
     <string name="pokedex_detail_notes_placeholder">Dónde, cómo, con quién…</string>
     <string name="pokedex_detail_confidence">%1$d %% de confianza</string>

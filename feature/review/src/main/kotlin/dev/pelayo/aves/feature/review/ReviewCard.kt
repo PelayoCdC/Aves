@@ -1,5 +1,10 @@
 package dev.pelayo.aves.feature.review
 
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -63,6 +68,8 @@ fun ReviewCard(
     canPlayClip: Boolean = false,
     isPlaying: Boolean = false,
     onTogglePlay: () -> Unit = {},
+    /** Abre la ficha de la especie. Null si el catalogo no la conoce. */
+    onOpenSpecies: (() -> Unit)? = null,
 ) {
     val accent = accentFor(observation.level)
 
@@ -73,11 +80,41 @@ fun ReviewCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top,
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = observation.commonName,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+                // El nombre abre la ficha: para decidir si era un carbonero o un
+                // herrerillo hace falta ver la foto y leer la descripcion, no solo
+                // oir el recorte.
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .then(
+                            if (onOpenSpecies != null) {
+                                Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable(
+                                        onClickLabel = stringResource(R.string.review_open_species, observation.commonName),
+                                        onClick = onOpenSpecies,
+                                    )
+                            } else {
+                                Modifier
+                            },
+                        ),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = observation.commonName,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        if (onOpenSpecies != null) {
+                            Spacer(Modifier.width(6.dp))
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
                     Text(
                         text = observation.scientificName,
                         style = ScientificNameStyle,

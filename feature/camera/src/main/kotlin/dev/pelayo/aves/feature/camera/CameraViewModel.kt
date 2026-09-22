@@ -50,6 +50,10 @@ data class ImageCandidate(
     /** Lo que dijo el modelo antes del prior. Se guarda para poder auditarlo. */
     val rawConfidence: Float,
     val labelIndex: Int,
+    /** El nombre comun del catalogo, si la especie esta en el. Es lo que se ensena. */
+    val commonName: String? = null,
+    /** El speciesId canonico del catalogo (via `model_labels`), si se pudo resolver. */
+    val canonicalSpeciesId: String? = null,
 )
 
 /**
@@ -115,6 +119,12 @@ data class CameraUiState(
  */
 class CameraViewModel(
     private val classifierFactory: () -> ImageBirdClassifier?,
+    /**
+     * Pone nombre comun (y speciesId canonico) a los candidatos. El labelmap
+     * del modelo solo trae el cientifico; el catalogo sabe como se llama en
+     * castellano. Por defecto no hace nada, para previews y tests.
+     */
+    private val nameCandidates: suspend (modelId: String, List<ImageCandidate>) -> List<ImageCandidate> = { _, c -> c },
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CameraUiState())
@@ -238,10 +248,11 @@ class CameraViewModel(
                 val started = System.nanoTime()
                 val results = active.classify(bitmap, context)
                 val elapsedMillis = (System.nanoTime() - started) / 1_000_000
+                val named = nameCandidates(_uiState.value.modelId ?: UNKNOWN_MODEL_ID, results.toCandidates())
 
                 _uiState.update {
                     it.copy(
-                        candidates = results.toCandidates(),
+                        candidates = named,
                         hasResult = true,
                         lastInferenceMillis = elapsedMillis,
                     )
@@ -321,9 +332,10 @@ class CameraViewModel(
                 warmUpJob?.join()
                 val started = System.nanoTime()
                 val results = active.classify(input, context)
+                val named = nameCandidates(_uiState.value.modelId ?: UNKNOWN_MODEL_ID, results.toCandidates())
                 _uiState.update {
                     it.copy(
-                        candidates = results.toCandidates(),
+                        candidates = named,
                         hasResult = true,
                         lastInferenceMillis = (System.nanoTime() - started) / 1_000_000,
                     )

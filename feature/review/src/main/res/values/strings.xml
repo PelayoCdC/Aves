@@ -28,6 +28,7 @@
     <string name="review_reject">Descartar</string>
     <string name="review_confirm">Confirmar</string>
 
+    <string name="review_open_species">Ver la ficha de %1$s</string>
     <string name="review_level_solid">Muy probable</string>
     <string name="review_level_probable">Probable</string>
     <string name="review_level_doubtful">Dudosa</string>

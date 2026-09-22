@@ -106,6 +106,11 @@ class AppContainer(
         ImageObservationRecorder(observationRepository, regionRepository, photosDirectory)
     }
 
+    /** Nombre en castellano y speciesId canonico para los candidatos de la camara. */
+    val imageCandidateNamer: ImageCandidateNamer by lazy {
+        ImageCandidateNamer(speciesResolver, speciesRepository)
+    }
+
     /**
      * Las aves de tu provincia, tu region y tu pais: lo que permite que la
      * Pokedex diga que te falta por ver AQUI y no en el planeta. Sale de GBIF,

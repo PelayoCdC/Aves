@@ -53,7 +53,6 @@ import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
 import dev.pelayo.aves.core.common.PhotoStorage
 import dev.pelayo.aves.core.model.ObservationSource
-import java.io.File
 
 /*
  * Lo que el usuario ha capturado de una especie, dentro de su ficha: la tira de
@@ -184,7 +183,7 @@ internal fun PhotoViewer(
                 val photo = photos[page]
                 val file = remember(photo.mediaPath) { PhotoStorage.bestAvailable(photo.mediaPath.orEmpty()) }
                 ZoomablePhoto(
-                    file = file,
+                    model = file,
                     contentDescription = title,
                     isCurrent = pagerState.currentPage == page,
                 )
@@ -244,6 +243,71 @@ internal fun PhotoViewer(
 
 private val ViewerScrim = Color.Black.copy(alpha = 0.45f)
 
+/**
+ * UNA imagen a pantalla completa, con zoom: la de Wikipedia de la cabecera de la
+ * ficha. El mismo visor que las fotos del usuario, sin paginador.
+ *
+ * @param model lo que entienda Coil: una URL o un fichero.
+ * @param caption la atribucion, que con una imagen de Commons no es opcional.
+ */
+@Composable
+internal fun ImageViewer(
+    model: Any,
+    title: String,
+    caption: String?,
+    onDismiss: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+        ) {
+            ZoomablePhoto(model = model, contentDescription = title, isCurrent = true)
+
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .background(ViewerScrim)
+                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.pokedex_viewer_close),
+                        tint = Color.White,
+                    )
+                }
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            if (caption != null) {
+                Text(
+                    text = caption,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(ViewerScrim)
+                        .padding(16.dp),
+                )
+            }
+        }
+    }
+}
+
 /** Hasta donde se deja ampliar. Las fotos guardadas no dan para mas sin verse a cuadros. */
 private const val MAX_ZOOM = 5f
 
@@ -261,7 +325,7 @@ private const val DOUBLE_TAP_ZOOM = 2.5f
  */
 @Composable
 private fun ZoomablePhoto(
-    file: File,
+    model: Any,
     contentDescription: String,
     isCurrent: Boolean,
     modifier: Modifier = Modifier,
@@ -291,7 +355,7 @@ private fun ZoomablePhoto(
     }
 
     AsyncImage(
-        model = file,
+        model = model,
         contentDescription = contentDescription,
         contentScale = ContentScale.Fit,
         modifier = modifier
