@@ -63,6 +63,7 @@ import coil3.compose.AsyncImage
 import dev.pelayo.aves.core.common.PhotoStorage
 import dev.pelayo.aves.core.common.WikipediaImages
 import dev.pelayo.aves.core.data.ObservationRepository
+import dev.pelayo.aves.core.data.RangeMapRepository
 import dev.pelayo.aves.core.data.SpeciesEncyclopedia
 import dev.pelayo.aves.core.data.SpeciesRepository
 import dev.pelayo.aves.core.database.entity.ObservationEntity
@@ -74,6 +75,7 @@ import dev.pelayo.aves.core.model.Coordinates
 import dev.pelayo.aves.core.model.ObservationSource
 import dev.pelayo.aves.core.model.RarityTier
 import dev.pelayo.aves.core.model.Species
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -95,6 +97,8 @@ data class SpeciesDetailUiState(
     val sightings: List<Sighting> = emptyList(),
     /** Se esta pidiendo la ficha a Wikipedia. */
     val isLoadingEncyclopedia: Boolean = false,
+    /** El taxon de GBIF, para el mapa de donde se registra. Null mientras no se sepa o si GBIF no la reconoce. */
+    val gbifTaxonKey: Int? = null,
 ) {
     /** El mejor tier alcanzado; ver el razonamiento en [CollectedSpecies.rarity]. */
     val rarity: RarityTier
@@ -128,6 +132,8 @@ class SpeciesDetailViewModel(
     private val speciesRepository: SpeciesRepository,
     private val observationRepository: ObservationRepository,
     private val encyclopedia: SpeciesEncyclopedia? = null,
+    /** La clave de GBIF para el mapa. Nulo deja la ficha sin capa de densidad. */
+    private val rangeMaps: RangeMapRepository? = null,
     private val currentLocation: suspend () -> Coordinates? = { null },
     private val rarityOf: suspend (speciesId: String, where: Coordinates) -> RarityTier = { _, _ -> RarityTier.UNKNOWN },
 ) : ViewModel() {
@@ -135,13 +141,15 @@ class SpeciesDetailViewModel(
     private val species = MutableStateFlow<Species?>(null)
     private val resolved = MutableStateFlow(false)
     private val loadingEncyclopedia = MutableStateFlow(false)
+    private val taxonKey = MutableStateFlow<Int?>(null)
 
     val uiState: StateFlow<SpeciesDetailUiState> = combine(
         species,
         resolved,
         observationRepository.collection(),
         loadingEncyclopedia,
-    ) { found, isResolved, observations, loading ->
+        taxonKey,
+    ) { found, isResolved, observations, loading, key ->
         SpeciesDetailUiState(
             isLoading = !isResolved,
             species = found,
@@ -150,6 +158,7 @@ class SpeciesDetailViewModel(
                 .map(ObservationEntity::toSighting)
                 .sortedByDescending { it.timestamp },
             isLoadingEncyclopedia = loading,
+            gbifTaxonKey = key,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -162,6 +171,19 @@ class SpeciesDetailViewModel(
             val found = speciesRepository.find(speciesId)
             species.value = found
             resolved.value = true
+            // La clave de GBIF para el mapa, en paralelo con la enciclopedia:
+            // ninguna de las dos debe esperar a la otra.
+            if (found != null && rangeMaps != null) {
+                launch {
+                    taxonKey.value = try {
+                        rangeMaps.taxonKeyFor(found)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+            }
             // La enciclopedia se pide DESPUES de pintar lo que ya hay: la ficha
             // no espera a la red para ensenar el nombre y la familia.
             if (found != null && !found.hasEncyclopedia && encyclopedia != null) {
@@ -236,6 +258,8 @@ fun SpeciesDetailScreen(
     viewModelFactory: (String) -> SpeciesDetailViewModel,
     modifier: Modifier = Modifier,
     pendingPhoto: PendingPhotoConfirmation? = null,
+    /** Abre el mapa grande de esta especie. Nulo esconde el mapa de la ficha. */
+    onOpenMap: (() -> Unit)? = null,
 ) {
     // La clave evita que al navegar de una especie a otra se reutilice el
     // ViewModel de la anterior y la ficha se quede con los datos viejos.
@@ -251,6 +275,7 @@ fun SpeciesDetailScreen(
         onDeleteSighting = viewModel::deleteSighting,
         modifier = modifier,
         pendingPhoto = pendingPhoto,
+        onOpenMap = onOpenMap,
     )
 }
 
@@ -262,6 +287,7 @@ internal fun SpeciesDetailContent(
     onUpdateNotes: (Long, String?) -> Unit = { _, _ -> },
     onDeleteSighting: (Long) -> Unit = {},
     pendingPhoto: PendingPhotoConfirmation? = null,
+    onOpenMap: (() -> Unit)? = null,
 ) {
     val species = state.species
 
@@ -328,6 +354,22 @@ internal fun SpeciesDetailContent(
                 isLoadingEncyclopedia = state.isLoadingEncyclopedia,
                 onAddManualSighting = { showManualDialog = true },
             )
+        }
+
+        // Donde se registra en el mundo (GBIF) y donde la has visto tu. Va
+        // despues de la cabecera y antes de tus avistamientos: es la respuesta
+        // a "¿y esta por aqui?", que se pregunta antes de mirar la lista.
+        if (onOpenMap != null) {
+            item(key = "mapa") {
+                Column {
+                    Spacer(Modifier.size(8.dp))
+                    RangeMapCard(
+                        taxonKey = state.gbifTaxonKey,
+                        points = state.sightings.toMapPoints(species.commonName),
+                        onOpen = onOpenMap,
+                    )
+                }
+            }
         }
 
         item(key = "separador") {

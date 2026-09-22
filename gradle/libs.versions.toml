@@ -38,6 +38,7 @@ media3 = "1.10.1"
 coroutines = "1.11.0"
 ktor = "3.5.1"
 coil = "3.5.0"
+osmdroid = "6.1.20"
 # LiteRT sustituye a org.tensorflow:tensorflow-lite (congelado en 2.17.0).
 # Linea V1 (1.4.2, API Interpreter): es la que usa toda la referencia existente
 # y la unica con delegado GPU hoy. La V2 (litert 2.1.6, API CompiledModel) se
@@ -120,6 +121,7 @@ ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 # Coil 3 no trae red por defecto: sin este artefacto una URL https no carga nada, en silencio.
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
+osmdroid = { module = "org.osmdroid:osmdroid-android", version.ref = "osmdroid" }
 
 # --- Test ---
 junit = { module = "junit:junit", version.ref = "junit" }

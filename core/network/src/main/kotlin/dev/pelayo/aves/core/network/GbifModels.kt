@@ -190,3 +190,28 @@ data class GbifGadmRegion(
 ) {
     val typeName: String? get() = type.firstOrNull()?.takeIf { it.isNotBlank() }
 }
+
+/**
+ * Respuesta de `GET /v1/species/match`.
+ *
+ * @param usageKey la clave del taxon que caso, del rango que sea.
+ * @param speciesKey la clave de la ESPECIE a la que pertenece, que para una
+ *   subespecie no es la misma que [usageKey].
+ * @param matchType "EXACT", "FUZZY", "HIGHERRANK" (solo caso el genero o mas
+ *   arriba) o "NONE".
+ */
+@Serializable
+data class GbifSpeciesMatch(
+    val usageKey: Int? = null,
+    val speciesKey: Int? = null,
+    val rank: String = "",
+    val matchType: String = "",
+    val confidence: Int = 0,
+) {
+    /** La clave a nivel de especie, o null si no hay coincidencia que valga. */
+    fun speciesLevelKey(): Int? = when {
+        matchType == "NONE" || matchType == "HIGHERRANK" -> null
+        rank == "SPECIES" -> usageKey
+        else -> speciesKey
+    }
+}

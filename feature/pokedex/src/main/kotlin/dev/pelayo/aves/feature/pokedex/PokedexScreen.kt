@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
@@ -74,6 +75,7 @@ fun PokedexScreen(
     onSpeciesClick: (String) -> Unit = {},
     onOpenHistory: (() -> Unit)? = null,
     onOpenAchievements: (() -> Unit)? = null,
+    onOpenMap: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val viewModel: PokedexViewModel = viewModel { viewModelFactory() }
@@ -89,6 +91,7 @@ fun PokedexScreen(
         onRedetectZone = viewModel::redetectZone,
         onRetryChecklist = viewModel::retryChecklist,
         onOpenAchievements = onOpenAchievements,
+        onOpenMap = onOpenMap,
         onOpenBrowser = viewModel::openZoneBrowser,
         onClearChosen = viewModel::clearChosenZone,
         onBrowseInto = viewModel::browseInto,
@@ -114,6 +117,7 @@ internal fun PokedexContent(
     onRedetectZone: () -> Unit = {},
     onRetryChecklist: () -> Unit = {},
     onOpenAchievements: (() -> Unit)? = null,
+    onOpenMap: (() -> Unit)? = null,
     onOpenBrowser: () -> Unit = {},
     onClearChosen: () -> Unit = {},
     onBrowseInto: (ZoneChoice) -> Unit = {},
@@ -137,6 +141,7 @@ internal fun PokedexContent(
             zone = state.zone,
             onOpenHistory = onOpenHistory,
             onOpenAchievements = onOpenAchievements,
+            onOpenMap = onOpenMap,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         )
 
@@ -493,6 +498,7 @@ private fun ProgressHeader(
     zone: PokedexZone,
     onOpenHistory: (() -> Unit)?,
     onOpenAchievements: (() -> Unit)? = null,
+    onOpenMap: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -517,6 +523,11 @@ private fun ProgressHeader(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (onOpenMap != null) {
+                IconButton(onClick = onOpenMap) {
+                    Icon(Icons.Filled.Map, contentDescription = stringResource(R.string.pokedex_map_open))
+                }
+            }
             if (onOpenAchievements != null) {
                 IconButton(onClick = onOpenAchievements) {
                     Icon(Icons.Filled.EmojiEvents, contentDescription = stringResource(R.string.pokedex_achievements_open))

@@ -245,6 +245,35 @@ class GbifClient(
         ).sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }
 
+    /**
+     * La clave del taxon de una especie en el backbone de GBIF, por su nombre
+     * cientifico. Es lo que piden las teselas de densidad del mapa.
+     *
+     * Solo vale una coincidencia a nivel de especie (o de subespecie, que lleva
+     * la de su especie): si GBIF solo encuentra el genero, se devuelve null.
+     * Pintar el mapa de todo un genero seria pintar otra cosa.
+     *
+     * @return la clave, o null si GBIF no reconoce el nombre.
+     * @throws GbifUnavailableException sin red. No es lo mismo que null.
+     */
+    suspend fun matchSpeciesKey(scientificName: String): Int? {
+        require(scientificName.isNotBlank()) { "Hace falta un nombre cientifico" }
+        val response = try {
+            client.get(SPECIES_MATCH_URL) {
+                parameter("name", scientificName)
+                // Acotado a las aves: hay generos con el mismo nombre en otros reinos.
+                parameter("kingdom", "Animalia")
+                parameter("class", "Aves")
+            }
+        } catch (e: IOException) {
+            throw GbifUnavailableException("No se pudo contactar con GBIF", e)
+        }
+        if (!response.status.isSuccess()) {
+            throw GbifUnavailableException("GBIF respondio ${response.status} al casar $scientificName")
+        }
+        return GbifJson.decodeFromString(GbifSpeciesMatch.serializer(), response.bodyAsText()).speciesLevelKey()
+    }
+
     private fun roundCoordinate(value: Double): Double = round(value * 10.0) / 10.0
 
     private suspend fun search(
@@ -348,6 +377,7 @@ class GbifClient(
         const val OCCURRENCE_SEARCH_URL = "https://api.gbif.org/v1/occurrence/search"
         const val REVERSE_GEOCODE_URL = "https://api.gbif.org/v1/geocode/reverse"
         const val GADM_URL = "https://api.gbif.org/v1/geocode/gadm"
+        const val SPECIES_MATCH_URL = "https://api.gbif.org/v1/species/match"
 
         /** Registros minimos para que una especie entre en la lista de una zona. */
         const val DEFAULT_REGION_MIN_COUNT = 5

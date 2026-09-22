@@ -30,6 +30,8 @@ import dev.pelayo.aves.feature.camera.ImageIdentification
 import dev.pelayo.aves.feature.identify.IdentifyScreen
 import dev.pelayo.aves.feature.pokedex.AchievementsScreen
 import dev.pelayo.aves.feature.pokedex.AchievementsViewModel
+import dev.pelayo.aves.feature.pokedex.MapScreen
+import dev.pelayo.aves.feature.pokedex.MapViewModel
 import dev.pelayo.aves.feature.pokedex.PendingPhotoConfirmation
 import dev.pelayo.aves.feature.pokedex.PokedexScreen
 import dev.pelayo.aves.feature.pokedex.PokedexViewModel
@@ -64,6 +66,9 @@ private const val PHOTO_TOKEN_ARG = "photo"
 
 /** Las medallas. Cuelgan de la Pokedex, igual que el historial. */
 private const val ACHIEVEMENTS_ROUTE = "achievements"
+
+/** El mapa: de la coleccion entera, o de una especie (`map?speciesId=...`). */
+private const val MAP_ROUTE = "map"
 
 /** El historial de escuchas y la ficha de una escucha. Cuelgan de la Pokedex. */
 private const val SESSIONS_ROUTE = "sessions"
@@ -205,6 +210,31 @@ fun AvesNavHost(
                 },
                 onOpenHistory = { navController.navigate(SESSIONS_ROUTE) },
                 onOpenAchievements = { navController.navigate(ACHIEVEMENTS_ROUTE) },
+                onOpenMap = { navController.navigate(MAP_ROUTE) },
+            )
+        }
+
+        composable(
+            route = "$MAP_ROUTE?$SPECIES_ID_ARG={$SPECIES_ID_ARG}",
+            arguments = listOf(
+                navArgument(SPECIES_ID_ARG) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
+            MapScreen(
+                speciesId = entry.arguments?.getString(SPECIES_ID_ARG),
+                viewModelFactory = { id ->
+                    MapViewModel(
+                        speciesId = id,
+                        speciesRepository = container.speciesRepository,
+                        observationRepository = container.observationRepository,
+                        rangeMaps = container.rangeMapRepository,
+                    )
+                },
+                onSpeciesClick = { speciesId -> navController.navigate("$SPECIES_DETAIL_ROUTE/$speciesId") },
             )
         }
 
@@ -313,6 +343,7 @@ fun AvesNavHost(
             val awaiting = pendingPhoto?.takeIf { token != 0 && it.first == token }?.second
             SpeciesDetailScreen(
                 speciesId = speciesId,
+                onOpenMap = { navController.navigate("$MAP_ROUTE?$SPECIES_ID_ARG=$speciesId") },
                 pendingPhoto = awaiting?.let { identification ->
                     PendingPhotoConfirmation(
                         preview = identification.fullPhoto ?: identification.photo,
@@ -335,6 +366,7 @@ fun AvesNavHost(
                         speciesRepository = container.speciesRepository,
                         observationRepository = container.observationRepository,
                         encyclopedia = container.encyclopedia,
+                        rangeMaps = container.rangeMapRepository,
                         currentLocation = currentLocation,
                         rarityOf = { species, where ->
                             container.regionRepository.rarityOf(

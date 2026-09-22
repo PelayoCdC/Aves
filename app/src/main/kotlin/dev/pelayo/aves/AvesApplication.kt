@@ -6,6 +6,7 @@ import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import dev.pelayo.aves.core.map.MapSetup
 import dev.pelayo.aves.core.network.WikipediaClient
 import dev.pelayo.aves.core.listening.ListeningService
 import dev.pelayo.aves.di.AppContainer
@@ -34,6 +35,10 @@ class AvesApplication : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this, applicationScope)
+
+        // El mapa: User-Agent de la app para los servidores de teselas y cache
+        // en la cache de la app, con tope.
+        MapSetup.configure(this, WikipediaClient.USER_AGENT)
 
         // El servicio de escucha no puede recibir sus dependencias por
         // constructor: lo instancia el sistema. Este punto de inyeccion estatico

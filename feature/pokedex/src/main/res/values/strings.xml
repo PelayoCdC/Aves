@@ -61,6 +61,18 @@
     <string name="pokedex_missing_label">Sin ver</string>
     <string name="pokedex_missing_rarity_here">Sin ver · %1$s aquí</string>
 
+    <!-- Mapa -->
+    <string name="pokedex_map_open">Ver el mapa</string>
+    <string name="pokedex_map_layer_mine">Mis avistamientos</string>
+    <string name="pokedex_map_layer_gbif">Registros de aves (GBIF)</string>
+    <string name="pokedex_map_layer_range">Dónde se registra (GBIF)</string>
+    <string name="pokedex_map_no_points">Ninguno de tus avistamientos tiene ubicación todavía.</string>
+    <string name="pokedex_map_key_unavailable">GBIF no tiene mapa de registros para esta especie.</string>
+    <string name="pokedex_map_offline">Sin conexión: no se pudo cargar la capa de registros.</string>
+    <string name="pokedex_map_retry">Reintentar</string>
+    <string name="pokedex_map_open_species">Abrir la ficha</string>
+    <string name="pokedex_map_card_hint">Dónde se registra esta especie · toca para ampliar</string>
+
     <!-- Logros -->
     <string name="pokedex_achievements">Logros</string>
     <string name="pokedex_achievements_open">Ver los logros</string>

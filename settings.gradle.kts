@@ -39,6 +39,10 @@ include(":core:designsystem")
 // las features via :core:designsystem.
 include(":core:media")
 
+// El mapa (osmdroid + teselas de GBIF). Modulo aparte por lo mismo: solo lo usa
+// quien pinta mapas.
+include(":core:map")
+
 // Captura de audio. No sabe nada de ML: se parametriza con lo que el modelo pide.
 include(":core:audio")
 

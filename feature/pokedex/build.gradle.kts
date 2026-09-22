@@ -10,6 +10,7 @@ android {
 dependencies {
     implementation(projects.core.designsystem)
     implementation(projects.core.media)
+    implementation(projects.core.map)
     implementation(projects.core.data)
     implementation(projects.core.model)
     implementation(projects.core.common)

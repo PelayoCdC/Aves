@@ -80,6 +80,10 @@ interface SpeciesDao {
     @Query("SELECT commonName FROM species_names WHERE speciesId = :speciesId AND languageTag = :languageTag")
     suspend fun localizedName(speciesId: String, languageTag: String): String?
 
+    /** La clave del taxon en GBIF, casada por nombre la primera vez que el mapa la pide. */
+    @Query("UPDATE species SET gbifSpeciesKey = :gbifSpeciesKey WHERE speciesId = :speciesId")
+    suspend fun updateGbifSpeciesKey(speciesId: String, gbifSpeciesKey: Int)
+
     /** Guarda lo que trajo Wikipedia. Se escribe una vez y se lee siempre. */
     @Query(
         """

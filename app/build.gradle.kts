@@ -48,6 +48,7 @@ dependencies {
     implementation(projects.core.common)
     implementation(projects.core.data)
     implementation(projects.core.listening)
+    implementation(projects.core.map)
     // :app es el punto de composicion: conocer las implementaciones concretas es
     // literalmente su trabajo, igual que conoce BirdNetAudioClassifier en el
     // flavor personal.

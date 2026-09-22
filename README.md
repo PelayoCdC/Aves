@@ -58,6 +58,8 @@ su licencia. Es la restricción que más condiciona el diseño.
 | GBIF API | sin restricción NC | Sí | ambos |
 | eBird taxonomía (`ref/taxonomy`) | sin key; el resto de eBird es NC | — | catálogo |
 | Wikipedia (REST summary) | CC BY-SA (texto), varía (imágenes) | Sí, citando | ambos |
+| Mapa base (OpenMapTiles / OpenStreetMap, vía GBIF) | ODbL, atribución | Sí | ambos |
+| osmdroid | Apache 2.0 | Sí | ambos |
 
 > **Trampa del modelo de imagen.** Hay que usar la **variación 3** de
 > `google/aiy/tfLite/vision-classifier-birds-v1` y solo esa. Su changelog dice
@@ -102,6 +104,7 @@ core/
   designsystem/         tema M3
   audio/                AudioRecord, ring buffer, gate, espectrograma, remuestreo
   media/                reproductor de recortes (ExoPlayer)
+  map/                  mapa: osmdroid + teselas de GBIF
   network/              GBIF y Wikipedia (Ktor)
   database/             Room. KSP aislado aquí
   data/                 repositorios: la frontera de las features
@@ -291,6 +294,28 @@ es lo que acepta el filtro `geometry` de GBIF. La zona elegida se guarda
 (`pokedex_preferences.customZone*`, Room v4) y manda sobre la detectada hasta
 "Volver a mi zona".
 
+### El mapa
+
+Lo que se echaba en falta de eBird, sin eBird: sus mapas son de licencia no
+comercial y con clave, pero GBIF sirve sin clave dos cosas que juntas dan un
+mapa de rango real (`core/map`, `GbifTiles`): un **mapa base** (OpenMapTiles
+sobre OpenStreetMap, `tile.gbif.org`) y las **teselas de densidad de registros**
+de cualquier taxon (`api.gbif.org/v2/map`), en hexagonos, a cualquier zoom. Se
+pintan con **osmdroid** (Apache 2.0, sin SDK de Google ni facturacion),
+envuelto en un composable (`BirdMap`), con los avistamientos del usuario como
+puntos de color por origen (verde visto, naranja foto, morado canto).
+
+Hay dos mapas: el de la coleccion (icono en la Pokedex: todos tus avistamientos
+con coordenadas y, como capa, donde se registran aves) y el de cada especie (una
+tarjeta en la ficha que se amplia: donde se registra en el mundo y donde la has
+visto tu). La clave de GBIF de la especie se pide por nombre cientifico la
+primera vez (`species/match`, solo si casa a nivel de especie) y se guarda en
+`species.gbifSpeciesKey`, que el catalogo traia vacio.
+
+Privacidad: cada tesela pedida dice a GBIF que zona se esta mirando (y, en la
+ficha de una especie, cual). Teselas cacheadas en la cache de la app, con tope
+de 120 MB. Atribucion obligatoria en pantalla.
+
 ### Logros
 
 Medallas de hierro a diamante por la parte de una lista que tengas en la
@@ -414,8 +439,8 @@ que no están en el repositorio.
 
 ## Fuentes de datos
 
-- **GBIF** — ocurrencias, rareza, prior de respaldo, listas por zona, GADM y
-  geocodificación inversa. Sin API key, sin cláusula
+- **GBIF** — ocurrencias, rareza, prior de respaldo, listas por zona, GADM,
+  geocodificación inversa, mapa base y teselas de densidad. Sin API key, sin cláusula
   no comercial.
 - **eBird** — solo taxonomía (`ref/taxonomy/ebird?locale=es`, sin key). El
   resto de su API es no comercial.
@@ -430,6 +455,11 @@ Identificación por canto mediante **BirdNET** (Stefan Kahl, Connor Wood,
 Maximilian Eibl, Holger Klinck) y **BirdNET+**, K. Lisa Yang Center for
 Conservation Bioacoustics, Cornell Lab of Ornithology. Identificación por
 imagen con **Google AIY Vision Classifier birds_V1**.
+
+El mapa base es de [OpenMapTiles](https://openmaptiles.org/) sobre datos de
+[OpenStreetMap](https://www.openstreetmap.org/copyright) (ODbL), servido por
+GBIF; el mapa se pinta con [osmdroid](https://github.com/osmdroid/osmdroid)
+(Apache 2.0).
 
 El icono de la app es un vector propio (`ic_launcher_foreground.xml`,
 previsualizable con `scripts/render-icon.ps1`). El icono de la clave de sol es

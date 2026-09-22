@@ -5,6 +5,7 @@ import dev.pelayo.aves.core.data.ChecklistRepository
 import dev.pelayo.aves.core.data.GbifChecklistSource
 import dev.pelayo.aves.core.data.GbifOccurrenceSource
 import dev.pelayo.aves.core.data.ObservationRepository
+import dev.pelayo.aves.core.data.RangeMapRepository
 import dev.pelayo.aves.core.data.RegionRepository
 import dev.pelayo.aves.core.data.SpeciesRepository
 import dev.pelayo.aves.core.data.SpeciesEncyclopedia
@@ -119,6 +120,9 @@ class AppContainer(
     val checklistRepository: ChecklistRepository by lazy {
         ChecklistRepository(database, GbifChecklistSource(gbifClient))
     }
+
+    /** La clave de GBIF de cada especie, para el mapa de donde se registra. */
+    val rangeMapRepository: RangeMapRepository by lazy { RangeMapRepository(database, gbifClient) }
 
     private val wikipediaClient: WikipediaClient by lazy { WikipediaClient() }
 
