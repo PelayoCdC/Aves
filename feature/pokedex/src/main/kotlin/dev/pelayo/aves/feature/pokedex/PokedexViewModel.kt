@@ -5,10 +5,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.pelayo.aves.core.data.ChecklistRepository
 import dev.pelayo.aves.core.data.HomePlace
+import dev.pelayo.aves.core.data.NotablePlaces
 import dev.pelayo.aves.core.data.ObservationRepository
 import dev.pelayo.aves.core.data.PokedexPreferences
 import dev.pelayo.aves.core.data.PokedexZone
 import dev.pelayo.aves.core.data.SpeciesRepository
+import dev.pelayo.aves.core.data.ZoneChoice
 import dev.pelayo.aves.core.data.ZoneLevel
 import dev.pelayo.aves.core.data.ZoneSpecies
 import dev.pelayo.aves.core.database.entity.ObservationEntity
@@ -31,6 +33,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** Como esta la lista de la zona por la que se filtra. */
@@ -50,6 +53,25 @@ data class ZoneOption(
     val level: ZoneLevel,
     /** "Asturias", "España"... Vacio para el mundo, que se nombra en la interfaz. */
     val name: String,
+)
+
+/**
+ * El navegador de zonas: por donde se va cuando la zona que se quiere ver no es
+ * la detectada.
+ *
+ * @param parent la region que se esta mirando por dentro, o null en el primer
+ *   nivel (las regiones del pais y los lugares destacados).
+ * @param choices lo que hay dentro: regiones del pais, o provincias de [parent].
+ * @param places los lugares que no son administrativos (Doñana...). Solo en el
+ *   primer nivel.
+ */
+data class ZoneBrowserState(
+    val countryName: String,
+    val parent: ZoneChoice? = null,
+    val choices: List<ZoneChoice> = emptyList(),
+    val places: List<PokedexZone> = emptyList(),
+    val isLoading: Boolean = false,
+    val failed: Boolean = false,
 )
 
 /**
@@ -81,6 +103,12 @@ data class PokedexUiState(
     /** Especies de la coleccion que el filtro deja fuera por no ser de la zona. */
     val hiddenOutsideZone: Int = 0,
     val isDetectingZone: Boolean = false,
+    /** El pais de la zona detectada, para llamar a las cosas por su nombre ("comunidad autonoma"). */
+    val homeCountryCode: String? = null,
+    /** La zona elegida a mano, si la hay. Mientras exista, `zone` es esta. */
+    val chosenZone: PokedexZone? = null,
+    /** El navegador de zonas, mientras esta abierto. */
+    val zoneBrowser: ZoneBrowserState? = null,
 )
 
 /**
@@ -110,6 +138,12 @@ class PokedexViewModel(
     private val query = MutableStateFlow("")
     private val zoneStatus = MutableStateFlow(ZoneStatus.READY)
     private val detecting = MutableStateFlow(false)
+    private val browser = MutableStateFlow<ZoneBrowserState?>(null)
+
+    /** Lo efimero de la zona, junto: `combine` admite cinco flujos y ya eran cinco. */
+    private val zoneUi = combine(zoneStatus, detecting, browser) { status, isDetecting, browsing ->
+        ZoneUi(status, isDetecting, browsing)
+    }
 
     /**
      * El total es lo que algun modelo enlazado puede identificar, no el
@@ -163,9 +197,8 @@ class PokedexViewModel(
         collectionSnapshot,
         preferences,
         zoneSpecies,
-        zoneStatus,
-        detecting,
-    ) { snapshot, prefs, species, status, isDetecting ->
+        zoneUi,
+    ) { snapshot, prefs, species, ui ->
         val catalog = speciesRepository.findAll(snapshot.ids).associateBy { it.speciesId }
         val collected = buildCollection(
             sightings = snapshot.observations.map(ObservationEntity::toSighting),
@@ -192,10 +225,13 @@ class PokedexViewModel(
             catalogMatches = snapshot.matches.filterNot { it.speciesId in onScreen },
             zone = prefs.zone,
             zoneOptions = zoneOptionsFor(prefs.home),
-            zoneStatus = if (species != null) ZoneStatus.READY else status,
+            zoneStatus = if (species != null) ZoneStatus.READY else ui.status,
             showMissing = prefs.showMissing,
             hiddenOutsideZone = view.hiddenOutsideZone,
-            isDetectingZone = isDetecting,
+            isDetectingZone = ui.isDetecting,
+            homeCountryCode = prefs.home.countryCode,
+            chosenZone = prefs.chosen,
+            zoneBrowser = ui.browser,
         )
     }
         .stateIn(
@@ -263,6 +299,66 @@ class PokedexViewModel(
         viewModelScope.launch { detectZone(resetLevel = false) }
     }
 
+    /** Abre el navegador de zonas en el primer nivel: las regiones del pais. */
+    fun openZoneBrowser() {
+        val repository = checklistRepository ?: return
+        viewModelScope.launch {
+            val home = repository.preferences.first().home
+            val countryName = home.countryName ?: countryDisplayName(home.countryCode ?: DEFAULT_COUNTRY_CODE)
+            val places = NotablePlaces.all.takeIf { (home.countryCode ?: DEFAULT_COUNTRY_CODE) == PLACES_COUNTRY_CODE }
+            browser.value = ZoneBrowserState(countryName = countryName, places = places.orEmpty(), isLoading = true)
+            loadChoices(gadmId = home.copy(countryCode = home.countryCode ?: DEFAULT_COUNTRY_CODE).countryGadmId)
+        }
+    }
+
+    /** Entra en una region para ver sus provincias. */
+    fun browseInto(choice: ZoneChoice) {
+        browser.update { it?.copy(parent = choice, choices = emptyList(), isLoading = true, failed = false) }
+        viewModelScope.launch { loadChoices(gadmId = choice.zone.id) }
+    }
+
+    /** Vuelve al primer nivel del navegador. */
+    fun browseBack() {
+        val repository = checklistRepository ?: return
+        browser.update { it?.copy(parent = null, choices = emptyList(), isLoading = true, failed = false) }
+        viewModelScope.launch {
+            val home = repository.preferences.first().home
+            loadChoices(gadmId = home.copy(countryCode = home.countryCode ?: DEFAULT_COUNTRY_CODE).countryGadmId)
+        }
+    }
+
+    fun closeZoneBrowser() {
+        browser.value = null
+    }
+
+    /** La zona elegida a mano en el navegador. Manda sobre la detectada hasta que se quite. */
+    fun chooseZone(zone: PokedexZone) {
+        browser.value = null
+        viewModelScope.launch { checklistRepository?.chooseZone(zone) }
+    }
+
+    /** "Volver a mi zona". */
+    fun clearChosenZone() {
+        viewModelScope.launch { checklistRepository?.clearChosenZone() }
+    }
+
+    private suspend fun loadChoices(gadmId: String?) {
+        val repository = checklistRepository ?: return
+        if (gadmId == null) {
+            browser.update { it?.copy(isLoading = false, failed = true) }
+            return
+        }
+        try {
+            val choices = repository.subdivisions(gadmId)
+            browser.update { it?.copy(choices = choices, isLoading = false, failed = false) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo listar las zonas de $gadmId", e)
+            browser.update { it?.copy(isLoading = false, failed = true) }
+        }
+    }
+
     /** Reintenta la descarga de la lista tras un fallo de red. */
     fun retryChecklist() {
         val repository = checklistRepository ?: return
@@ -313,6 +409,8 @@ class PokedexViewModel(
         }
     }
 
+    private data class ZoneUi(val status: ZoneStatus, val isDetecting: Boolean, val browser: ZoneBrowserState?)
+
     /** Agrupa los flujos sin destructurar tuplas anidadas. */
     private data class Snapshot(
         val ids: List<String>,
@@ -327,6 +425,12 @@ class PokedexViewModel(
         const val STOP_TIMEOUT_MILLIS = 5_000L
         const val SEARCH_DEBOUNCE_MILLIS = 250L
         const val CATALOG_MATCH_LIMIT = 20
+
+        /** Sin pais detectado se ofrece España, que es donde esta quien usa la app. */
+        const val DEFAULT_COUNTRY_CODE = "ES"
+
+        /** Los lugares destacados son, por ahora, todos de España. */
+        const val PLACES_COUNTRY_CODE = "ES"
 
         /** Sin repositorio de zonas (previews, tests): el mundo y nada mas. */
         val NO_ZONES = PokedexPreferences(

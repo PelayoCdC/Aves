@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.pelayo.aves.core.data.PokedexZone
+import dev.pelayo.aves.core.data.ZoneChoice
 import dev.pelayo.aves.core.data.ZoneLevel
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
@@ -71,6 +73,7 @@ fun PokedexScreen(
     viewModelFactory: () -> PokedexViewModel,
     onSpeciesClick: (String) -> Unit = {},
     onOpenHistory: (() -> Unit)? = null,
+    onOpenAchievements: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val viewModel: PokedexViewModel = viewModel { viewModelFactory() }
@@ -85,6 +88,13 @@ fun PokedexScreen(
         onShowMissingChange = viewModel::onShowMissingChange,
         onRedetectZone = viewModel::redetectZone,
         onRetryChecklist = viewModel::retryChecklist,
+        onOpenAchievements = onOpenAchievements,
+        onOpenBrowser = viewModel::openZoneBrowser,
+        onClearChosen = viewModel::clearChosenZone,
+        onBrowseInto = viewModel::browseInto,
+        onBrowseBack = viewModel::browseBack,
+        onCloseBrowser = viewModel::closeZoneBrowser,
+        onChooseZone = viewModel::chooseZone,
         modifier = modifier,
     )
 }
@@ -103,12 +113,30 @@ internal fun PokedexContent(
     onShowMissingChange: (Boolean) -> Unit = {},
     onRedetectZone: () -> Unit = {},
     onRetryChecklist: () -> Unit = {},
+    onOpenAchievements: (() -> Unit)? = null,
+    onOpenBrowser: () -> Unit = {},
+    onClearChosen: () -> Unit = {},
+    onBrowseInto: (ZoneChoice) -> Unit = {},
+    onBrowseBack: () -> Unit = {},
+    onCloseBrowser: () -> Unit = {},
+    onChooseZone: (PokedexZone) -> Unit = {},
 ) {
+    state.zoneBrowser?.let { browser ->
+        ZoneBrowserDialog(
+            browser = browser,
+            onBrowseInto = onBrowseInto,
+            onBack = onBrowseBack,
+            onChoose = onChooseZone,
+            onDismiss = onCloseBrowser,
+        )
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         ProgressHeader(
             progress = state.progress,
             zone = state.zone,
             onOpenHistory = onOpenHistory,
+            onOpenAchievements = onOpenAchievements,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         )
 
@@ -117,6 +145,8 @@ internal fun PokedexContent(
             onZoneLevelChange = onZoneLevelChange,
             onShowMissingChange = onShowMissingChange,
             onRedetectZone = onRedetectZone,
+            onOpenBrowser = onOpenBrowser,
+            onClearChosen = onClearChosen,
             modifier = Modifier.padding(horizontal = 16.dp),
         )
 
@@ -295,7 +325,8 @@ private fun zoneDisplayName(level: ZoneLevel, name: String): String =
  * Por donde se filtra y si se ensenan las que faltan.
  *
  * Dos chips y no un dialogo de filtros: son las dos unicas decisiones, y las
- * dos se cambian a menudo (mirar la provincia, abrir al pais, volver).
+ * dos se cambian a menudo (mirar la provincia, abrir al pais, volver). El menu
+ * del primero lleva ademas la puerta a cualquier otra zona.
  */
 @Composable
 private fun ZoneFilterRow(
@@ -303,6 +334,8 @@ private fun ZoneFilterRow(
     onZoneLevelChange: (ZoneLevel) -> Unit,
     onShowMissingChange: (Boolean) -> Unit,
     onRedetectZone: () -> Unit,
+    onOpenBrowser: () -> Unit,
+    onClearChosen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -339,7 +372,7 @@ private fun ZoneFilterRow(
                             Column {
                                 Text(zoneDisplayName(option.level, option.name))
                                 Text(
-                                    text = zoneLevelLabel(option.level),
+                                    text = zoneLevelLabel(option.level, state.homeCountryCode),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -348,6 +381,23 @@ private fun ZoneFilterRow(
                         onClick = {
                             menuOpen = false
                             onZoneLevelChange(option.level)
+                        },
+                    )
+                }
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.pokedex_zone_choose_other)) },
+                    onClick = {
+                        menuOpen = false
+                        onOpenBrowser()
+                    },
+                )
+                if (state.chosenZone != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.pokedex_zone_back_home)) },
+                        onClick = {
+                            menuOpen = false
+                            onClearChosen()
                         },
                     )
                 }
@@ -377,15 +427,22 @@ private fun ZoneFilterRow(
     }
 }
 
+/**
+ * Como se llama cada nivel. En España, el nivel 1 de GADM es la comunidad
+ * autonoma y asi hay que decirlo: "tu region" no le dice nada a nadie aqui.
+ */
 @Composable
-private fun zoneLevelLabel(level: ZoneLevel): String = stringResource(
+internal fun zoneLevelLabel(level: ZoneLevel, countryCode: String?): String = stringResource(
     when (level) {
         ZoneLevel.PROVINCE -> R.string.pokedex_zone_level_province
-        ZoneLevel.REGION -> R.string.pokedex_zone_level_region
+        ZoneLevel.REGION -> if (countryCode == SPAIN) R.string.pokedex_zone_level_region_es else R.string.pokedex_zone_level_region
         ZoneLevel.COUNTRY -> R.string.pokedex_zone_level_country
+        ZoneLevel.PLACE -> R.string.pokedex_zone_level_place
         ZoneLevel.WORLD -> R.string.pokedex_zone_level_world
     },
 )
+
+private const val SPAIN = "ES"
 
 /**
  * Lo que el filtro esta haciendo y no se ve: que la lista se esta bajando, que
@@ -435,6 +492,7 @@ private fun ProgressHeader(
     progress: CollectionProgress,
     zone: PokedexZone,
     onOpenHistory: (() -> Unit)?,
+    onOpenAchievements: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -459,6 +517,11 @@ private fun ProgressHeader(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (onOpenAchievements != null) {
+                IconButton(onClick = onOpenAchievements) {
+                    Icon(Icons.Filled.EmojiEvents, contentDescription = stringResource(R.string.pokedex_achievements_open))
+                }
+            }
             if (onOpenHistory != null) {
                 IconButton(onClick = onOpenHistory) {
                     Icon(Icons.Filled.History, contentDescription = stringResource(R.string.pokedex_history))

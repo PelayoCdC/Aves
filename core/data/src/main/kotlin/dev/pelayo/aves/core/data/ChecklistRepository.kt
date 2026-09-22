@@ -13,12 +13,16 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.Locale
 
 /** A que escala se filtra la Pokedex. De mas fina a mas gruesa. */
 enum class ZoneLevel {
     PROVINCE,
     REGION,
     COUNTRY,
+
+    /** Un lugar que no es administrativo: Doñana, el delta del Ebro. Solo elegido a mano. */
+    PLACE,
     WORLD,
     ;
 
@@ -45,8 +49,15 @@ data class HomePlace(
         ZoneLevel.PROVINCE -> provinceId != null
         ZoneLevel.REGION -> regionId != null
         ZoneLevel.COUNTRY -> countryCode != null
+        ZoneLevel.PLACE -> false
         ZoneLevel.WORLD -> true
     }
+
+    /** El identificador GADM del pais ("ESP"), que es lo que pide la lista de sus regiones. */
+    val countryGadmId: String?
+        get() = countryCode?.let { code ->
+            runCatching { Locale("", code).isO3Country }.getOrNull()?.takeIf { it.isNotBlank() }
+        }
 
     companion object {
         /**
@@ -75,17 +86,32 @@ data class HomePlace(
  * Una zona concreta por la que filtrar.
  *
  * @param id lo que entiende GBIF: el codigo ISO del pais o el GADM de la
- *   region/provincia. Null solo para el mundo entero.
+ *   region/provincia; para un lugar, un identificador propio ("PLACE:donana").
+ *   Null solo para el mundo entero.
+ * @param geometry el poligono WKT de un lugar que no es administrativo. Null
+ *   para las zonas administrativas y el mundo.
  */
 data class PokedexZone(
     val level: ZoneLevel,
     val id: String?,
     val name: String,
+    val geometry: String? = null,
 ) {
     companion object {
         val World = PokedexZone(ZoneLevel.WORLD, id = null, name = "")
     }
 }
+
+/**
+ * Una zona que se puede elegir en el navegador de zonas.
+ *
+ * @param kind como se llama ese tipo de zona en su pais ("Comunidad Autónoma",
+ *   "Provincia"). Null si no se sabe.
+ */
+data class ZoneChoice(
+    val zone: PokedexZone,
+    val kind: String? = null,
+)
 
 /** Como quiere ver el usuario su Pokedex. */
 data class PokedexPreferences(
@@ -94,19 +120,23 @@ data class PokedexPreferences(
     val home: HomePlace,
     /** false hasta que se ha intentado detectar la zona al menos una vez. */
     val isInitialized: Boolean,
+    /** Una zona elegida a mano, que manda sobre la detectada mientras exista. */
+    val chosen: PokedexZone? = null,
 ) {
     /**
-     * La zona que toca, cayendo al nivel siguiente si el pedido no se conoce.
-     * Alguien sin ubicacion que pide "provincia" ve su pais, no un error.
+     * La zona que toca: la elegida a mano si la hay; si no, la del nivel pedido,
+     * cayendo al nivel siguiente si ese no se conoce. Alguien sin ubicacion que
+     * pide "provincia" ve su pais, no un error.
      */
     val zone: PokedexZone
         get() {
+            chosen?.let { return it }
             val level = ZoneLevel.entries.first { it >= zoneLevel && home.has(it) }
             return when (level) {
                 ZoneLevel.PROVINCE -> PokedexZone(level, home.provinceId, home.provinceName.orEmpty())
                 ZoneLevel.REGION -> PokedexZone(level, home.regionId, home.regionName.orEmpty())
                 ZoneLevel.COUNTRY -> PokedexZone(level, home.countryCode, home.countryName.orEmpty())
-                ZoneLevel.WORLD -> PokedexZone.World
+                ZoneLevel.PLACE, ZoneLevel.WORLD -> PokedexZone.World
             }
         }
 }
@@ -123,16 +153,19 @@ interface ChecklistSource {
     suspend fun speciesIn(zone: PokedexZone): OccurrenceSummary
 
     suspend fun placeAt(latitude: Double, longitude: Double): HomePlace
+
+    /** Las zonas dentro de [gadmId]: las regiones de un pais, las provincias de una region. */
+    suspend fun subdivisions(gadmId: String): List<ZoneChoice>
 }
 
 class GbifChecklistSource(private val client: GbifClient) : ChecklistSource {
 
     override suspend fun speciesIn(zone: PokedexZone): OccurrenceSummary {
         val id = requireNotNull(zone.id) { "El mundo entero no se le pide a GBIF" }
-        val summary = if (zone.level == ZoneLevel.COUNTRY) {
-            client.speciesInRegion(countryCode = id)
-        } else {
-            client.speciesInRegion(gadmGid = id)
+        val summary = when {
+            zone.geometry != null -> client.speciesInRegion(geometry = zone.geometry)
+            zone.level == ZoneLevel.COUNTRY -> client.speciesInRegion(countryCode = id)
+            else -> client.speciesInRegion(gadmGid = id)
         }
         return OccurrenceSummary(total = summary.total, byScientificName = summary.speciesCounts)
     }
@@ -153,6 +186,20 @@ class GbifChecklistSource(private val client: GbifClient) : ChecklistSource {
             provinceName = province?.name?.takeIf { it.isNotBlank() },
         )
     }
+
+    override suspend fun subdivisions(gadmId: String): List<ZoneChoice> =
+        client.subdivisions(gadmId)
+            .filter { it.id.isNotBlank() && it.name.isNotBlank() }
+            .map { region ->
+                ZoneChoice(
+                    zone = PokedexZone(
+                        level = if (region.gadmLevel <= 1) ZoneLevel.REGION else ZoneLevel.PROVINCE,
+                        id = region.id,
+                        name = region.name,
+                    ),
+                    kind = region.typeName,
+                )
+            }
 }
 
 /**
@@ -180,6 +227,9 @@ class ChecklistRepository(
 
     val preferences: Flow<PokedexPreferences> = checklistDao.preferences().map { it.toDomain() }
 
+    /** Las listas que hay en el movil, vivas: cuando entra una, quien las mire se entera. */
+    val cachedChecklists: Flow<List<RegionChecklistEntity>> = checklistDao.checklists()
+
     /** Lo que se puede ver en una zona. Para el mundo, todo lo que algun modelo identifica. */
     fun speciesIn(zone: PokedexZone): Flow<List<ZoneSpecies>> {
         val id = zone.id
@@ -188,6 +238,16 @@ class ChecklistRepository(
         } else {
             checklistDao.speciesInRegion(id).map { rows -> rows.map(RegionSpeciesRow::toZoneSpecies) }
         }
+    }
+
+    /**
+     * Las especies de [zone] que algun modelo sabe identificar, si su lista esta
+     * en el movil. Null si no esta: "sin datos" no es lo mismo que "ninguna".
+     */
+    suspend fun speciesIdsIn(zone: PokedexZone): Set<String>? {
+        val id = zone.id ?: return null
+        if (checklistDao.findChecklist(id) == null) return null
+        return checklistDao.speciesIdsInRegion(id).toHashSet()
     }
 
     /** true si la lista de [zone] ya esta en el movil (aunque este caducada). */
@@ -243,7 +303,27 @@ class ChecklistRepository(
         }
     }
 
-    suspend fun setZoneLevel(level: ZoneLevel) = edit { it.copy(zoneLevel = level.name) }
+    /** Las zonas dentro de otra, para el navegador de zonas. Necesita red. */
+    suspend fun subdivisions(gadmId: String): List<ZoneChoice> = source.subdivisions(gadmId)
+
+    /** Elegir un nivel de TU zona es dejar la elegida a mano. */
+    suspend fun setZoneLevel(level: ZoneLevel) = edit { it.copy(zoneLevel = level.name).withoutChosen() }
+
+    /** "Quiero ver Extremadura": una zona que no es la detectada. */
+    suspend fun chooseZone(zone: PokedexZone) {
+        requireNotNull(zone.id) { "El mundo no se elige: se quita el filtro" }
+        edit {
+            it.copy(
+                customZoneId = zone.id,
+                customZoneName = zone.name,
+                customZoneLevel = zone.level.name,
+                customZoneGeometry = zone.geometry,
+            )
+        }
+    }
+
+    /** Vuelta a la zona detectada, al nivel que estuviera. */
+    suspend fun clearChosenZone() = edit { it.withoutChosen() }
 
     suspend fun setShowMissing(show: Boolean) = edit { it.copy(showMissing = show) }
 
@@ -315,6 +395,13 @@ class ChecklistRepository(
             showMissing = true,
         )
 
+        private fun PokedexPreferencesEntity.withoutChosen() = copy(
+            customZoneId = null,
+            customZoneName = null,
+            customZoneLevel = null,
+            customZoneGeometry = null,
+        )
+
         private fun PokedexPreferencesEntity?.toDomain(): PokedexPreferences {
             val entity = this ?: DEFAULT_ENTITY
             return PokedexPreferences(
@@ -329,6 +416,17 @@ class ChecklistRepository(
                     provinceName = entity.provinceName,
                 ),
                 isInitialized = this != null && entity.detectedAt > 0L,
+                chosen = entity.customZoneId?.let { id ->
+                    PokedexZone(
+                        // Un nivel guardado que ya no se entiende no puede ser
+                        // "el mundo": una zona elegida siempre es algo concreto.
+                        level = ZoneLevel.fromName(entity.customZoneLevel)
+                            .takeIf { level -> level != ZoneLevel.WORLD } ?: ZoneLevel.PLACE,
+                        id = id,
+                        name = entity.customZoneName.orEmpty(),
+                        geometry = entity.customZoneGeometry,
+                    )
+                },
             )
         }
     }

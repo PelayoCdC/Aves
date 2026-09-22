@@ -77,4 +77,9 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.android)
+
+    // El cargador de imagenes se configura aqui (ver AvesApplication): Wikimedia
+    // rechaza con 403 el User-Agent por defecto de OkHttp.
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 }

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Textos de los componentes compartidos. Prefijo `place_` para el selector de lugar. -->
+<resources>
+    <string name="place_title">¿Dónde fue?</string>
+    <string name="place_why">Con el lugar, la identificación descarta las aves que allí no hay y la rareza se calcula para ese sitio.</string>
+    <string name="place_current">Mi ubicación actual</string>
+    <string name="place_none">Sin ubicación</string>
+    <string name="place_none_chip">Sin ubicación · añadir</string>
+    <string name="place_search_label">Buscar un lugar</string>
+    <string name="place_search_action">Buscar</string>
+    <string name="place_search_empty">No se ha encontrado ese lugar. Prueba con otro nombre o escribe las coordenadas.</string>
+    <string name="place_busy">Buscando…</string>
+    <string name="place_current_failed">No se pudo obtener tu ubicación. Comprueba que está activada y que el modo sin ubicación de los ajustes está apagado.</string>
+    <string name="place_current_denied">Sin el permiso de ubicación no se puede usar la actual. Puedes buscar el lugar por su nombre.</string>
+    <string name="place_coordinates_toggle">Escribir las coordenadas</string>
+    <string name="place_latitude">Latitud</string>
+    <string name="place_longitude">Longitud</string>
+    <string name="place_coordinates_use">Usar estas coordenadas</string>
+    <string name="place_cancel">Cancelar</string>
+</resources>

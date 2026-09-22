@@ -65,6 +65,16 @@ data class PokedexPreferencesEntity(
     val provinceName: String? = null,
     /** Cuando se detecto la zona. 0 si nunca. */
     val detectedAt: Long = 0L,
+    /**
+     * Una zona elegida a mano en lugar de la detectada ("quiero ver Extremadura
+     * aunque viva en Madrid"). Mientras tenga valor, manda sobre `zoneLevel`.
+     */
+    val customZoneId: String? = null,
+    val customZoneName: String? = null,
+    /** Nombre de un `ZoneLevel`, como `zoneLevel`. */
+    val customZoneLevel: String? = null,
+    /** Un poligono WKT, para las zonas que no son administrativas (Doñana...). */
+    val customZoneGeometry: String? = null,
 ) {
     companion object {
         const val SINGLETON_ID = 0

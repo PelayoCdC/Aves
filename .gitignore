@@ -46,3 +46,6 @@ replay_pid*.log
 
 # APKs generados para instalar a mano.
 /apk/
+
+# Previsualizacion del icono generada por scripts/render-icon.ps1
+scripts/icon-preview.png

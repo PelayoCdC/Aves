@@ -45,7 +45,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface as MaterialSurface
 import androidx.compose.material3.Text
@@ -77,6 +76,10 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.pelayo.aves.core.designsystem.components.PickedPlace
+import dev.pelayo.aves.core.designsystem.components.PlaceChip
+import dev.pelayo.aves.core.designsystem.components.PlacePickerActions
+import dev.pelayo.aves.core.designsystem.components.PlacePickerDialog
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
 import dev.pelayo.aves.core.ml.api.ImageBirdClassifier
@@ -115,6 +118,8 @@ fun CameraScreen(
     contextInfluence: Float = DEFAULT_CONTEXT_INFLUENCE,
     onIdentified: (ImageIdentification) -> Unit = {},
     modifier: Modifier = Modifier,
+    /** Para decir donde se hizo una foto de la galeria. Nulo esconde el selector. */
+    placePicker: PlacePickerActions? = null,
 ) {
     val viewModel: CameraViewModel = viewModel {
         CameraViewModel(classifierFactory = classifierProvider)
@@ -154,11 +159,15 @@ fun CameraScreen(
                 viewModel.classifyPicked(
                     display = image.display,
                     modelInput = image.modelInput,
+                    // La fecha de la foto, no la de hoy. Y el lugar solo si el
+                    // usuario lo ha dicho (se conserva de una foto a la siguiente):
+                    // una foto de la galeria puede ser de cualquier sitio, y el
+                    // contexto de AQUI no dice nada de ella.
                     context = ObservationContext(
-                        // La fecha de la foto, no la de hoy; y sin ubicacion ni
-                        // prior: una foto de la galeria puede ser de cualquier sitio.
+                        latitude = state.pickedPlace?.latitude,
+                        longitude = state.pickedPlace?.longitude,
                         epochMillis = image.takenAtMillis ?: System.currentTimeMillis(),
-                        contextInfluence = 0f,
+                        contextInfluence = if (state.pickedPlace != null) contextInfluence else 0f,
                     ),
                 )
             } catch (e: CancellationException) {
@@ -181,6 +190,8 @@ fun CameraScreen(
             onDismissResults = viewModel::dismissResults,
             onIdentified = { candidate -> onIdentified(viewModel.identification(candidate)) },
             modifier = modifier,
+            placePicker = placePicker,
+            onPlacePicked = { place -> viewModel.reclassifyWithPlace(place, contextInfluence) },
         )
         return
     }
@@ -390,8 +401,11 @@ private fun PickedImageContent(
     onDismissResults: () -> Unit,
     onIdentified: (ImageCandidate) -> Unit,
     modifier: Modifier = Modifier,
+    placePicker: PlacePickerActions? = null,
+    onPlacePicked: (PickedPlace?) -> Unit = {},
 ) {
     val picture = remember(image) { image.asImageBitmap() }
+    var showPlacePicker by remember { mutableStateOf(false) }
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
         Image(
@@ -401,6 +415,19 @@ private fun PickedImageContent(
             modifier = Modifier.fillMaxSize(),
         )
 
+        // "¿Donde fue?" arriba, fuera del camino de los candidatos. Una foto de
+        // la galeria no se hizo aqui, y sin lugar el modelo decide a ciegas
+        // entre las aves de todo el planeta.
+        if (placePicker != null) {
+            PlaceChip(
+                place = state.pickedPlace,
+                onClick = { showPlacePicker = true },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 16.dp),
+            )
+        }
+
         CaptureOverlay(
             state = state,
             onShutter = {},
@@ -409,6 +436,17 @@ private fun PickedImageContent(
             onPickFromGallery = onPickFromGallery,
             fromGallery = true,
             modifier = Modifier.fillMaxSize(),
+        )
+    }
+
+    if (showPlacePicker && placePicker != null) {
+        PlacePickerDialog(
+            actions = placePicker,
+            onPick = { place ->
+                onPlacePicked(place)
+                showPlacePicker = false
+            },
+            onDismiss = { showPlacePicker = false },
         )
     }
 }
@@ -578,6 +616,13 @@ private fun CandidateList(
     }
 }
 
+/**
+ * Un candidato. Solo el nombre: el porcentaje se quito porque no ayudaba a
+ * decidir (la decision es mirar al ave y al nombre) y un "23 %" junto a una
+ * especie hacia desconfiar de las tres. El orden ya dice cual es la mas
+ * probable, y la confianza se guarda con la observacion para quien la quiera
+ * auditar.
+ */
 @Composable
 private fun CandidateRow(
     candidate: ImageCandidate,
@@ -586,7 +631,9 @@ private fun CandidateRow(
 ) {
     val selectable = candidate.speciesId != null
 
-    Column(
+    Text(
+        text = candidate.scientificName,
+        style = ScientificNameStyle,
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
@@ -595,21 +642,8 @@ private fun CandidateRow(
                 onClickLabel = stringResource(R.string.camera_confirm_candidate, candidate.scientificName),
                 role = Role.Button,
             ) { onIdentified(candidate) }
-            .padding(8.dp),
-    ) {
-        Text(text = candidate.scientificName, style = ScientificNameStyle)
-        Spacer(Modifier.size(6.dp))
-        LinearProgressIndicator(
-            progress = { candidate.confidence },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.size(4.dp))
-        Text(
-            text = stringResource(R.string.camera_percent, (candidate.confidence * 100).toInt()),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+            .padding(horizontal = 8.dp, vertical = 12.dp),
+    )
 }
 
 @Composable

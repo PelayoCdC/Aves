@@ -21,8 +21,11 @@ import dev.pelayo.aves.core.data.RegionRepository
 import dev.pelayo.aves.core.model.RarityTier
 import dev.pelayo.aves.di.AppContainer
 import dev.pelayo.aves.di.ObservationExporter
+import dev.pelayo.aves.di.toListeningSettings
 import dev.pelayo.aves.feature.camera.CameraScreen
 import dev.pelayo.aves.feature.identify.IdentifyScreen
+import dev.pelayo.aves.feature.pokedex.AchievementsScreen
+import dev.pelayo.aves.feature.pokedex.AchievementsViewModel
 import dev.pelayo.aves.feature.pokedex.PokedexScreen
 import dev.pelayo.aves.feature.pokedex.PokedexViewModel
 import dev.pelayo.aves.feature.pokedex.SessionDetailScreen
@@ -39,6 +42,7 @@ import dev.pelayo.aves.feature.settings.SettingsViewModel
 import dev.pelayo.aves.ml.createAudioClassifier
 import dev.pelayo.aves.ml.createImageClassifier
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -46,6 +50,9 @@ import java.util.Locale
 /** Ruta de la ficha de especie. Es un destino de detalle, no de primer nivel. */
 private const val SPECIES_DETAIL_ROUTE = "species"
 private const val SPECIES_ID_ARG = "speciesId"
+
+/** Las medallas. Cuelgan de la Pokedex, igual que el historial. */
+private const val ACHIEVEMENTS_ROUTE = "achievements"
 
 /** El historial de escuchas y la ficha de una escucha. Cuelgan de la Pokedex. */
 private const val SESSIONS_ROUTE = "sessions"
@@ -138,6 +145,12 @@ fun AvesNavHost(
         if (settings.locationDisabled) null else container.locationProvider.current()
     }
 
+    // "¿Donde fue?" para las fotos de la galeria y las grabaciones: lo que no se
+    // hizo ahora y aqui necesita que alguien diga donde.
+    val placePicker = remember(container) {
+        container.placePickerActions(locationDisabled = { container.settingsStore.settings.first().locationDisabled })
+    }
+
     NavHost(
         navController = navController,
         startDestination = AvesDestination.IDENTIFY.route,
@@ -148,6 +161,8 @@ fun AvesNavHost(
                 classifierProvider = classifierProvider,
                 namer = container.detectionNamer,
                 analysisSaver = container.fileAnalysisSaver,
+                settings = { container.settingsStore.settings.first().toListeningSettings() },
+                placePicker = placePicker,
                 onOpenCamera = { navController.navigate(CAMERA_ROUTE) },
                 startListeningToken = startListeningToken,
             )
@@ -171,6 +186,19 @@ fun AvesNavHost(
                     navController.navigate("$SPECIES_DETAIL_ROUTE/$speciesId")
                 },
                 onOpenHistory = { navController.navigate(SESSIONS_ROUTE) },
+                onOpenAchievements = { navController.navigate(ACHIEVEMENTS_ROUTE) },
+            )
+        }
+
+        composable(ACHIEVEMENTS_ROUTE) {
+            AchievementsScreen(
+                viewModelFactory = {
+                    AchievementsViewModel(
+                        speciesRepository = container.speciesRepository,
+                        observationRepository = container.observationRepository,
+                        checklistRepository = container.checklistRepository,
+                    )
+                },
             )
         }
 
@@ -187,6 +215,7 @@ fun AvesNavHost(
                 classifierProvider = { createImageClassifier(appContext, contextPrior) },
                 locationProvider = currentLocation,
                 contextInfluence = settings.contextInfluence,
+                placePicker = placePicker,
                 onIdentified = { identification ->
                     // Se guarda ANTES de navegar: la ficha tiene que abrirse ya
                     // con el avistamiento dentro, y con el id canonico del

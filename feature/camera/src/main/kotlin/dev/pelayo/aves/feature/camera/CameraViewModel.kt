@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.pelayo.aves.core.designsystem.components.PickedPlace
 import dev.pelayo.aves.core.ml.api.ClassificationResult
 import dev.pelayo.aves.core.ml.api.ImageBirdClassifier
 import dev.pelayo.aves.core.ml.api.ObservationContext
@@ -99,6 +100,8 @@ data class CameraUiState(
      * vista previa.
      */
     val pickedImage: Bitmap? = null,
+    /** Donde se hizo la foto de la galeria, si el usuario lo ha dicho. */
+    val pickedPlace: PickedPlace? = null,
 )
 
 /**
@@ -283,6 +286,63 @@ class CameraViewModel(
     }
 
     /**
+     * El usuario ha dicho donde se hizo la foto de la galeria: se vuelve a
+     * clasificar la MISMA imagen con ese contexto.
+     *
+     * Con lugar, el prior descarta lo que alli no hay; sin el, la foto se
+     * clasifico a ciegas entre las aves de todo el planeta. La fecha se conserva
+     * (es la del EXIF) y la imagen no se vuelve a decodificar: el recorte que
+     * vio el modelo sigue en [lastInput].
+     *
+     * @param place null para quitar el lugar y volver a clasificar sin contexto.
+     * @param contextInfluence el peso del contexto de los ajustes, que solo se
+     *   aplica si hay lugar.
+     */
+    fun reclassifyWithPlace(place: PickedPlace?, contextInfluence: Float) {
+        val input = lastInput?.takeIf { !it.isRecycled } ?: return
+        val previous = lastContext ?: return
+        if (_uiState.value.isClassifying) return
+        val active = obtainClassifier() ?: return
+
+        val context = ObservationContext(
+            latitude = place?.latitude,
+            longitude = place?.longitude,
+            epochMillis = previous.epochMillis,
+            contextInfluence = if (place != null) contextInfluence else 0f,
+        )
+        lastContext = context
+        _uiState.update {
+            it.copy(isClassifying = true, error = null, errorDetail = null, candidates = emptyList(), pickedPlace = place)
+        }
+
+        classifyJob?.cancel()
+        classifyJob = viewModelScope.launch {
+            try {
+                warmUpJob?.join()
+                val started = System.nanoTime()
+                val results = active.classify(input, context)
+                _uiState.update {
+                    it.copy(
+                        candidates = results.toCandidates(),
+                        hasResult = true,
+                        lastInferenceMillis = (System.nanoTime() - started) / 1_000_000,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                fail(CameraError.MODEL_FILES_MISSING, e)
+            } catch (e: IllegalStateException) {
+                fail(CameraError.CAPTURE_FAILED, e)
+            } catch (e: IllegalArgumentException) {
+                fail(CameraError.CAPTURE_FAILED, e)
+            } finally {
+                _uiState.update { it.copy(isClassifying = false) }
+            }
+        }
+    }
+
+    /**
      * Empaqueta la eleccion del usuario con su foto y su contexto.
      *
      * La foto se COPIA: quien la recibe puede guardarla cuando quiera sin que
@@ -320,6 +380,7 @@ class CameraViewModel(
                 error = null,
                 errorDetail = null,
                 pickedImage = null,
+                pickedPlace = null,
             )
         }
     }
@@ -413,7 +474,7 @@ class CameraViewModel(
          * cinco especies al 1 % no ayuda a nadie y hace que la app parezca que
          * adivina, que es exactamente lo que estaria haciendo.
          */
-        const val MIN_CONFIDENCE = 0.05f
+        const val MIN_CONFIDENCE = 0.10f
 
         /**
          * Lado de entrada mientras no haya modelo del que preguntarlo (previews,

@@ -173,3 +173,20 @@ data class GbifLocation(
         const val TYPE_PROVINCE = "GADM2"
     }
 }
+
+/**
+ * Una zona administrativa de `GET /v1/geocode/gadm/{id}/subdivisions`.
+ *
+ * @param type como se llama ese nivel EN EL PAIS ("Comunidad Autónoma",
+ *   "Provincia", "Región", "Département"...). GBIF lo da como lista; el primero
+ *   es el que vale.
+ */
+@Serializable
+data class GbifGadmRegion(
+    val id: String = "",
+    val name: String = "",
+    val gadmLevel: Int = 0,
+    val type: List<String> = emptyList(),
+) {
+    val typeName: String? get() = type.firstOrNull()?.takeIf { it.isNotBlank() }
+}

@@ -38,11 +38,12 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -66,12 +67,16 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.pelayo.aves.core.audio.AudioFileDecoder
+import dev.pelayo.aves.core.designsystem.components.PlacePickerActions
+import dev.pelayo.aves.core.designsystem.components.PlacePickerDialog
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
-import dev.pelayo.aves.core.listening.CandidateGlimpse
 import dev.pelayo.aves.core.listening.DetectionNamer
 import dev.pelayo.aves.core.listening.FileAnalysisSaver
+import dev.pelayo.aves.core.listening.ListeningSettings
 import dev.pelayo.aves.core.listening.StableDetection
+import dev.pelayo.aves.core.media.ClipPlayIcon
+import dev.pelayo.aves.core.media.rememberClipPlayer
 import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
 import kotlin.math.log10
 
@@ -91,6 +96,10 @@ fun IdentifyScreen(
     namer: DetectionNamer? = null,
     analysisSaver: FileAnalysisSaver? = null,
     startListeningToken: Int = 0,
+    /** Los ajustes del usuario, para que un fichero se mida con el mismo liston que la escucha. */
+    settings: suspend () -> ListeningSettings = { ListeningSettings() },
+    /** Para decir donde se grabo un fichero. Nulo esconde el selector. */
+    placePicker: PlacePickerActions? = null,
     /** Abre la camara. La foto es la via secundaria: se usa cuando ves el ave pero no la oyes. */
     onOpenCamera: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -101,7 +110,7 @@ fun IdentifyScreen(
     // los da la Application al servicio, no esta pantalla.
     val appContext = context.applicationContext
     val viewModel: IdentifyViewModel = viewModel {
-        IdentifyViewModel(appContext, classifierProvider, namer, analysisSaver)
+        IdentifyViewModel(appContext, classifierProvider, namer, analysisSaver, settings)
     }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -162,8 +171,13 @@ fun IdentifyScreen(
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
-        if (uri != null) viewModel.analyzeFile(context.displayNameOf(uri), uri)
+        if (uri != null) viewModel.prepareFile(context.displayNameOf(uri), uri, context.lastModifiedOf(uri))
     }
+
+    // Un reproductor para las pistas de las especies encontradas en un fichero.
+    val clipPlayer = rememberClipPlayer()
+    var showPlacePicker by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -175,6 +189,7 @@ fun IdentifyScreen(
             text = when {
                 state.isWarmingUp -> stringResource(R.string.identify_title_warming)
                 state.isAnalyzingFile -> state.analyzedFileName ?: stringResource(R.string.identify_title_analyzing)
+                state.pendingFile != null -> state.pendingFile!!.name
                 state.isListening -> stringResource(R.string.identify_title_listening)
                 state.analyzedFileName != null -> state.analyzedFileName!!
                 else -> stringResource(R.string.identify_title_idle)
@@ -184,9 +199,9 @@ fun IdentifyScreen(
 
         Spacer(Modifier.size(4.dp))
 
-        AnimatedVisibility(
-            visible = (state.isListening || state.isAnalyzingFile) && !state.isWarmingUp,
-        ) {
+        // Los contadores de ventanas son de la escucha en directo. Un fichero
+        // ensena otra cosa: en que fase esta y cuanto le falta.
+        AnimatedVisibility(visible = state.isListening && !state.isWarmingUp) {
             Text(
                 text = buildList {
                     add(pluralStringResource(R.plurals.identify_counter_windows, state.windowsProcessed, state.windowsProcessed))
@@ -246,7 +261,28 @@ fun IdentifyScreen(
             Spacer(Modifier.size(8.dp))
         }
 
-        val analyzed = state.analyzedFileName != null && !state.isAnalyzingFile && state.detections.isNotEmpty()
+        // Fichero elegido y sin analizar: donde y cuando se grabo, y adelante.
+        state.pendingFile?.let { pending ->
+            PendingFileCard(
+                file = pending,
+                place = state.filePlace,
+                canPickPlace = placePicker != null,
+                onPickPlace = { showPlacePicker = true },
+                onPickDate = { showDatePicker = true },
+                onAnalyze = viewModel::analyzePending,
+                onCancel = viewModel::stopFileAnalysis,
+            )
+            Spacer(Modifier.size(12.dp))
+        }
+
+        // Analizando: que se vea que trabaja, en que fase y cuanto le falta.
+        state.fileStage?.let { stage ->
+            FileProgress(stage = stage, progress = state.fileProgress)
+            Spacer(Modifier.size(12.dp))
+        }
+
+        val finished = state.analyzedFileName != null && !state.isAnalyzingFile && state.error == null
+        val analyzed = finished && state.detections.isNotEmpty()
         if (analyzed && analysisSaver != null) {
             val saved = state.savedToReview
             when {
@@ -268,7 +304,26 @@ fun IdentifyScreen(
                 state.isListening && state.detections.none { it.speciesId == candidate.speciesId }
             }
             when {
-                state.isWarmingUp -> CircularProgressIndicator()
+                // Con un fichero, la barra de fases de arriba ya dice que se esta
+                // cargando el modelo: dos indicadores a la vez sobran.
+                state.isWarmingUp && !state.isFileMode -> CircularProgressIndicator()
+
+                // Se analizo entero y nada convencio. Se dice, porque una lista
+                // vacia sin explicacion parece un fallo.
+                finished && state.detections.isEmpty() -> Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.identify_file_nothing),
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(onClick = viewModel::stopFileAnalysis) {
+                        Text(stringResource(R.string.identify_file_close))
+                    }
+                }
 
                 state.detections.isEmpty() && state.isListening -> Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -280,7 +335,7 @@ fun IdentifyScreen(
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    glimpse?.let { GlimpseRow(it) }
+                    glimpse?.let { GlimpseRow() }
                 }
 
                 else -> LazyColumn(
@@ -288,11 +343,48 @@ fun IdentifyScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(state.detections, key = { it.speciesId }) { detection ->
-                        DetectionCard(detection)
+                        // La pista solo existe tras analizar un fichero; en
+                        // directo el recorte se escucha luego, en Revisar.
+                        val track = state.tracks[detection.speciesId]
+                        val key = detection.speciesId.hashCode().toLong()
+                        DetectionCard(
+                            detection = detection,
+                            hasTrack = track != null,
+                            isPlaying = clipPlayer.isPlaying(key),
+                            onTogglePlay = { clipPlayer.toggle(key, track) },
+                        )
                     }
-                    glimpse?.let { item(key = "glimpse") { GlimpseRow(it) } }
+                    glimpse?.let { item(key = "glimpse") { GlimpseRow() } }
+                    if (finished) {
+                        item(key = "cerrar") {
+                            TextButton(onClick = viewModel::stopFileAnalysis, modifier = Modifier.fillMaxWidth()) {
+                                Text(stringResource(R.string.identify_file_close))
+                            }
+                        }
+                    }
                 }
             }
+        }
+
+        if (showPlacePicker && placePicker != null) {
+            PlacePickerDialog(
+                actions = placePicker,
+                onPick = { place ->
+                    viewModel.setFilePlace(place)
+                    showPlacePicker = false
+                },
+                onDismiss = { showPlacePicker = false },
+            )
+        }
+        state.pendingFile?.takeIf { showDatePicker }?.let { pending ->
+            RecordingDateDialog(
+                currentMillis = pending.recordedAt,
+                onPick = { millis ->
+                    viewModel.setFileDate(millis)
+                    showDatePicker = false
+                },
+                onDismiss = { showDatePicker = false },
+            )
         }
 
         Row(
@@ -404,49 +496,64 @@ private fun StableDetection.displayNames(): Pair<String, String> {
     return (common ?: rawCommon) to (scientific ?: rawScientific)
 }
 
-private fun CandidateGlimpse.displayName(): String {
-    commonName?.let { return it }
-    val separator = label.indexOf('_')
-    return if (separator >= 0) label.substring(separator + 1) else label
-}
-
+/**
+ * Una especie reconocida. Sin porcentaje y sin barra: lo que llega hasta aqui ya
+ * paso el liston, y a partir de ahi un "73 %" no le dice nada a quien mira la
+ * lista (y un "41 %" solo le hace desconfiar de algo que la app da por bueno).
+ * La puntuacion se sigue guardando con la observacion, para quien la quiera
+ * auditar en la exportacion.
+ *
+ * @param hasTrack hay una pista con solo el canto de esta especie (analisis de
+ *   fichero). En directo el recorte se escucha luego, en Revisar.
+ */
 @Composable
-private fun DetectionCard(detection: StableDetection, modifier: Modifier = Modifier) {
+private fun DetectionCard(
+    detection: StableDetection,
+    modifier: Modifier = Modifier,
+    hasTrack: Boolean = false,
+    isPlaying: Boolean = false,
+    onTogglePlay: () -> Unit = {},
+) {
     val (common, scientific) = detection.displayNames()
 
     Card(modifier = modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            if (common.isNotEmpty()) {
-                Text(text = common, style = MaterialTheme.typography.titleMedium)
+        Row(
+            modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                if (common.isNotEmpty()) {
+                    Text(text = common, style = MaterialTheme.typography.titleMedium)
+                }
+                Text(text = scientific, style = ScientificNameStyle)
             }
-            Text(text = scientific, style = ScientificNameStyle)
-            Spacer(Modifier.size(8.dp))
-            LinearProgressIndicator(
-                progress = { detection.score },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.size(4.dp))
-            Text(
-                text = stringResource(R.string.identify_percent, (detection.score * 100).toInt()),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (hasTrack) {
+                IconButton(onClick = onTogglePlay) {
+                    ClipPlayIcon(
+                        isPlaying = isPlaying,
+                        contentDescription = stringResource(
+                            if (isPlaying) R.string.identify_track_stop else R.string.identify_track_play,
+                            common.ifEmpty { scientific },
+                        ),
+                    )
+                }
+            }
         }
     }
 }
 
 /**
- * Lo que el modelo esta oyendo AHORA, aunque aun no lo de por bueno.
+ * El modelo esta oyendo ALGO, aunque aun no lo de por bueno.
  *
- * En gris y sin tarjeta a proposito: es una corazonada, no un resultado. Su
- * funcion es que el usuario vea que la app esta trabajando y que distinga "no
- * capta" de "capta pero no confirma", que fue lo que no se pudo saber en la
- * primera prueba de campo.
+ * Sin nombre de especie y sin porcentaje a proposito: en la lista solo salen
+ * aves seguras, y un "¿mirlo? 28 %" es justo lo contrario. Se queda como senal
+ * de vida, que es para lo que nacio tras la primera prueba de campo: que se
+ * distinga "no capta nada" de "capta pero todavia no confirma".
  */
 @Composable
-private fun GlimpseRow(glimpse: CandidateGlimpse, modifier: Modifier = Modifier) {
+private fun GlimpseRow(modifier: Modifier = Modifier) {
     Text(
-        text = stringResource(R.string.identify_glimpse, glimpse.displayName(), (glimpse.score * 100).toInt()),
+        text = stringResource(R.string.identify_glimpse),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,

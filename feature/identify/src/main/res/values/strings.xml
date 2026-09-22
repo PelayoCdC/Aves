@@ -26,7 +26,7 @@
     <string name="identify_save_to_review">Guardar en Revisar</string>
 
     <string name="identify_nothing_confirmed">Nada confirmado todavía.\nHacen falta unos segundos de canto seguido.</string>
-    <string name="identify_glimpse">Oyendo… ¿%1$s? %2$d %%</string>
+    <string name="identify_glimpse">Se oye algo… todavía sin confirmar</string>
 
     <string name="identify_stop">Parar</string>
     <string name="identify_listen">Escuchar</string>
@@ -46,5 +46,19 @@
     <string name="identify_meter_no_signal">sin señal</string>
     <string name="identify_meter_dbfs">%1$d dBFS</string>
     <string name="identify_meter_below_gate">por debajo del umbral</string>
-    <string name="identify_percent">%1$d %%</string>
+
+    <!-- Analisis de un fichero -->
+    <string name="identify_file_context_title">¿Dónde y cuándo se grabó?</string>
+    <string name="identify_file_context_body">Es opcional, pero con el lugar y la fecha se descartan las aves que allí no hay en esa época, y la rareza se calcula para ese sitio.</string>
+    <string name="identify_file_analyze">Analizar</string>
+    <string name="identify_file_cancel">Cancelar</string>
+    <string name="identify_file_close">Cerrar el fichero</string>
+    <string name="identify_file_date_ok">Aceptar</string>
+    <string name="identify_file_nothing">No se ha reconocido ninguna especie con seguridad en esta grabación.</string>
+    <string name="identify_stage_model">Preparando el modelo…</string>
+    <string name="identify_stage_decoding">Leyendo el audio…</string>
+    <string name="identify_stage_analyzing">Analizando la grabación… %1$d %%</string>
+    <string name="identify_stage_tracks">Separando el canto de cada especie…</string>
+    <string name="identify_track_play">Reproducir el canto de %1$s</string>
+    <string name="identify_track_stop">Parar el canto de %1$s</string>
 </resources>

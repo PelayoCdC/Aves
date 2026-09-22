@@ -2,6 +2,11 @@ package dev.pelayo.aves
 
 import android.app.Application
 import android.util.Log
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import dev.pelayo.aves.core.network.WikipediaClient
 import dev.pelayo.aves.core.listening.ListeningService
 import dev.pelayo.aves.di.AppContainer
 import dev.pelayo.aves.di.ListeningDependenciesAdapter
@@ -10,8 +15,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
 
-class AvesApplication : Application() {
+class AvesApplication : Application(), SingletonImageLoader.Factory {
 
     lateinit var container: AppContainer
         private set
@@ -44,6 +50,30 @@ class AvesApplication : Application() {
                 .onFailure { Log.e(TAG, "No se pudo sembrar el catalogo", it) }
             container.regionWarmer.fillRarities()
         }
+    }
+
+    /**
+     * El cargador de imagenes de toda la app, con un User-Agent que identifica a
+     * la app (nunca al usuario).
+     *
+     * Sin esto las fotos de Wikipedia NO CARGAN: Wikimedia responde 403 al
+     * "okhttp/x.y" que manda OkHttp por defecto, y Coil pinta un hueco sin dar
+     * ningun error visible. El texto de la ficha si llegaba porque
+     * [WikipediaClient] ya mandaba el suyo; las imagenes van por otro cliente.
+     */
+    override fun newImageLoader(context: PlatformContext): ImageLoader {
+        val client = OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                chain.proceed(
+                    chain.request().newBuilder()
+                        .header("User-Agent", WikipediaClient.USER_AGENT)
+                        .build(),
+                )
+            }
+            .build()
+        return ImageLoader.Builder(context)
+            .components { add(OkHttpNetworkFetcherFactory(callFactory = { client })) }
+            .build()
     }
 
     private companion object {

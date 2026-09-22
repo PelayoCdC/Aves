@@ -1,6 +1,8 @@
 package dev.pelayo.aves.feature.review
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,7 +15,6 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -89,24 +90,20 @@ fun ReviewCard(
                 }
 
                 Spacer(Modifier.size(12.dp))
-                ConfidenceBadge(confidence = observation.confidence, accent = accent)
+                ConfidenceBadge(level = observation.level, accent = accent)
             }
 
             Spacer(Modifier.size(12.dp))
 
-            // El grosor de la barra crece con la confianza. El color ya lo dice,
-            // pero el peso visual se lee sin tener que interpretar un codigo de
-            // colores ni leer el porcentaje.
-            LinearProgressIndicator(
-                progress = { observation.confidence },
-                modifier = Modifier
+            // Una linea del color del nivel, sin porcentaje: "segura", "probable"
+            // o "dudosa" es lo que hay que saber para decidir; el numero solo
+            // hacia desconfiar de las tres.
+            Box(
+                Modifier
                     .fillMaxWidth()
                     .height(barHeightFor(observation.level))
-                    .clip(RoundedCornerShape(percent = 50)),
-                color = accent,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                gapSize = 0.dp,
-                drawStopIndicator = {},
+                    .clip(RoundedCornerShape(percent = 50))
+                    .background(accent),
             )
 
             Spacer(Modifier.size(8.dp))
@@ -153,7 +150,7 @@ fun ReviewCard(
                         AssistChip(
                             onClick = { onConfirmAs(alternative) },
                             label = {
-                                Text(stringResource(R.string.review_alternative, alternative.commonName, (alternative.score * 100).toInt()))
+                                Text(alternative.commonName)
                             },
                         )
                     }
@@ -252,7 +249,7 @@ private fun ClipButton(
 }
 
 @Composable
-private fun ConfidenceBadge(confidence: Float, accent: Color, modifier: Modifier = Modifier) {
+private fun ConfidenceBadge(level: ConfidenceLevel, accent: Color, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(percent = 50),
@@ -261,7 +258,13 @@ private fun ConfidenceBadge(confidence: Float, accent: Color, modifier: Modifier
         color = accent.copy(alpha = 0.16f),
     ) {
         Text(
-            text = stringResource(R.string.review_percent, (confidence * 100).toInt()),
+            text = stringResource(
+                when (level) {
+                    ConfidenceLevel.SOLID -> R.string.review_level_solid
+                    ConfidenceLevel.PROBABLE -> R.string.review_level_probable
+                    ConfidenceLevel.DOUBTFUL -> R.string.review_level_doubtful
+                },
+            ),
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,

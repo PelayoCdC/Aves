@@ -146,6 +146,9 @@ class GbifClient(
      * @param countryCode ISO de dos letras ("ES"), o null.
      * @param gadmGid identificador GADM de una region o provincia
      *   ("ESP.3_1", "ESP.3.1_1"), o null. Tiene prioridad sobre el pais.
+     * @param geometry un poligono WKT (vertices en sentido antihorario, como
+     *   exige GBIF), para zonas que no son administrativas: Doñana, el delta del
+     *   Ebro. Tiene prioridad sobre los otros dos.
      * @param minCount registros minimos para que una especie cuente. Con 1, la
      *   lista de un pais se llena de escapes de jaula y errores de
      *   identificacion de un solo registro.
@@ -153,9 +156,10 @@ class GbifClient(
     suspend fun speciesInRegion(
         countryCode: String? = null,
         gadmGid: String? = null,
+        geometry: String? = null,
         minCount: Int = DEFAULT_REGION_MIN_COUNT,
     ): GbifOccurrenceSummary {
-        require(countryCode != null || gadmGid != null) { "Hace falta un pais o una region" }
+        require(countryCode != null || gadmGid != null || geometry != null) { "Hace falta un pais, una region o un poligono" }
 
         val counts = LinkedHashMap<String, Long>()
         var total = 0L
@@ -163,7 +167,11 @@ class GbifClient(
         while (offset < MAX_REGION_FACETS) {
             val page = request { url ->
                 url.parameter("taxonKey", GBIF_TAXON_KEY_AVES)
-                if (gadmGid != null) url.parameter("gadmGid", gadmGid) else url.parameter("country", countryCode)
+                when {
+                    geometry != null -> url.parameter("geometry", geometry)
+                    gadmGid != null -> url.parameter("gadmGid", gadmGid)
+                    else -> url.parameter("country", countryCode)
+                }
                 url.parameter("limit", 0)
                 url.parameter("facet", FACET_PARAM_SCIENTIFIC_NAME)
                 url.parameter("facetLimit", REGION_FACET_PAGE)
@@ -208,6 +216,33 @@ class GbifClient(
             ListSerializer(GbifLocation.serializer()),
             response.bodyAsText(),
         )
+    }
+
+    /**
+     * Las zonas administrativas dentro de otra, segun GADM: las comunidades
+     * autonomas de un pais ("ESP"), o las provincias de una comunidad
+     * ("ESP.3_1").
+     *
+     * Es lo que permite elegir OTRA zona en la Pokedex, no solo la detectada:
+     * quien vive en Madrid y se va de fin de semana a Extremadura quiere ver que
+     * le falta alli. Los identificadores que devuelve son los que entiende
+     * [speciesInRegion], y el `type` viene en el idioma del pais ("Comunidad
+     * Autonoma", "Provincia"), que es como hay que llamarlo en pantalla.
+     */
+    suspend fun subdivisions(gadmId: String): List<GbifGadmRegion> {
+        require(gadmId.isNotBlank()) { "Hace falta un identificador GADM" }
+        val response = try {
+            client.get("$GADM_URL/$gadmId/subdivisions")
+        } catch (e: IOException) {
+            throw GbifUnavailableException("No se pudo contactar con GBIF", e)
+        }
+        if (!response.status.isSuccess()) {
+            throw GbifUnavailableException("GBIF respondio ${response.status} al listar $gadmId")
+        }
+        return GbifJson.decodeFromString(
+            ListSerializer(GbifGadmRegion.serializer()),
+            response.bodyAsText(),
+        ).sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }
 
     private fun roundCoordinate(value: Double): Double = round(value * 10.0) / 10.0
@@ -312,6 +347,7 @@ class GbifClient(
     companion object {
         const val OCCURRENCE_SEARCH_URL = "https://api.gbif.org/v1/occurrence/search"
         const val REVERSE_GEOCODE_URL = "https://api.gbif.org/v1/geocode/reverse"
+        const val GADM_URL = "https://api.gbif.org/v1/geocode/gadm"
 
         /** Registros minimos para que una especie entre en la lista de una zona. */
         const val DEFAULT_REGION_MIN_COUNT = 5

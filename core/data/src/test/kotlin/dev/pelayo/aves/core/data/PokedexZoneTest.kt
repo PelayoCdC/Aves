@@ -115,4 +115,28 @@ class PokedexZoneTest {
         assertEquals(ZoneLevel.WORLD, ZoneLevel.fromName(null))
         assertEquals(ZoneLevel.REGION, ZoneLevel.fromName("REGION"))
     }
+
+    // --- Zonas elegidas a mano ---------------------------------------------
+
+    @Test
+    fun `una zona elegida a mano manda sobre la detectada`() {
+        val extremadura = PokedexZone(ZoneLevel.REGION, "ESP.11_1", "Extremadura")
+        val prefs = preferences(ZoneLevel.PROVINCE, asturias).copy(chosen = extremadura)
+        assertEquals(extremadura, prefs.zone)
+    }
+
+    @Test
+    fun `un lugar destacado es una zona como otra, con su poligono`() {
+        val donana = NotablePlaces.byId("PLACE:donana")!!
+        val prefs = preferences(ZoneLevel.PROVINCE, asturias).copy(chosen = donana)
+        assertEquals(ZoneLevel.PLACE, prefs.zone.level)
+        assertTrue(prefs.zone.geometry!!.startsWith("POLYGON"))
+    }
+
+    @Test
+    fun `el pais de la zona detectada tiene identificador GADM`() {
+        assertEquals("ESP", asturias.countryGadmId)
+        assertEquals("FRA", HomePlace(countryCode = "FR").countryGadmId)
+        assertEquals(null, HomePlace().countryGadmId)
+    }
 }

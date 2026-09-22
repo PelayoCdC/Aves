@@ -47,6 +47,26 @@ interface ChecklistDao {
     )
     fun speciesInRegion(regionId: String): Flow<List<RegionSpeciesRow>>
 
+    /**
+     * Solo los identificadores, y de una vez: lo que necesitan las medallas de
+     * logros para contar cuantas de las aves de una zona estan en la coleccion.
+     * Mismas dos condiciones que [speciesInRegion].
+     */
+    @Query(
+        """
+        SELECT c.speciesId
+        FROM region_checklist_species c
+        JOIN species s ON s.speciesId = c.speciesId
+        WHERE c.regionId = :regionId
+          AND s.speciesId IN (SELECT DISTINCT speciesId FROM model_labels WHERE speciesId IS NOT NULL)
+        """,
+    )
+    suspend fun speciesIdsInRegion(regionId: String): List<String>
+
+    /** Todas las listas descargadas, vivas. */
+    @Query("SELECT * FROM region_checklists")
+    fun checklists(): Flow<List<RegionChecklistEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertChecklist(checklist: RegionChecklistEntity)
 

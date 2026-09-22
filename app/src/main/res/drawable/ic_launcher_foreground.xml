@@ -1,7 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Icono provisional: silueta de ave dibujada como vector para no meter PNGs
-    binarios en el repo en Fase 0. Se sustituira por el icono definitivo.
+    Primer plano del icono adaptativo: un ave posada, de perfil, con dos ondas
+    saliendo del pico. Es lo que hace la app (oir al ave) en un solo dibujo.
+
+    Se dibuja en una caja de 100 y se encoge al 60 % centrada en 108, para que
+    entero quepa en la zona segura (el circulo central de 66 dp) y ninguna
+    mascara de fabricante le corte el pico ni la cola. Las ondas asoman un poco
+    por la derecha a proposito: si una mascara redonda las recorta, siguen
+    leyendose como ondas.
+
+    Los trazados viven tambien en scripts/icon-paths.txt, que es lo que usa
+    scripts/render-icon.ps1 para previsualizar el icono sin Android Studio.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -9,12 +18,40 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <group
-        android:scaleX="1.7"
-        android:scaleY="1.7"
-        android:translateX="22"
-        android:translateY="22">
+        android:scaleX="0.6"
+        android:scaleY="0.6"
+        android:translateX="24"
+        android:translateY="24">
         <path
             android:fillColor="#FFFFFFFF"
-            android:pathData="M23.5,5.5c-1.9,0 -3.6,1.1 -4.4,2.7L8.5,8.2C5.5,8.2 3,10.7 3,13.7c0,2.2 1.3,4.1 3.2,4.9l-1.6,6.9h3.1l1.3,-5.6c0.3,0 0.6,0.1 0.9,0.1h3.4l3.2,5.5h3.3l-3.2,-5.5h1.1c3.6,0 6.6,-2.7 7,-6.2l2.8,-1.8l-2.6,-1.7C24.9,8.3 25,7.9 25,7.5C25,6.4 24.3,5.5 23.5,5.5zM22.2,9.2c0.5,0 0.9,0.4 0.9,0.9s-0.4,0.9 -0.9,0.9s-0.9,-0.4 -0.9,-0.9S21.7,9.2 22.2,9.2z" />
+            android:pathData="M 22,66 C 14,72 8,78 4,84 C 8,74 12,62 22,52 C 24,57 24,62 22,66 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M 18,58 C 18,40 32,30 52,32 C 66,34 78,44 78,58 C 78,74 64,84 48,84 C 32,84 18,74 18,58 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M 50,36 A 16,16 0 1 1 82,36 A 16,16 0 1 1 50,36 Z" />
+        <path
+            android:fillColor="#FFF2B96B"
+            android:pathData="M 46,56 C 60,54 76,58 76,64 C 74,76 62,84 48,84 C 40,84 34,80 30,76 C 38,70 44,64 46,56 Z" />
+        <path
+            android:fillColor="#59223A1E"
+            android:pathData="M 22,52 C 32,42 50,44 58,51 C 48,58 32,58 22,52 Z" />
+        <path
+            android:fillColor="#FF223A1E"
+            android:pathData="M 78,32 L 95,37 L 78,42 Z" />
+        <path
+            android:fillColor="#FF223A1E"
+            android:pathData="M 68.6,33 A 2.6,2.6 0 1 1 73.8,33 A 2.6,2.6 0 1 1 68.6,33 Z" />
+        <path
+            android:strokeColor="#E6FFFFFF"
+            android:strokeWidth="3.2"
+            android:strokeLineCap="round"
+            android:pathData="M 92,30 A 7,7 0 0 1 92,44" />
+        <path
+            android:strokeColor="#B3FFFFFF"
+            android:strokeWidth="3.2"
+            android:strokeLineCap="round"
+            android:pathData="M 94,24 A 13,13 0 0 1 94,50" />
     </group>
 </vector>

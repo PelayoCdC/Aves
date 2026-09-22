@@ -10,9 +10,11 @@ android {
 dependencies {
     implementation(projects.core.designsystem)
     implementation(projects.core.audio)
+    implementation(projects.core.media)
     implementation(projects.core.listening)
     implementation(projects.core.data)
     implementation(projects.core.ml.api)
+    implementation(projects.core.model)
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

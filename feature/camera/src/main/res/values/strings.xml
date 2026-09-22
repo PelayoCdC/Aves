@@ -9,7 +9,6 @@
     <string name="camera_could_be">Puede ser</string>
     <string name="camera_none_of_these">Ninguno de estos</string>
     <string name="camera_confirm_candidate">Confirmar %1$s</string>
-    <string name="camera_percent">%1$d %%</string>
 
     <string name="camera_nothing_title">Ningún ave reconocida</string>
     <string name="camera_nothing_body">Prueba a acercarte o a esperar a que el ave se recorte contra el cielo. Con la silueta a contraluz o entre ramas, el modelo no tiene mucho con lo que trabajar.</string>

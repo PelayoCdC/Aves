@@ -33,6 +33,19 @@
     <string name="pokedex_zone_level_region">Tu región</string>
     <string name="pokedex_zone_level_country">Tu país</string>
     <string name="pokedex_zone_level_world">Sin filtrar por zona</string>
+    <string name="pokedex_zone_level_region_es">Tu comunidad autónoma</string>
+    <string name="pokedex_zone_level_place">Lugar destacado</string>
+    <string name="pokedex_zone_choose_other">Elegir otra zona…</string>
+    <string name="pokedex_zone_back_home">Volver a mi zona</string>
+    <string name="pokedex_zone_browser_title">Elegir zona</string>
+    <string name="pokedex_zone_browser_regions">Comunidades y regiones de %1$s</string>
+    <string name="pokedex_zone_browser_places">Lugares destacados</string>
+    <string name="pokedex_zone_browser_all">Toda la zona: %1$s</string>
+    <string name="pokedex_zone_browser_loading">Cargando zonas…</string>
+    <string name="pokedex_zone_browser_failed">Sin conexión: no se pudo cargar la lista de zonas.</string>
+    <string name="pokedex_zone_browser_retry">Reintentar</string>
+    <string name="pokedex_zone_browser_back">Atrás</string>
+    <string name="pokedex_zone_browser_close">Cerrar</string>
     <string name="pokedex_zone_redetect">Actualizar mi zona</string>
     <string name="pokedex_zone_detecting">Detectando tu zona…</string>
     <string name="pokedex_show_missing">Ver las que faltan</string>
@@ -47,6 +60,35 @@
     <string name="pokedex_family_progress">%1$d de %2$d</string>
     <string name="pokedex_missing_label">Sin ver</string>
     <string name="pokedex_missing_rarity_here">Sin ver · %1$s aquí</string>
+
+    <!-- Logros -->
+    <string name="pokedex_achievements">Logros</string>
+    <string name="pokedex_achievements_open">Ver los logros</string>
+    <string name="pokedex_achievements_intro">Cada medalla sube de metal según la parte de sus especies que tengas en la colección. Toca una para ver cuánto te falta.</string>
+    <string name="pokedex_achievements_downloading">Descargando las listas de las zonas…</string>
+    <string name="pokedex_achievements_offline">Sin conexión: algunas zonas no tienen lista todavía.</string>
+    <string name="pokedex_achievements_retry">Reintentar</string>
+    <string name="pokedex_medal_collector">Coleccionista</string>
+    <string name="pokedex_medal_collector_desc">Todas las especies que la app sabe identificar. Cada nueva cuenta, sea de donde sea.</string>
+    <string name="pokedex_medal_zone_desc">Las aves con registros en %1$s. Cuentan las de tu colección que están en esa lista, se hayan visto donde se hayan visto.</string>
+    <string name="pokedex_medal_family_desc">Todas las especies de la familia %1$s que la app sabe identificar.</string>
+    <string name="pokedex_medal_kind_collector">Colección</string>
+    <string name="pokedex_medal_kind_zone">Zona</string>
+    <string name="pokedex_medal_kind_place">Lugar destacado</string>
+    <string name="pokedex_medal_kind_family">Familia</string>
+    <string name="pokedex_medal_progress">%1$s de %2$s especies</string>
+    <string name="pokedex_medal_no_data">Sin datos todavía: la lista de esta zona aún no se ha descargado.</string>
+    <string name="pokedex_medal_next">%1$d más para %2$s</string>
+    <string name="pokedex_medal_max">Diamante: no hay metal por encima.</string>
+    <string name="pokedex_medal_thresholds">Hierro %1$s %% · Bronce %2$s %% · Plata %3$s %% · Oro %4$s %% · Platino %5$s %% · Diamante %6$s %%</string>
+    <string name="pokedex_medal_close">Cerrar</string>
+    <string name="pokedex_tier_none">Sin medalla</string>
+    <string name="pokedex_tier_iron">Hierro</string>
+    <string name="pokedex_tier_bronze">Bronce</string>
+    <string name="pokedex_tier_silver">Plata</string>
+    <string name="pokedex_tier_gold">Oro</string>
+    <string name="pokedex_tier_platinum">Platino</string>
+    <string name="pokedex_tier_diamond">Diamante</string>
 
     <!-- Rareza -->
     <string name="pokedex_rarity_very_common">Muy común</string>

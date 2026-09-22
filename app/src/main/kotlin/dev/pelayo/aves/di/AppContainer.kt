@@ -12,6 +12,8 @@ import dev.pelayo.aves.core.data.SpeciesResolver
 import dev.pelayo.aves.core.database.AvesDatabase
 import dev.pelayo.aves.core.database.CatalogSeeder
 import dev.pelayo.aves.core.audio.ClipStorage
+import dev.pelayo.aves.core.designsystem.components.PickedPlace
+import dev.pelayo.aves.core.designsystem.components.PlacePickerActions
 import dev.pelayo.aves.core.listening.DetectionNamer
 import dev.pelayo.aves.core.listening.FileAnalysisSaver
 import dev.pelayo.aves.core.ml.api.ContextPriorProvider
@@ -20,6 +22,7 @@ import dev.pelayo.aves.core.network.WikipediaClient
 import dev.pelayo.aves.feature.settings.SettingsStore
 import dev.pelayo.aves.feature.settings.settingsStore
 import dev.pelayo.aves.location.LocationProvider
+import dev.pelayo.aves.location.PlaceSearch
 import dev.pelayo.aves.ml.createContextPrior
 import kotlinx.coroutines.CoroutineScope
 import java.io.File
@@ -123,8 +126,63 @@ class AppContainer(
         ObservationExporter(observationRepository, speciesRepository)
     }
 
-    /** El analisis de un fichero deja de ser un callejon sin salida. */
-    val fileAnalysisSaver: FileAnalysisSaver by lazy { FileAnalysisSaver(observationRepository) }
+    /**
+     * El analisis de un fichero deja de ser un callejon sin salida: va a la
+     * bandeja con la pista de cada especie y, si se dijo donde se grabo, con su
+     * rareza alli.
+     */
+    val fileAnalysisSaver: FileAnalysisSaver by lazy {
+        FileAnalysisSaver(
+            observations = observationRepository,
+            clipsDirectory = clipsDirectory,
+            rarityOf = { speciesId, where, epochMillis ->
+                // El sitio de la grabacion casi nunca es una celda ya descargada.
+                // Se pide (una vez por celda) y, cuando llegue, las rarezas que
+                // ahora queden pendientes se rellenan solas.
+                regionWarmer.warm(where)
+                regionRepository.rarityOf(
+                    speciesId,
+                    where.latitude,
+                    where.longitude,
+                    RegionRepository.monthOf(epochMillis),
+                )
+            },
+        )
+    }
+
+    private val placeSearch: PlaceSearch by lazy { PlaceSearch(context) }
+
+    /** Los ultimos lugares elegidos a mano. En memoria: son una comodidad, no un dato. */
+    private val recentPlaces = ArrayDeque<PickedPlace>()
+
+    /**
+     * Lo que necesita el selector de "¿donde fue?" de una foto o una grabacion.
+     *
+     * @param locationDisabled el modo sin ubicacion de los ajustes. Con el
+     *   encendido, "mi ubicacion actual" no consulta nada; buscar un sitio por su
+     *   nombre sigue valiendo, porque eso lo escribe el usuario.
+     */
+    fun placePickerActions(locationDisabled: suspend () -> Boolean): PlacePickerActions = PlacePickerActions(
+        currentPlace = {
+            if (locationDisabled()) {
+                null
+            } else {
+                locationProvider.current()?.let { PickedPlace(it.latitude, it.longitude, CURRENT_PLACE_NAME) }
+            }
+        },
+        search = placeSearch::search,
+        recent = { synchronized(recentPlaces) { recentPlaces.toList() } },
+        remember = { place ->
+            // La ubicacion actual no se recuerda: mañana "actual" es otro sitio.
+            if (place.name != CURRENT_PLACE_NAME) {
+                synchronized(recentPlaces) {
+                    recentPlaces.removeAll { it.name == place.name }
+                    recentPlaces.addFirst(place)
+                    while (recentPlaces.size > MAX_RECENT_PLACES) recentPlaces.removeLast()
+                }
+            }
+        },
+    )
 
     /** Borra una escucha con sus observaciones y sus recortes. */
     suspend fun deleteSession(sessionId: Long) {
@@ -153,3 +211,6 @@ class AppContainer(
         File(context.filesDir, "photos").apply { mkdirs() }
     }
 }
+
+private const val CURRENT_PLACE_NAME = "Mi ubicación actual"
+private const val MAX_RECENT_PLACES = 3

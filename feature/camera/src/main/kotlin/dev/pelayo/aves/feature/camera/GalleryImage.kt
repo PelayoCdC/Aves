@@ -102,9 +102,17 @@ internal suspend fun Context.loadGalleryImage(uri: Uri, inputSize: Int): Gallery
     withContext(Dispatchers.IO) {
         val resolver = contentResolver
 
+        // OJO: con `inJustDecodeBounds`, `decodeStream` devuelve SIEMPRE null (no
+        // decodifica nada, solo rellena `bounds`). La primera version comprobaba
+        // ese null para saber si el fichero se habia abierto, y por eso ninguna
+        // foto de la galeria llego a cargar nunca: lo que hay que comprobar es el
+        // stream, no el resultado.
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            ?: error("No se pudo abrir la imagen")
+        val opened = resolver.openInputStream(uri)?.use { stream ->
+            BitmapFactory.decodeStream(stream, null, bounds)
+            true
+        } ?: false
+        check(opened) { "No se pudo abrir la imagen" }
         check(bounds.outWidth > 0 && bounds.outHeight > 0) { "El fichero no es una imagen que se pueda leer" }
 
         val options = BitmapFactory.Options().apply {

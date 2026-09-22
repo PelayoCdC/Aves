@@ -7,10 +7,10 @@ Estado: **funcional en los dos flavors.** Escucha en segundo plano con
 BirdNET v2.4 (`personal`) o BirdNET+ V3 (`open`, publicable), identificación
 por foto (cámara o galería), análisis de grabaciones en cualquier formato que
 decodifique el móvil, catálogo de 11.167 especies, prior geo-temporal, rarezas
-sobre GBIF, Pokédex filtrada por tu provincia, región o país con las especies
-que te faltan, bandeja de revisión con alternativas, historial de escuchas,
-fichas con foto y descripción de Wikipedia, exportación a CSV y tile de ajustes
-rápidos.
+sobre GBIF, Pokédex filtrada por tu provincia, comunidad o país (o cualquier
+otra zona, o Doñana) con las especies que te faltan, medallas de logros,
+bandeja de revisión con alternativas, historial de escuchas, fichas con foto y
+descripción de Wikipedia, exportación a CSV y tile de ajustes rápidos.
 
 ---
 
@@ -279,7 +279,30 @@ identificar, y los nombres antiguos de GBIF pasan por `GbifSpeciesNames.ALIASES`
 Por defecto se filtra por el nivel más fino conocido y se enseñan las que
 faltan, con lo frecuentes que son *ahí*. Lo que se vio fuera de la zona no se
 pierde: se avisa de cuántas especies quedan ocultas. Sin red la primera vez, la
-colección se enseña entera en vez de vacía.
+colección se enseña entera en vez de vacía. En España el nivel 1 de GADM se
+llama por su nombre: "comunidad autónoma".
+
+**Cualquier otra zona.** El menú de zona lleva a un navegador de dos niveles
+(las comunidades del país → sus provincias, vía
+`GET /v1/geocode/gadm/{id}/subdivisions`) y a una lista de **lugares
+destacados** (`NotablePlaces`: Doñana, delta del Ebro, Monfragüe, Picos de
+Europa… 22 en total) definidos como rectángulos WKT en sentido antihorario, que
+es lo que acepta el filtro `geometry` de GBIF. La zona elegida se guarda
+(`pokedex_preferences.customZone*`, Room v4) y manda sobre la detectada hasta
+"Volver a mi zona".
+
+### Logros
+
+Medallas de hierro a diamante por la parte de una lista que tengas en la
+colección: **Coleccionista** (todo lo que el modelo sabe identificar, escala
+corta: diamante al 20 %), cada nivel de tu zona, cada lugar destacado y cada
+familia con al menos cinco especies (escala larga: 5 / 15 / 30 / 50 / 75 /
+95 %). Se calculan al vuelo de las mismas listas que usa el filtro, así que no
+hay tabla de logros que pueda desfasarse; al abrir la pantalla se bajan las
+listas que falten. Cuentan las especies de la colección que están en la lista
+de la zona, se hayan visto donde se hayan visto. Cada medalla se dibuja
+distinta (`MedalArt`): cinta, motivo y puntas salen del identificador, y el
+metal del progreso.
 
 ---
 
@@ -291,10 +314,30 @@ antialias al vuelo. Tope de 5 minutos por fichero; si se corta, se dice. Los
 WAV PCM siguen por el decodificador propio, que no depende del códec del
 fabricante.
 
+Al elegir un fichero se pregunta **dónde y cuándo se grabó** antes de
+analizarlo (`PlacePickerDialog`: ubicación actual, un lugar buscado por nombre
+con el `Geocoder` del sistema, coordenadas a mano, o ninguno). Con lugar, el
+prior y la rareza se aplican como en una escucha, para ese sitio y esa fecha;
+sin él, el análisis va a ciegas. El análisis enseña en qué fase está
+(modelo, decodificación, ventanas con porcentaje, pistas) y **solo las especies
+seguras**: dos ventanas por encima del umbral, o una muy rotunda
+(`FileAnalysisAccumulator`). Sin porcentajes en pantalla; la confianza sigue
+en la base de datos. Lo mismo en la escucha en directo, la cámara y Revisar.
+
+**Una pista por especie.** De cada especie encontrada se monta una pista con
+solo sus tramos (`SpeciesTrackBuilder`), limpiada con una resta espectral del
+ruido de fondo y un foco en la banda del canto (`SpectralCleaner`, STFT de
+1024 con raíz de Hann) y normalizada en volumen. Se puede escuchar en la
+pantalla y, al guardar, es el recorte de la observación: en la ficha se oye
+solo ese ave. Lo que NO hace: separar dos aves que cantan a la vez en la misma
+banda; eso pide un modelo de separación de fuentes.
+
 La galería usa el selector de fotos del sistema (`PickVisualMedia`), que **no
 pide ningún permiso**. Se respeta la orientación EXIF y la fecha es la de la
 foto, no la de hoy. Como una foto de la galería puede ser de cualquier sitio,
-va sin ubicación y sin prior de contexto. Se analiza el cuadrado central.
+va sin ubicación hasta que el usuario dice dónde fue (mismo selector); entonces
+se vuelve a clasificar la misma imagen con ese contexto. Se analiza el cuadrado
+central.
 
 ### Vista, fotografiada, oída
 
@@ -367,7 +410,8 @@ que no están en el repositorio.
 
 ## Fuentes de datos
 
-- **GBIF** — ocurrencias, rareza y prior de respaldo. Sin API key, sin cláusula
+- **GBIF** — ocurrencias, rareza, prior de respaldo, listas por zona, GADM y
+  geocodificación inversa. Sin API key, sin cláusula
   no comercial.
 - **eBird** — solo taxonomía (`ref/taxonomy/ebird?locale=es`, sin key). El
   resto de su API es no comercial.
@@ -383,7 +427,9 @@ Maximilian Eibl, Holger Klinck) y **BirdNET+**, K. Lisa Yang Center for
 Conservation Bioacoustics, Cornell Lab of Ornithology. Identificación por
 imagen con **Google AIY Vision Classifier birds_V1**.
 
-El icono de la clave de sol es `music-clef-treble` de
+El icono de la app es un vector propio (`ic_launcher_foreground.xml`,
+previsualizable con `scripts/render-icon.ps1`). El icono de la clave de sol es
+`music-clef-treble` de
 [Material Design Icons](https://pictogrammers.com/library/mdi/) (Pictogrammers,
 Apache 2.0).
 
