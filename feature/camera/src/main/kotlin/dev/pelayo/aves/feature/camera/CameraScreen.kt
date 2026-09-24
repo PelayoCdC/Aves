@@ -34,10 +34,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
@@ -76,7 +79,9 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.pelayo.aves.core.designsystem.components.DayPickerDialog
 import dev.pelayo.aves.core.designsystem.components.PickedPlace
+import dev.pelayo.aves.core.designsystem.components.formatDay
 import dev.pelayo.aves.core.designsystem.components.PlaceChip
 import dev.pelayo.aves.core.designsystem.components.PlacePickerActions
 import dev.pelayo.aves.core.designsystem.components.PlacePickerDialog
@@ -85,6 +90,8 @@ import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
 import dev.pelayo.aves.core.ml.api.ImageBirdClassifier
 import dev.pelayo.aves.core.ml.api.ObservationContext
 import dev.pelayo.aves.core.model.Coordinates
+import dev.pelayo.aves.core.model.Species
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -122,6 +129,8 @@ fun CameraScreen(
     placePicker: PlacePickerActions? = null,
     /** Nombre comun del catalogo para cada candidato. Ver [CameraViewModel]. */
     nameCandidates: suspend (modelId: String, List<ImageCandidate>) -> List<ImageCandidate> = { _, c -> c },
+    /** Buscar una especie en el catalogo, para cuando ningun candidato convence. Nulo esconde el boton. */
+    searchSpecies: ((String) -> Flow<List<Species>>)? = null,
 ) {
     val viewModel: CameraViewModel = viewModel {
         CameraViewModel(classifierFactory = classifierProvider, nameCandidates = nameCandidates)
@@ -183,6 +192,20 @@ fun CameraScreen(
         galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
 
+    // "Se cual es": el buscador del catalogo, con la camara o con la galeria.
+    var showSearch by remember { mutableStateOf(false) }
+    if (showSearch && searchSpecies != null) {
+        SpeciesSearchDialog(
+            search = searchSpecies,
+            onPick = { species ->
+                showSearch = false
+                onIdentified(viewModel.identificationFor(species))
+            },
+            onDismiss = { showSearch = false },
+        )
+    }
+    val onSearchSpecies: (() -> Unit)? = if (searchSpecies != null) { { showSearch = true } } else null
+
     val picked = state.pickedImage
     if (picked != null) {
         PickedImageContent(
@@ -193,7 +216,9 @@ fun CameraScreen(
             onIdentified = { candidate -> onIdentified(viewModel.identification(candidate)) },
             modifier = modifier,
             placePicker = placePicker,
-            onPlacePicked = { place -> viewModel.reclassifyWithPlace(place, contextInfluence) },
+            onPlacePicked = { place -> viewModel.reclassifyWith(place, null, contextInfluence) },
+            onDatePicked = { millis -> viewModel.reclassifyWith(state.pickedPlace, millis, contextInfluence) },
+            onSearchSpecies = onSearchSpecies,
         )
         return
     }
@@ -220,6 +245,7 @@ fun CameraScreen(
         onDismissResults = viewModel::dismissResults,
         onIdentified = { candidate -> onIdentified(viewModel.identification(candidate)) },
         onPickFromGallery = onPickFromGallery,
+        onSearchSpecies = onSearchSpecies,
         modifier = modifier,
     )
 }
@@ -247,6 +273,7 @@ private fun CameraContent(
     onIdentified: (ImageCandidate) -> Unit,
     onPickFromGallery: () -> Unit,
     modifier: Modifier = Modifier,
+    onSearchSpecies: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -383,6 +410,7 @@ private fun CameraContent(
             onDismissResults = onDismissResults,
             onIdentified = onIdentified,
             onPickFromGallery = onPickFromGallery,
+            onSearchSpecies = onSearchSpecies,
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -405,9 +433,12 @@ private fun PickedImageContent(
     modifier: Modifier = Modifier,
     placePicker: PlacePickerActions? = null,
     onPlacePicked: (PickedPlace?) -> Unit = {},
+    onDatePicked: (Long) -> Unit = {},
+    onSearchSpecies: (() -> Unit)? = null,
 ) {
     val picture = remember(image) { image.asImageBitmap() }
     var showPlacePicker by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
         Image(
@@ -429,12 +460,35 @@ private fun PickedImageContent(
             onIdentified = onIdentified,
             onPickFromGallery = onPickFromGallery,
             fromGallery = true,
-            placeChip = if (placePicker != null) {
-                { PlaceChip(place = state.pickedPlace, onClick = { showPlacePicker = true }) }
-            } else {
-                null
+            // Donde y cuando: las dos cosas que el contexto necesita y que una foto
+            // de la galeria no trae (o trae solo la fecha, en el EXIF).
+            placeChip = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (placePicker != null) {
+                        PlaceChip(place = state.pickedPlace, onClick = { showPlacePicker = true }, modifier = Modifier.widthIn(max = 220.dp))
+                    }
+                    AssistChip(
+                        onClick = { showDatePicker = true },
+                        label = { Text(formatDay(state.pickedDateMillis ?: System.currentTimeMillis())) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.CalendarMonth, contentDescription = stringResource(R.string.camera_pick_date), modifier = Modifier.size(18.dp))
+                        },
+                    )
+                }
             },
+            onSearchSpecies = onSearchSpecies,
             modifier = Modifier.fillMaxSize(),
+        )
+    }
+
+    if (showDatePicker) {
+        DayPickerDialog(
+            currentMillis = state.pickedDateMillis ?: System.currentTimeMillis(),
+            onPick = { millis ->
+                onDatePicked(millis)
+                showDatePicker = false
+            },
+            onDismiss = { showDatePicker = false },
         )
     }
 
@@ -490,6 +544,8 @@ internal fun CaptureOverlay(
     fromGallery: Boolean = false,
     /** El chip de "¿donde fue?", que se pinta encima de los resultados. Solo con galeria. */
     placeChip: (@Composable () -> Unit)? = null,
+    /** Abre el buscador del catalogo: "se cual es". Nulo esconde el boton. */
+    onSearchSpecies: (() -> Unit)? = null,
 ) {
     Column(
         modifier = modifier.padding(horizontal = 16.dp, vertical = 24.dp),
@@ -514,12 +570,13 @@ internal fun CaptureOverlay(
                 candidates = state.candidates,
                 onIdentified = onIdentified,
                 onDismiss = onDismissResults,
+                onSearchSpecies = onSearchSpecies,
             )
 
             // Que el modelo no vea ningun ave es un resultado, no un fallo, y hay
             // que decirlo con esas palabras: si no, el usuario cree que la app se
             // ha roto y vuelve a disparar a lo mismo.
-            state.hasResult && state.error == null -> NothingRecognized(onDismiss = onDismissResults)
+            state.hasResult && state.error == null -> NothingRecognized(onDismiss = onDismissResults, onSearchSpecies = onSearchSpecies)
         }
 
         Spacer(Modifier.size(20.dp))
@@ -596,6 +653,7 @@ private fun CandidateList(
     onIdentified: (ImageCandidate) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    onSearchSpecies: (() -> Unit)? = null,
 ) {
     MaterialSurface(
         modifier = modifier.fillMaxWidth(),
@@ -618,8 +676,16 @@ private fun CandidateList(
                 Spacer(Modifier.size(12.dp))
             }
 
-            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
-                Text(stringResource(R.string.camera_none_of_these))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                // "Se cual es": cuando el modelo no da con ella pero la persona si.
+                if (onSearchSpecies != null) {
+                    TextButton(onClick = onSearchSpecies) { Text(stringResource(R.string.camera_search_species)) }
+                } else {
+                    Spacer(Modifier.size(1.dp))
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.camera_none_of_these))
+                }
             }
         }
     }
@@ -666,7 +732,11 @@ private fun CandidateRow(
 }
 
 @Composable
-private fun NothingRecognized(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+private fun NothingRecognized(
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    onSearchSpecies: (() -> Unit)? = null,
+) {
     MaterialSurface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -690,8 +760,16 @@ private fun NothingRecognized(onDismiss: () -> Unit, modifier: Modifier = Modifi
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
-                Text(stringResource(R.string.camera_retry))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                // Que el modelo no la vea no quiere decir que la persona no sepa cual es.
+                if (onSearchSpecies != null) {
+                    TextButton(onClick = onSearchSpecies) { Text(stringResource(R.string.camera_search_species)) }
+                } else {
+                    Spacer(Modifier.size(1.dp))
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.camera_retry))
+                }
             }
         }
     }

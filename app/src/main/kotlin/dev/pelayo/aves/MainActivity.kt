@@ -8,7 +8,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.pelayo.aves.core.designsystem.theme.AvesSkin
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
+import dev.pelayo.aves.feature.settings.AvesSettings
 import dev.pelayo.aves.core.listening.ListeningTileService
 import dev.pelayo.aves.ui.AvesApp
 
@@ -27,7 +30,10 @@ class MainActivity : ComponentActivity() {
         consumeStartRequest(intent)
         val container = (application as AvesApplication).container
         setContent {
-            AvesTheme {
+            // La piel la elige el usuario en Ajustes. Hasta la primera lectura
+            // del disco, la del sistema: es la que menos desentona un instante.
+            val settings by container.settingsStore.settings.collectAsStateWithLifecycle(initialValue = AvesSettings())
+            AvesTheme(skin = AvesSkin.fromName(settings.skin)) {
                 AvesApp(container, startListeningToken = startListeningToken)
             }
         }

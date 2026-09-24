@@ -112,6 +112,9 @@ class AppContainer(
         ImageCandidateNamer(speciesResolver, speciesRepository)
     }
 
+    /** Una foto subida desde la ficha de una especie, guardada como las de la camara. */
+    val galleryPhotoSaver: GalleryPhotoSaver by lazy { GalleryPhotoSaver(context, imageObservationRecorder) }
+
     /**
      * Las aves de tu provincia, tu region y tu pais: lo que permite que la
      * Pokedex diga que te falta por ver AQUI y no en el planeta. Sale de GBIF,

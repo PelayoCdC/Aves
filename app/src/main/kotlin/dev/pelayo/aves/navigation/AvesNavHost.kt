@@ -266,6 +266,7 @@ fun AvesNavHost(
                 contextInfluence = settings.contextInfluence,
                 placePicker = placePicker,
                 nameCandidates = container.imageCandidateNamer::name,
+                searchSpecies = { query -> container.speciesRepository.search(query, limit = 30) },
                 onIdentified = { identification ->
                     // NO se guarda todavia: se abre la ficha (con el id canonico
                     // del catalogo, no el provisional del modelo) para que el
@@ -344,6 +345,7 @@ fun AvesNavHost(
             SpeciesDetailScreen(
                 speciesId = speciesId,
                 onOpenMap = { navController.navigate("$MAP_ROUTE?$SPECIES_ID_ARG=$speciesId") },
+                placePicker = placePicker,
                 pendingPhoto = awaiting?.let { identification ->
                     PendingPhotoConfirmation(
                         preview = identification.fullPhoto ?: identification.photo,
@@ -368,14 +370,19 @@ fun AvesNavHost(
                         encyclopedia = container.encyclopedia,
                         rangeMaps = container.rangeMapRepository,
                         currentLocation = currentLocation,
-                        rarityOf = { species, where ->
+                        rarityAt = { species, where, epochMillis ->
+                            // El sitio de un avistamiento corregido a mano casi nunca
+                            // es una celda ya descargada: se pide, y la rareza se
+                            // rellena sola cuando llegue.
+                            container.regionWarmer.warm(where)
                             container.regionRepository.rarityOf(
                                 species,
                                 where.latitude,
                                 where.longitude,
-                                RegionRepository.monthOf(System.currentTimeMillis()),
+                                RegionRepository.monthOf(epochMillis),
                             ) ?: RarityTier.UNKNOWN
                         },
+                        savePhoto = container.galleryPhotoSaver::save,
                     )
                 },
             )

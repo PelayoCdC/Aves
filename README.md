@@ -366,7 +366,21 @@ contexto. Se analiza el cuadrado central. Los candidatos salen con su nombre
 en castellano (`ImageCandidateNamer`, vía `model_labels` y el catálogo) y
 **tocar uno no guarda nada**: abre la ficha con la foto al lado de la de
 Wikipedia y pregunta "¿es esta?"; solo al confirmar se anota el avistamiento.
-Desde Revisar, el nombre de cada detección abre también la ficha.
+Desde Revisar, el nombre de cada detección abre también la ficha. Si ningún
+candidato convence (o el modelo no ve ningún ave), "Sé cuál es…" abre el
+buscador del catálogo y la especie elegida sigue el mismo camino: la ficha y
+confirmar. Junto al lugar, un chip con la fecha (la del EXIF por defecto).
+
+**Desde la ficha.** "Añadir una foto" sube una de la galería sin pasar por el
+modelo (ya sabes cuál es): se guarda en sus dos tamaños, se le lee la fecha y
+se pregunta cuándo y dónde. El mismo editor (`SightingEditorDialog`: fecha,
+lugar, notas) sirve para anotar a mano y para **corregir cualquier
+avistamiento** (`ObservationRepository.updateDetails`, que vuelve a congelar la
+rareza con el lugar y la fecha nuevos).
+
+La imagen de Wikipedia se guarda como miniatura y se pide más grande al pintar;
+Commons no amplía por encima del original, así que `WikipediaPhoto` prueba
+800 px → la URL guardada → 320 px antes de rendirse (`WikipediaImages.candidates`).
 
 ### Vista, fotografiada, oída
 
@@ -393,6 +407,12 @@ recorte.
 `ListeningDependencies.currentSettings()`: peso del contexto, umbral de
 confirmación, corte automático y modo sin ubicación. La cámara lee los mismos.
 Los valores de fábrica son los del motor (0,5 / 0,35 / 1 h).
+
+**Pieles** (`AvesSkin`, en `core/designsystem/theme/Skin.kt`): *Del sistema*
+(colores dinámicos del móvil, claro u oscuro según el sistema: como iba la app),
+*Bosque* (verdes de la marca en claro), *Alba* (clara y suave, azul de acento)
+y *Noche* (la paleta oscura). Se guarda por nombre en DataStore y
+`MainActivity` la aplica al vuelo.
 
 ---
 

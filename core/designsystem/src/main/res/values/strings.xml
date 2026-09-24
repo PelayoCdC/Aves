@@ -17,4 +17,8 @@
     <string name="place_longitude">Longitud</string>
     <string name="place_coordinates_use">Usar estas coordenadas</string>
     <string name="place_cancel">Cancelar</string>
+
+    <!-- Calendario -->
+    <string name="day_picker_ok">Aceptar</string>
+    <string name="day_picker_cancel">Cancelar</string>
 </resources>

@@ -8,6 +8,7 @@ import dev.pelayo.aves.core.designsystem.components.PickedPlace
 import dev.pelayo.aves.core.ml.api.ClassificationResult
 import dev.pelayo.aves.core.ml.api.ImageBirdClassifier
 import dev.pelayo.aves.core.ml.api.ObservationContext
+import dev.pelayo.aves.core.model.Species
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -106,6 +107,8 @@ data class CameraUiState(
     val pickedImage: Bitmap? = null,
     /** Donde se hizo la foto de la galeria, si el usuario lo ha dicho. */
     val pickedPlace: PickedPlace? = null,
+    /** Cuando se hizo la foto de la galeria: la fecha del EXIF, o la que diga el usuario. */
+    val pickedDateMillis: Long? = null,
 )
 
 /**
@@ -292,7 +295,7 @@ class CameraViewModel(
         // La imagen que se ENSENA no se recicla a mano: Compose puede estar
         // pintando todavia el fotograma anterior, y dibujar un bitmap reciclado
         // revienta la app. Son unos pocos MB y el recolector da cuenta de ellos.
-        _uiState.update { it.copy(pickedImage = display, hasResult = false) }
+        _uiState.update { it.copy(pickedImage = display, hasResult = false, pickedDateMillis = context.epochMillis) }
         classify(modelInput, context, fullPhoto = display)
     }
 
@@ -306,10 +309,11 @@ class CameraViewModel(
      * vio el modelo sigue en [lastInput].
      *
      * @param place null para quitar el lugar y volver a clasificar sin contexto.
+     * @param epochMillis cuando se hizo la foto; null deja la fecha que tenia.
      * @param contextInfluence el peso del contexto de los ajustes, que solo se
      *   aplica si hay lugar.
      */
-    fun reclassifyWithPlace(place: PickedPlace?, contextInfluence: Float) {
+    fun reclassifyWith(place: PickedPlace?, epochMillis: Long?, contextInfluence: Float) {
         val input = lastInput?.takeIf { !it.isRecycled } ?: return
         val previous = lastContext ?: return
         if (_uiState.value.isClassifying) return
@@ -318,12 +322,19 @@ class CameraViewModel(
         val context = ObservationContext(
             latitude = place?.latitude,
             longitude = place?.longitude,
-            epochMillis = previous.epochMillis,
+            epochMillis = epochMillis ?: previous.epochMillis,
             contextInfluence = if (place != null) contextInfluence else 0f,
         )
         lastContext = context
         _uiState.update {
-            it.copy(isClassifying = true, error = null, errorDetail = null, candidates = emptyList(), pickedPlace = place)
+            it.copy(
+                isClassifying = true,
+                error = null,
+                errorDetail = null,
+                candidates = emptyList(),
+                pickedPlace = place,
+                pickedDateMillis = context.epochMillis,
+            )
         }
 
         classifyJob?.cancel()
@@ -353,6 +364,24 @@ class CameraViewModel(
             }
         }
     }
+
+    /**
+     * "Se cual es": una especie elegida a mano en el buscador, en vez de un
+     * candidato del modelo. Sigue el mismo camino (la ficha, y anotar al
+     * confirmar); el indice -1 le dice a quien guarda que no hay clase del
+     * modelo que resolver.
+     */
+    fun identificationFor(species: Species): ImageIdentification = identification(
+        ImageCandidate(
+            speciesId = species.speciesId,
+            scientificName = species.scientificName,
+            confidence = 1f,
+            rawConfidence = 0f,
+            labelIndex = MANUAL_LABEL_INDEX,
+            commonName = species.commonName,
+            canonicalSpeciesId = species.speciesId,
+        ),
+    )
 
     /**
      * Empaqueta la eleccion del usuario con su foto y su contexto.
@@ -496,5 +525,8 @@ class CameraViewModel(
         const val FALLBACK_INPUT_SIZE = 224
 
         private const val UNKNOWN_MODEL_ID = "unknown-image-model"
+
+        /** El indice de clase de una especie elegida a mano: ninguno. */
+        const val MANUAL_LABEL_INDEX = -1
     }
 }

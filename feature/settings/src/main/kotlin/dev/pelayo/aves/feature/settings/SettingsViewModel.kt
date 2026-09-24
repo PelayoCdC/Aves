@@ -1,5 +1,7 @@
 package dev.pelayo.aves.feature.settings
 
+import dev.pelayo.aves.core.designsystem.theme.AvesSkin
+
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -81,6 +83,8 @@ class SettingsViewModel(
     fun setConfidenceThreshold(value: Float) = edit { it.copy(confidenceThreshold = value) }
 
     fun setListeningCutoff(minutes: Int) = edit { it.copy(listeningCutoffMinutes = minutes) }
+
+    fun setSkin(skin: AvesSkin) = edit { it.copy(skin = skin.name) }
 
     /**
      * Recorre las carpetas de recortes y de fotos.

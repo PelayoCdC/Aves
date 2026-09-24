@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -70,6 +71,7 @@ internal class DataStoreSettingsStore(
             preferences[KEY_LOCATION_DISABLED] = next.locationDisabled
             preferences[KEY_CONFIDENCE_THRESHOLD] = next.confidenceThreshold
             preferences[KEY_LISTENING_CUTOFF] = next.listeningCutoffMinutes
+            preferences[KEY_SKIN] = next.skin
         }
     }
 
@@ -80,6 +82,7 @@ internal class DataStoreSettingsStore(
             ?: AvesSettings.DEFAULT_CONFIDENCE_THRESHOLD,
         listeningCutoffMinutes = this[KEY_LISTENING_CUTOFF]
             ?: AvesSettings.DEFAULT_LISTENING_CUTOFF_MINUTES,
+        skin = this[KEY_SKIN] ?: AvesSettings().skin,
     ).sanitized()
 
     private companion object {
@@ -87,6 +90,7 @@ internal class DataStoreSettingsStore(
         val KEY_LOCATION_DISABLED = booleanPreferencesKey("location_disabled")
         val KEY_CONFIDENCE_THRESHOLD = floatPreferencesKey("confidence_threshold")
         val KEY_LISTENING_CUTOFF = intPreferencesKey("listening_cutoff_minutes")
+        val KEY_SKIN = stringPreferencesKey("skin")
     }
 }
 

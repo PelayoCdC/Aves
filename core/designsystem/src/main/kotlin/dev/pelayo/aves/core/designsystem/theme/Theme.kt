@@ -3,7 +3,6 @@ package dev.pelayo.aves.core.designsystem.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -25,21 +24,24 @@ private val LightColors = lightColorScheme(
     onTertiaryContainer = SkyOnTertiaryContainer,
 )
 
-private val DarkColors = darkColorScheme(
-    primary = GreenPrimaryDark,
-    onPrimary = GreenOnPrimaryDark,
-    primaryContainer = GreenPrimaryContainerDark,
-    onPrimaryContainer = GreenOnPrimaryContainerDark,
-    secondary = OchreSecondaryDark,
-    onSecondary = OchreOnSecondaryDark,
-    secondaryContainer = OchreSecondaryContainerDark,
-    onSecondaryContainer = OchreOnSecondaryContainerDark,
-    tertiary = SkyTertiaryDark,
-    onTertiary = SkyOnTertiaryDark,
-    tertiaryContainer = SkyTertiaryContainerDark,
-    onTertiaryContainer = SkyOnTertiaryContainerDark,
-)
+/**
+ * El tema segun la piel elegida en Ajustes. Es la entrada que usa la app; la
+ * otra sobrecarga queda para las previews.
+ */
+@Composable
+fun AvesTheme(
+    skin: AvesSkin,
+    content: @Composable () -> Unit,
+) {
+    when (skin) {
+        AvesSkin.SYSTEM -> AvesTheme(content = content)
+        AvesSkin.FOREST -> MaterialTheme(colorScheme = ForestColors, typography = AvesTypography, content = content)
+        AvesSkin.DAWN -> MaterialTheme(colorScheme = DawnColors, typography = AvesTypography, content = content)
+        AvesSkin.NIGHT -> MaterialTheme(colorScheme = NightColors, typography = AvesTypography, content = content)
+    }
+}
 
+/** Como iba la app hasta las pieles: colores del movil y claro u oscuro segun el sistema. */
 @Composable
 fun AvesTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -52,7 +54,7 @@ fun AvesTheme(
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        darkTheme -> DarkColors
+        darkTheme -> NightColors
         else -> LightColors
     }
 

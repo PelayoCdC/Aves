@@ -20,7 +20,7 @@ import java.util.Locale
  * @param modelInput el recorte cuadrado central a la resolucion del modelo.
  * @param takenAtMillis cuando se hizo, segun su EXIF. Null si no lo dice.
  */
-internal class GalleryImage(
+class GalleryImage(
     val display: Bitmap,
     val modelInput: Bitmap,
     val takenAtMillis: Long?,
@@ -98,7 +98,7 @@ private fun upright(source: Bitmap, rotationDegrees: Int): Bitmap {
  *  - **La fecha es la de la foto, no la de ahora.** Alguien que sube hoy una
  *    foto de sus vacaciones vio ese pajaro entonces, y asi tiene que constar.
  */
-internal suspend fun Context.loadGalleryImage(uri: Uri, inputSize: Int): GalleryImage =
+suspend fun Context.loadGalleryImage(uri: Uri, inputSize: Int): GalleryImage =
     withContext(Dispatchers.IO) {
         val resolver = contentResolver
 

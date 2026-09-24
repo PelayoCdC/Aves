@@ -1,5 +1,7 @@
 package dev.pelayo.aves.feature.settings
 
+import dev.pelayo.aves.core.designsystem.theme.AvesSkin
+
 import kotlin.math.roundToInt
 
 /**
@@ -19,6 +21,8 @@ data class AvesSettings(
     val confidenceThreshold: Float = DEFAULT_CONFIDENCE_THRESHOLD,
     /** Minutos hasta que la escucha se para sola. [NO_CUTOFF] la deja indefinida. */
     val listeningCutoffMinutes: Int = DEFAULT_LISTENING_CUTOFF_MINUTES,
+    /** La piel de la app, por su nombre (`AvesSkin`). Texto y no enum para que el DataStore no sepa de temas. */
+    val skin: String = AvesSkin.SYSTEM.name,
 ) {
 
     /** Version de este objeto con todos los valores dentro de rango. */
@@ -26,6 +30,7 @@ data class AvesSettings(
         contextInfluence = sanitizeContextInfluence(contextInfluence),
         confidenceThreshold = sanitizeConfidenceThreshold(confidenceThreshold),
         listeningCutoffMinutes = sanitizeListeningCutoff(listeningCutoffMinutes),
+        skin = AvesSkin.fromName(skin).name,
     )
 
     companion object {

@@ -1,13 +1,18 @@
 package dev.pelayo.aves.feature.pokedex
 
 import android.content.Intent
-import android.graphics.Bitmap
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import android.graphics.Bitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +27,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
@@ -67,6 +73,8 @@ import dev.pelayo.aves.core.data.RangeMapRepository
 import dev.pelayo.aves.core.data.SpeciesEncyclopedia
 import dev.pelayo.aves.core.data.SpeciesRepository
 import dev.pelayo.aves.core.database.entity.ObservationEntity
+import dev.pelayo.aves.core.designsystem.components.PickedPlace
+import dev.pelayo.aves.core.designsystem.components.PlacePickerActions
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
 import dev.pelayo.aves.core.media.ClipPlayIcon
@@ -99,6 +107,11 @@ data class SpeciesDetailUiState(
     val isLoadingEncyclopedia: Boolean = false,
     /** El taxon de GBIF, para el mapa de donde se registra. Null mientras no se sepa o si GBIF no la reconoce. */
     val gbifTaxonKey: Int? = null,
+    /** Una foto subida desde la ficha, ya en disco, a la espera de cuando y donde fue. */
+    val photoDraft: SavedPhoto? = null,
+    /** Se esta leyendo y guardando la foto elegida. */
+    val isSavingPhoto: Boolean = false,
+    val photoFailed: Boolean = false,
 ) {
     /** El mejor tier alcanzado; ver el razonamiento en [CollectedSpecies.rarity]. */
     val rarity: RarityTier
@@ -125,7 +138,10 @@ data class SpeciesDetailUiState(
  * @param encyclopedia rellena foto y descripcion la primera vez. Nulo deja la
  *   ficha con lo que trae el catalogo.
  * @param currentLocation para las observaciones a mano.
- * @param rarityOf rareza de la especie en un lugar y ahora, para lo anotado a mano.
+ * @param rarityAt rareza de la especie en un lugar y una fecha: para lo anotado a
+ *   mano, las fotos subidas y las correcciones.
+ * @param savePhoto guarda una foto de la galeria en sus dos tamanos y le lee la
+ *   fecha. La pone :app, que es quien sabe de ficheros. Nulo esconde el boton.
  */
 class SpeciesDetailViewModel(
     private val speciesId: String,
@@ -135,21 +151,31 @@ class SpeciesDetailViewModel(
     /** La clave de GBIF para el mapa. Nulo deja la ficha sin capa de densidad. */
     private val rangeMaps: RangeMapRepository? = null,
     private val currentLocation: suspend () -> Coordinates? = { null },
-    private val rarityOf: suspend (speciesId: String, where: Coordinates) -> RarityTier = { _, _ -> RarityTier.UNKNOWN },
+    private val rarityAt: suspend (speciesId: String, where: Coordinates, epochMillis: Long) -> RarityTier =
+        { _, _, _ -> RarityTier.UNKNOWN },
+    private val savePhoto: (suspend (Uri) -> SavedPhoto?)? = null,
 ) : ViewModel() {
+
+    val canAddPhotos: Boolean get() = savePhoto != null
+
+    private val photoDraft = MutableStateFlow<SavedPhoto?>(null)
+    private val photoBusy = MutableStateFlow(false)
+    private val photoFailed = MutableStateFlow(false)
 
     private val species = MutableStateFlow<Species?>(null)
     private val resolved = MutableStateFlow(false)
     private val loadingEncyclopedia = MutableStateFlow(false)
     private val taxonKey = MutableStateFlow<Int?>(null)
 
+    private val photoState = combine(photoDraft, photoBusy, photoFailed) { draft, busy, failed -> Triple(draft, busy, failed) }
+
     val uiState: StateFlow<SpeciesDetailUiState> = combine(
         species,
         resolved,
         observationRepository.collection(),
-        loadingEncyclopedia,
-        taxonKey,
-    ) { found, isResolved, observations, loading, key ->
+        combine(loadingEncyclopedia, taxonKey) { loading, key -> loading to key },
+        photoState,
+    ) { found, isResolved, observations, (loading, key), (draft, busy, failed) ->
         SpeciesDetailUiState(
             isLoading = !isResolved,
             species = found,
@@ -159,6 +185,9 @@ class SpeciesDetailViewModel(
                 .sortedByDescending { it.timestamp },
             isLoadingEncyclopedia = loading,
             gbifTaxonKey = key,
+            photoDraft = draft,
+            isSavingPhoto = busy,
+            photoFailed = failed,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -194,25 +223,85 @@ class SpeciesDetailViewModel(
         }
     }
 
-    /** "Lo he visto": un avistamiento anotado a mano, ahora y aqui. */
-    fun addManualSighting(notes: String?) {
+    /** "Lo he visto": un avistamiento anotado a mano, cuando y donde diga el usuario. */
+    fun addManualSighting(draft: SightingDraft) {
         viewModelScope.launch {
-            val where = runCatching { currentLocation() }.getOrNull()
-            val rarity = where?.let { runCatching { rarityOf(speciesId, it) }.getOrNull() } ?: RarityTier.UNKNOWN
+            val where = draft.place?.let { Coordinates(it.latitude, it.longitude) }
             observationRepository.recordManualObservation(
                 speciesId = speciesId,
-                timestamp = System.currentTimeMillis(),
+                timestamp = draft.timestamp,
                 latitude = where?.latitude,
                 longitude = where?.longitude,
-                notes = notes,
-                rarityTier = rarity,
+                notes = draft.notes,
+                rarityTier = rarityFor(where, draft.timestamp),
             )
         }
     }
 
-    fun updateNotes(sightingId: Long, notes: String?) {
-        viewModelScope.launch { observationRepository.updateNotes(sightingId, notes) }
+    /** Corrige cuando, donde y las notas de un avistamiento que ya existe. */
+    fun updateSighting(sightingId: Long, draft: SightingDraft) {
+        viewModelScope.launch {
+            val where = draft.place?.let { Coordinates(it.latitude, it.longitude) }
+            observationRepository.updateDetails(
+                observationId = sightingId,
+                timestamp = draft.timestamp,
+                latitude = where?.latitude,
+                longitude = where?.longitude,
+                notes = draft.notes,
+                rarityTier = rarityFor(where, draft.timestamp),
+            )
+        }
     }
+
+    /**
+     * Una foto de la galeria para esta especie: se guarda ya (para leerle la
+     * fecha y no perderla) y se pregunta cuando y donde fue. Hasta que el
+     * usuario confirme no hay avistamiento; si cancela, la foto se borra.
+     */
+    fun preparePhoto(uri: Uri) {
+        val saver = savePhoto ?: return
+        viewModelScope.launch {
+            photoBusy.value = true
+            photoFailed.value = false
+            val saved = saver(uri)
+            photoBusy.value = false
+            if (saved == null) photoFailed.value = true else photoDraft.value = saved
+        }
+    }
+
+    fun confirmPhoto(draft: SightingDraft) {
+        val photo = photoDraft.value ?: return
+        photoDraft.value = null
+        viewModelScope.launch {
+            val where = draft.place?.let { Coordinates(it.latitude, it.longitude) }
+            observationRepository.recordPhotoObservation(
+                speciesId = speciesId,
+                timestamp = draft.timestamp,
+                latitude = where?.latitude,
+                longitude = where?.longitude,
+                mediaPath = photo.mediaPath,
+                notes = draft.notes,
+                rarityTier = rarityFor(where, draft.timestamp),
+            )
+        }
+    }
+
+    fun discardPhoto() {
+        val photo = photoDraft.value ?: return
+        photoDraft.value = null
+        viewModelScope.launch(Dispatchers.IO) { runCatching { PhotoStorage.delete(photo.mediaPath) } }
+    }
+
+    fun dismissPhotoFailure() {
+        photoFailed.value = false
+    }
+
+    /** La ubicacion actual como lugar propuesto para "lo he visto". */
+    suspend fun currentPlace(): PickedPlace? =
+        runCatching { currentLocation() }.getOrNull()?.let { PickedPlace(it.latitude, it.longitude, CURRENT_PLACE_NAME) }
+
+    private suspend fun rarityFor(where: Coordinates?, epochMillis: Long): RarityTier =
+        where?.let { runCatching { rarityAt(speciesId, it, epochMillis) }.getOrNull() } ?: RarityTier.UNKNOWN
 
     /**
      * Borra el avistamiento Y lo que capturo. Antes solo se borraba la fila y la
@@ -234,6 +323,7 @@ class SpeciesDetailViewModel(
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
+        const val CURRENT_PLACE_NAME = "Mi ubicación actual"
     }
 }
 
@@ -260,6 +350,8 @@ fun SpeciesDetailScreen(
     pendingPhoto: PendingPhotoConfirmation? = null,
     /** Abre el mapa grande de esta especie. Nulo esconde el mapa de la ficha. */
     onOpenMap: (() -> Unit)? = null,
+    /** Para decir donde fue un avistamiento. Nulo esconde el chip de lugar. */
+    placePicker: PlacePickerActions? = null,
 ) {
     // La clave evita que al navegar de una especie a otra se reutilice el
     // ViewModel de la anterior y la ficha se quede con los datos viejos.
@@ -268,14 +360,28 @@ fun SpeciesDetailScreen(
     }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
+    val photoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) viewModel.preparePhoto(uri)
+    }
+
     SpeciesDetailContent(
         state = state,
         onAddManualSighting = viewModel::addManualSighting,
-        onUpdateNotes = viewModel::updateNotes,
+        onUpdateSighting = viewModel::updateSighting,
         onDeleteSighting = viewModel::deleteSighting,
         modifier = modifier,
         pendingPhoto = pendingPhoto,
         onOpenMap = onOpenMap,
+        placePicker = placePicker,
+        locate = viewModel::currentPlace,
+        onAddPhoto = if (viewModel.canAddPhotos) {
+            { photoLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+        } else {
+            null
+        },
+        onConfirmPhoto = viewModel::confirmPhoto,
+        onDiscardPhoto = viewModel::discardPhoto,
+        onDismissPhotoFailure = viewModel::dismissPhotoFailure,
     )
 }
 
@@ -283,11 +389,17 @@ fun SpeciesDetailScreen(
 internal fun SpeciesDetailContent(
     state: SpeciesDetailUiState,
     modifier: Modifier = Modifier,
-    onAddManualSighting: (String?) -> Unit = {},
-    onUpdateNotes: (Long, String?) -> Unit = { _, _ -> },
+    onAddManualSighting: (SightingDraft) -> Unit = {},
+    onUpdateSighting: (Long, SightingDraft) -> Unit = { _, _ -> },
     onDeleteSighting: (Long) -> Unit = {},
     pendingPhoto: PendingPhotoConfirmation? = null,
     onOpenMap: (() -> Unit)? = null,
+    placePicker: PlacePickerActions? = null,
+    locate: (suspend () -> PickedPlace?)? = null,
+    onAddPhoto: (() -> Unit)? = null,
+    onConfirmPhoto: (SightingDraft) -> Unit = {},
+    onDiscardPhoto: () -> Unit = {},
+    onDismissPhotoFailure: () -> Unit = {},
 ) {
     val species = state.species
 
@@ -296,7 +408,7 @@ internal fun SpeciesDetailContent(
     val clipPlayer = rememberClipPlayer()
 
     var showManualDialog by remember { mutableStateOf(false) }
-    var editingNotes by remember { mutableStateOf<Sighting?>(null) }
+    var editing by remember { mutableStateOf<Sighting?>(null) }
     var deleting by remember { mutableStateOf<Sighting?>(null) }
 
     // El filtro por origen. Si se borra el ultimo avistamiento del tipo elegido
@@ -353,6 +465,8 @@ internal fun SpeciesDetailContent(
                 isCollected = state.isCollected,
                 isLoadingEncyclopedia = state.isLoadingEncyclopedia,
                 onAddManualSighting = { showManualDialog = true },
+                onAddPhoto = onAddPhoto,
+                isSavingPhoto = state.isSavingPhoto,
             )
         }
 
@@ -424,7 +538,7 @@ internal fun SpeciesDetailContent(
                 isPlaying = clipPlayer.isPlaying(sighting.id),
                 onTogglePlay = { clipPlayer.toggle(sighting.id, sighting.mediaPath) },
                 onOpenPhoto = { viewingPhotoId = sighting.id },
-                onEditNotes = { editingNotes = sighting },
+                onEditNotes = { editing = sighting },
                 onDelete = { deleting = sighting },
             )
         }
@@ -441,28 +555,56 @@ internal fun SpeciesDetailContent(
     }
 
     if (showManualDialog) {
-        NotesDialog(
+        SightingEditorDialog(
             title = stringResource(R.string.pokedex_detail_manual_title, species.commonName),
-            initial = "",
+            initial = SightingDraft(timestamp = System.currentTimeMillis(), place = null, notes = null),
             confirmLabel = stringResource(R.string.pokedex_detail_annotate),
+            placePicker = placePicker,
+            locateIfEmpty = locate,
             onDismiss = { showManualDialog = false },
-            onConfirm = { notes ->
-                onAddManualSighting(notes)
+            onConfirm = { draft ->
+                onAddManualSighting(draft)
                 showManualDialog = false
             },
         )
     }
 
-    editingNotes?.let { sighting ->
-        NotesDialog(
-            title = stringResource(R.string.pokedex_detail_notes_title),
-            initial = sighting.notes.orEmpty(),
+    editing?.let { sighting ->
+        SightingEditorDialog(
+            title = stringResource(R.string.pokedex_detail_edit_sighting),
+            initial = SightingDraft.of(sighting),
             confirmLabel = stringResource(R.string.pokedex_detail_save),
-            onDismiss = { editingNotes = null },
-            onConfirm = { notes ->
-                onUpdateNotes(sighting.id, notes)
-                editingNotes = null
+            placePicker = placePicker,
+            onDismiss = { editing = null },
+            onConfirm = { draft ->
+                onUpdateSighting(sighting.id, draft)
+                editing = null
             },
+        )
+    }
+
+    // La foto subida desde la ficha: ya esta en disco, falta cuando y donde.
+    state.photoDraft?.let { photo ->
+        SightingEditorDialog(
+            title = stringResource(R.string.pokedex_detail_photo_sighting_title, species.commonName),
+            initial = SightingDraft(
+                timestamp = photo.takenAtMillis ?: System.currentTimeMillis(),
+                place = null,
+                notes = null,
+            ),
+            confirmLabel = stringResource(R.string.pokedex_detail_annotate),
+            placePicker = placePicker,
+            onDismiss = onDiscardPhoto,
+            onConfirm = onConfirmPhoto,
+        )
+    }
+
+    if (state.photoFailed) {
+        AlertDialog(
+            onDismissRequest = onDismissPhotoFailure,
+            title = { Text(stringResource(R.string.pokedex_detail_photo_failed_title)) },
+            text = { Text(stringResource(R.string.pokedex_detail_photo_failed)) },
+            confirmButton = { TextButton(onClick = onDismissPhotoFailure) { Text(stringResource(R.string.pokedex_detail_photo_failed_ok)) } },
         )
     }
 
@@ -487,6 +629,7 @@ internal fun SpeciesDetailContent(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SpeciesHeader(
     species: Species,
@@ -495,6 +638,8 @@ private fun SpeciesHeader(
     isLoadingEncyclopedia: Boolean,
     onAddManualSighting: () -> Unit,
     modifier: Modifier = Modifier,
+    onAddPhoto: (() -> Unit)? = null,
+    isSavingPhoto: Boolean = false,
 ) {
     val tint = rarityColor(rarity)
     val context = LocalContext.current
@@ -505,10 +650,10 @@ private fun SpeciesHeader(
             // cualquier proporcion, y con recorte a un ave vertical se le iba
             // la cabeza. Al tocarla, a pantalla completa y con zoom.
             var showViewer by remember { mutableStateOf(false) }
-            AsyncImage(
-                model = WikipediaImages.sized(url, WikipediaImages.HEADER_WIDTH_PX),
+            WikipediaPhoto(
+                url = url,
+                widthPx = WikipediaImages.HEADER_WIDTH_PX,
                 contentDescription = stringResource(R.string.pokedex_detail_open_image),
-                contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(240.dp)
@@ -517,8 +662,10 @@ private fun SpeciesHeader(
                     .clickable { showViewer = true },
             )
             if (showViewer) {
+                val candidates = WikipediaImages.candidates(url, WikipediaImages.VIEWER_WIDTH_PX)
                 ImageViewer(
-                    model = WikipediaImages.sized(url, WikipediaImages.VIEWER_WIDTH_PX),
+                    model = candidates.first(),
+                    fallbacks = candidates.drop(1),
                     title = species.commonName,
                     caption = species.imageAttribution,
                     onDismiss = { showViewer = false },
@@ -603,12 +750,26 @@ private fun SpeciesHeader(
         // "Lo he visto": la via manual. Sin modelo detras, con la persona como
         // unico clasificador. Es lo que convierte la busqueda en el catalogo en
         // algo mas que una guia de consulta.
-        OutlinedButton(onClick = onAddManualSighting) {
-            Text(
-                stringResource(
-                    if (isCollected) R.string.pokedex_detail_add_another else R.string.pokedex_detail_add_first,
-                ),
-            )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            OutlinedButton(onClick = onAddManualSighting) {
+                Text(
+                    stringResource(
+                        if (isCollected) R.string.pokedex_detail_add_another else R.string.pokedex_detail_add_first,
+                    ),
+                )
+            }
+            // Una foto que ya tienes de esta especie: sin pasar por el modelo,
+            // que para eso ya sabes cual es.
+            if (onAddPhoto != null) {
+                OutlinedButton(onClick = onAddPhoto, enabled = !isSavingPhoto) {
+                    Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.pokedex_detail_add_photo))
+                }
+            }
         }
     }
 }
@@ -694,7 +855,7 @@ private fun SightingRow(
                     }
                 }
                 IconButton(onClick = onEditNotes) {
-                    Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.pokedex_detail_edit_notes))
+                    Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.pokedex_detail_edit_sighting))
                 }
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.pokedex_detail_delete_sighting))
@@ -791,34 +952,6 @@ private fun PendingPhotoCard(
     }
 }
 
-@Composable
-private fun NotesDialog(
-    title: String,
-    initial: String,
-    confirmLabel: String,
-    onDismiss: () -> Unit,
-    onConfirm: (String?) -> Unit,
-) {
-    var text by remember { mutableStateOf(initial) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                label = { Text(stringResource(R.string.pokedex_detail_notes_label)) },
-                placeholder = { Text(stringResource(R.string.pokedex_detail_notes_placeholder)) },
-                minLines = 2,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        },
-        confirmButton = {
-            Button(onClick = { onConfirm(text.takeIf { it.isNotBlank() }) }) { Text(confirmLabel) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.pokedex_cancel)) } },
-    )
-}
 
 @Composable
 private fun sourceLabel(source: ObservationSource): String = stringResource(

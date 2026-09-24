@@ -245,6 +245,56 @@ class ObservationRepository(
     suspend fun updateNotes(observationId: Long, notes: String?) =
         observationDao.updateNotes(observationId, notes?.takeIf { it.isNotBlank() })
 
+    /**
+     * Corrige cuando, donde y las notas de un avistamiento. La rareza se vuelve
+     * a congelar con el lugar y la fecha nuevos: es la del sitio donde se vio.
+     */
+    suspend fun updateDetails(
+        observationId: Long,
+        timestamp: Long,
+        latitude: Double?,
+        longitude: Double?,
+        notes: String?,
+        rarityTier: RarityTier,
+    ) = observationDao.updateDetails(
+        id = observationId,
+        timestamp = timestamp,
+        latitude = latitude,
+        longitude = longitude,
+        notes = notes?.takeIf { it.isNotBlank() },
+        rarityTier = rarityTier.level,
+    )
+
+    /**
+     * Una foto que el usuario sube sabiendo de que especie es: sin modelo detras,
+     * confirmada de entrada, con la foto como prueba.
+     */
+    suspend fun recordPhotoObservation(
+        speciesId: String,
+        timestamp: Long,
+        latitude: Double?,
+        longitude: Double?,
+        mediaPath: String?,
+        notes: String?,
+        rarityTier: RarityTier,
+    ): Long = observationDao.insert(
+        ObservationEntity(
+            speciesId = speciesId,
+            sessionId = null,
+            timestamp = timestamp,
+            latitude = latitude,
+            longitude = longitude,
+            source = ObservationSource.IMAGE,
+            rawConfidence = 1f,
+            adjustedConfidence = 1f,
+            modelId = MANUAL_MODEL_ID,
+            userConfirmed = true,
+            mediaPath = mediaPath,
+            notes = notes?.takeIf { it.isNotBlank() },
+            rarityTierAtCapture = rarityTier.level,
+        ),
+    )
+
     suspend fun delete(observationId: Long) = observationDao.delete(observationId)
 
     suspend fun find(observationId: Long): ObservationEntity? = observationDao.findById(observationId)

@@ -151,6 +151,24 @@ interface ObservationDao {
     @Query("UPDATE observations SET notes = :notes WHERE id = :id")
     suspend fun updateNotes(id: Long, notes: String?)
 
+    /** Lo que el usuario puede corregir de un avistamiento: cuando, donde y las notas. La rareza va con el lugar. */
+    @Query(
+        """
+        UPDATE observations
+        SET timestamp = :timestamp, latitude = :latitude, longitude = :longitude,
+            notes = :notes, rarityTierAtCapture = :rarityTier
+        WHERE id = :id
+        """,
+    )
+    suspend fun updateDetails(
+        id: Long,
+        timestamp: Long,
+        latitude: Double?,
+        longitude: Double?,
+        notes: String?,
+        rarityTier: Int,
+    )
+
     @Query("UPDATE observations SET speciesId = :speciesId, userConfirmed = 1, userRejected = 0 WHERE id = :id")
     suspend fun reassignAndConfirm(id: Long, speciesId: String)
 

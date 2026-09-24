@@ -48,10 +48,10 @@ class SpeciesEncyclopedia(
             target.copy(
                 summary = summary.extract,
                 wikipediaUrl = summary.pageUrl,
-                // La miniatura, pedida mas grande, y no la original: la original
-                // puede ser una foto de 5.000 px y varios MB. Ver WikipediaImages.
-                imageUrl = summary.thumbnailUrl?.let { WikipediaImages.sized(it, WikipediaImages.HEADER_WIDTH_PX) }
-                    ?: summary.originalImageUrl,
+                // La miniatura TAL COMO VIENE (existe seguro) y no la original, que
+                // puede ser una foto de 5.000 px. La pantalla la pide mas grande
+                // con WikipediaImages y cae a esta si Commons no la tiene.
+                imageUrl = summary.thumbnailUrl ?: summary.originalImageUrl,
                 imageAttribution = "Wikimedia Commons · ${summary.language}.wikipedia.org",
             )
         }

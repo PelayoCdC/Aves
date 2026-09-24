@@ -4,7 +4,7 @@ import android.content.Context
 import android.graphics.Color as AndroidColor
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
-import androidx.compose.foundation.clickable
+import android.view.MotionEvent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -118,8 +118,16 @@ fun BirdMap(
                     controller.setZoom(viewport.zoom)
                     controller.setCenter(GeoPoint(viewport.latitude, viewport.longitude))
                     if (!interactive) {
-                        // Ni un dedo lo mueve: el toque lo recoge la capa de Compose.
-                        setOnTouchListener { _, _ -> true }
+                        // Ni un dedo lo mueve, y un toque abre el grande. El toque se
+                        // recoge AQUI, en la vista, y no en una capa de Compose encima:
+                        // la capa no llegaba a recibirlo con el mapa debajo.
+                        setOnTouchListener { view, event ->
+                            if (event.actionMasked == MotionEvent.ACTION_UP) {
+                                view.performClick()
+                                currentMapTap?.invoke()
+                            }
+                            true
+                        }
                     }
                     mapView = this
                 }
@@ -135,9 +143,6 @@ fun BirdMap(
                 )
             },
         )
-        if (!interactive && onMapTap != null) {
-            Box(Modifier.matchParentSize().clickable(onClick = onMapTap))
-        }
     }
 
     LaunchedEffect(viewport, mapView) {

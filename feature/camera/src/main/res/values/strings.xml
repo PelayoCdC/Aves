@@ -8,6 +8,12 @@
 
     <string name="camera_could_be">Puede ser</string>
     <string name="camera_none_of_these">Ninguno de estos</string>
+    <string name="camera_search_species">Sé cuál es…</string>
+    <string name="camera_search_title">¿Cuál es?</string>
+    <string name="camera_search_label">Nombre común o científico</string>
+    <string name="camera_search_empty">Nada en el catálogo coincide.</string>
+    <string name="camera_cancel">Cancelar</string>
+    <string name="camera_pick_date">Cambiar la fecha de la foto</string>
     <string name="camera_confirm_candidate">Confirmar %1$s</string>
 
     <string name="camera_nothing_title">Ningún ave reconocida</string>

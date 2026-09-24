@@ -32,4 +32,19 @@ object WikipediaImages {
 
     /** true si la URL es una miniatura de Commons que admite cambiar de tamano. */
     fun isResizable(url: String): Boolean = WIDTH_SEGMENT.containsMatchIn(url)
+
+    /**
+     * Que pedir, en orden, hasta que algo cargue.
+     *
+     * Commons no amplia: pedir una miniatura mas ancha que la imagen original
+     * es un error HTTP, y no se sabe de antemano cuanto mide el original. Asi
+     * que primero el tamano deseado, despues la URL tal como vino (que siempre
+     * existio) y por ultimo una miniatura pequena, que cabe en casi cualquier
+     * original. Sin repetidos.
+     */
+    fun candidates(url: String, widthPx: Int): List<String> =
+        listOf(sized(url, widthPx), url, sized(url, SMALL_WIDTH_PX)).distinct()
+
+    /** Casi ninguna foto de Commons es mas estrecha que esto. */
+    const val SMALL_WIDTH_PX = 320
 }

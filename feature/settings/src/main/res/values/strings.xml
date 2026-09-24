@@ -7,6 +7,16 @@
 <resources>
     <string name="settings_title">Ajustes</string>
 
+    <string name="settings_appearance_title">Aspecto</string>
+    <string name="settings_appearance_subtitle">Los colores de la app.</string>
+    <string name="settings_skin_system">Del sistema</string>
+    <string name="settings_skin_system_desc">Los colores de tu móvil, claro u oscuro según el sistema. Como iba hasta ahora.</string>
+    <string name="settings_skin_forest">Bosque</string>
+    <string name="settings_skin_forest_desc">Verdes de vegetación sobre fondo claro.</string>
+    <string name="settings_skin_dawn">Alba</string>
+    <string name="settings_skin_dawn_desc">Clara y suave: blancos cálidos con un azul de acento.</string>
+    <string name="settings_skin_night">Noche</string>
+    <string name="settings_skin_night_desc">Oscura, para el amanecer y la escucha nocturna: no deslumbra ni te delata.</string>
     <string name="settings_identification_title">Identificación</string>
     <string name="settings_identification_subtitle">Cómo decide la app qué ha oído.</string>
     <string name="settings_context_influence">Influencia del contexto</string>

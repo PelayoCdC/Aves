@@ -144,6 +144,12 @@
     <string name="pokedex_detail_photo_pending_body">Compara tu foto con la imagen y la descripción de %1$s antes de anotarla. Todavía no se ha guardado nada.</string>
     <string name="pokedex_detail_photo_confirm">Sí, anotar el avistamiento</string>
     <string name="pokedex_detail_photo_reject">No es esta</string>
+    <string name="pokedex_detail_add_photo">Añadir una foto</string>
+    <string name="pokedex_detail_edit_sighting">Editar el avistamiento</string>
+    <string name="pokedex_detail_photo_sighting_title">Tu foto de %1$s: ¿cuándo y dónde?</string>
+    <string name="pokedex_detail_photo_failed_title">No se pudo leer la foto</string>
+    <string name="pokedex_detail_photo_failed">El fichero no es una imagen que el móvil sepa abrir, o ya no está donde estaba.</string>
+    <string name="pokedex_detail_photo_failed_ok">Entendido</string>
     <string name="pokedex_detail_notes_label">Notas (opcional)</string>
     <string name="pokedex_detail_notes_placeholder">Dónde, cómo, con quién…</string>
     <string name="pokedex_detail_confidence">%1$d %% de confianza</string>

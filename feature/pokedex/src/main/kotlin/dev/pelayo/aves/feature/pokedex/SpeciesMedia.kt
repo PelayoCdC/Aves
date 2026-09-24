@@ -23,6 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -33,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -52,6 +54,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
 import dev.pelayo.aves.core.common.PhotoStorage
+import dev.pelayo.aves.core.common.WikipediaImages
 import dev.pelayo.aves.core.model.ObservationSource
 
 /*
@@ -244,6 +247,46 @@ internal fun PhotoViewer(
 private val ViewerScrim = Color.Black.copy(alpha = 0.45f)
 
 /**
+ * La imagen de Wikipedia de una ficha, del tamano que toca y sin quedarse gris.
+ *
+ * Commons sirve una miniatura de cualquier ancho... siempre que no sea mayor
+ * que la imagen original: pedir 800 px de una foto de 600 devuelve un error, y
+ * eso era lo que dejaba la cabecera gris. Asi que se intenta el tamano bueno y,
+ * si falla, se cae a la URL tal como vino y a una miniatura pequena, en ese
+ * orden ([WikipediaImages.candidates]). Si nada carga, un icono, no un hueco.
+ */
+@Composable
+internal fun WikipediaPhoto(
+    url: String,
+    widthPx: Int,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+) {
+    val candidates = remember(url, widthPx) { WikipediaImages.candidates(url, widthPx) }
+    var attempt by remember(url) { mutableIntStateOf(0) }
+    val exhausted = attempt > candidates.lastIndex
+
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        if (exhausted) {
+            Icon(
+                imageVector = Icons.Outlined.Image,
+                contentDescription = contentDescription,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(48.dp),
+            )
+        } else {
+            AsyncImage(
+                model = candidates[attempt],
+                contentDescription = contentDescription,
+                contentScale = ContentScale.Fit,
+                onError = { attempt++ },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+/**
  * UNA imagen a pantalla completa, con zoom: la de Wikipedia de la cabecera de la
  * ficha. El mismo visor que las fotos del usuario, sin paginador.
  *
@@ -256,6 +299,7 @@ internal fun ImageViewer(
     title: String,
     caption: String?,
     onDismiss: () -> Unit,
+    fallbacks: List<Any> = emptyList(),
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -266,7 +310,7 @@ internal fun ImageViewer(
                 .fillMaxSize()
                 .background(Color.Black),
         ) {
-            ZoomablePhoto(model = model, contentDescription = title, isCurrent = true)
+            ZoomablePhoto(model = model, contentDescription = title, isCurrent = true, fallbacks = fallbacks)
 
             Row(
                 modifier = Modifier
@@ -329,7 +373,11 @@ private fun ZoomablePhoto(
     contentDescription: String,
     isCurrent: Boolean,
     modifier: Modifier = Modifier,
+    /** Que probar si [model] no carga, en orden. Ver [WikipediaPhoto]. */
+    fallbacks: List<Any> = emptyList(),
 ) {
+    val candidates = remember(model, fallbacks) { listOf(model) + fallbacks }
+    var attempt by remember(model) { mutableIntStateOf(0) }
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var size by remember { mutableStateOf(IntSize.Zero) }
@@ -355,9 +403,10 @@ private fun ZoomablePhoto(
     }
 
     AsyncImage(
-        model = model,
+        model = candidates[attempt.coerceIn(0, candidates.lastIndex)],
         contentDescription = contentDescription,
         contentScale = ContentScale.Fit,
+        onError = { if (attempt < candidates.lastIndex) attempt++ },
         modifier = modifier
             .fillMaxSize()
             .onSizeChanged { size = it }

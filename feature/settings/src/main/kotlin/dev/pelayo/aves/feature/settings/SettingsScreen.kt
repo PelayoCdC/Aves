@@ -1,5 +1,13 @@
 package dev.pelayo.aves.feature.settings
 
+import dev.pelayo.aves.core.designsystem.theme.AvesSkin
+import androidx.compose.material3.Icon
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -69,6 +77,7 @@ fun SettingsScreen(
         onConfidenceThresholdChange = viewModel::setConfidenceThreshold,
         onLocationDisabledChange = viewModel::setLocationDisabled,
         onListeningCutoffChange = viewModel::setListeningCutoff,
+        onSkinChange = viewModel::setSkin,
         onExportData = onExportData,
         modifier = modifier,
     )
@@ -87,6 +96,7 @@ internal fun SettingsContent(
     onListeningCutoffChange: (Int) -> Unit,
     onExportData: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    onSkinChange: (AvesSkin) -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -101,6 +111,11 @@ internal fun SettingsContent(
         // los valores por defecto haria que el usuario viese saltar sus propios
         // ajustes un instante despues de abrir la pantalla.
         if (!state.isLoading) {
+            AppearanceSection(
+                selected = AvesSkin.fromName(state.settings.skin),
+                onSkinChange = onSkinChange,
+            )
+
             IdentificationSection(
                 settings = state.settings,
                 onContextInfluenceChange = onContextInfluenceChange,
@@ -124,6 +139,62 @@ internal fun SettingsContent(
             onExportData = onExportData,
         )
     }
+}
+
+// --- Aspecto ---------------------------------------------------------------
+
+/**
+ * Las pieles, como una fila de chips. Cuatro opciones caben en una pantalla y
+ * se comparan de un vistazo; un desplegable las esconderia.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AppearanceSection(
+    selected: AvesSkin,
+    onSkinChange: (AvesSkin) -> Unit,
+) {
+    SettingsSection(
+        title = stringResource(R.string.settings_appearance_title),
+        subtitle = stringResource(R.string.settings_appearance_subtitle),
+    ) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            for (skin in AvesSkin.entries) {
+                FilterChip(
+                    selected = skin == selected,
+                    onClick = { onSkinChange(skin) },
+                    label = { Text(stringResource(skinName(skin))) },
+                    leadingIcon = if (skin == selected) {
+                        { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
+                    } else {
+                        null
+                    },
+                )
+            }
+        }
+        Spacer(Modifier.size(8.dp))
+        Text(
+            text = stringResource(skinDescription(selected)),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun skinName(skin: AvesSkin): Int = when (skin) {
+    AvesSkin.SYSTEM -> R.string.settings_skin_system
+    AvesSkin.FOREST -> R.string.settings_skin_forest
+    AvesSkin.DAWN -> R.string.settings_skin_dawn
+    AvesSkin.NIGHT -> R.string.settings_skin_night
+}
+
+private fun skinDescription(skin: AvesSkin): Int = when (skin) {
+    AvesSkin.SYSTEM -> R.string.settings_skin_system_desc
+    AvesSkin.FOREST -> R.string.settings_skin_forest_desc
+    AvesSkin.DAWN -> R.string.settings_skin_dawn_desc
+    AvesSkin.NIGHT -> R.string.settings_skin_night_desc
 }
 
 // --- Identificacion --------------------------------------------------------

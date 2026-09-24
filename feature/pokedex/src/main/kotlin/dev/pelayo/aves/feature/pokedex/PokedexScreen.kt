@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -163,9 +164,16 @@ internal fun PokedexContent(
 
         // La busqueda queda fija fuera de la rejilla: si se va con el scroll,
         // deja de servir justo cuando mas falta hace, con la coleccion grande.
+        // El texto vive aqui y no en el ViewModel: si el campo pintara lo que
+        // devuelve el flujo (que llega un instante despues, tras cruzar la base
+        // de datos), el cursor saltaria a la posicion anterior con cada letra.
+        var queryText by rememberSaveable { mutableStateOf(state.query) }
         OutlinedTextField(
-            value = state.query,
-            onValueChange = onQueryChange,
+            value = queryText,
+            onValueChange = { text ->
+                queryText = text
+                onQueryChange(text)
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
@@ -173,8 +181,13 @@ internal fun PokedexContent(
             label = { Text(stringResource(R.string.pokedex_search_label)) },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             trailingIcon = {
-                if (state.query.isNotEmpty()) {
-                    IconButton(onClick = { onQueryChange("") }) {
+                if (queryText.isNotEmpty()) {
+                    IconButton(
+                        onClick = {
+                            queryText = ""
+                            onQueryChange("")
+                        },
+                    ) {
                         Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.pokedex_clear_search))
                     }
                 }

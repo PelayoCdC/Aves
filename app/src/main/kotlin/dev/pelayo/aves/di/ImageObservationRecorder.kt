@@ -36,6 +36,22 @@ class ImageObservationRecorder(
         val context = identification.context
         val photoPath = identification.photo?.let { savePhoto(it, identification.fullPhoto) }
 
+        // Una especie elegida a mano en el buscador: no hay clase del modelo que
+        // resolver, la persona ya dijo cual es.
+        val chosen = candidate.canonicalSpeciesId
+        if (candidate.labelIndex < 0 && chosen != null) {
+            observations.recordPhotoObservation(
+                speciesId = chosen,
+                timestamp = context.epochMillis,
+                latitude = context.latitude,
+                longitude = context.longitude,
+                mediaPath = photoPath,
+                notes = null,
+                rarityTier = rarityAt(chosen, context.latitude, context.longitude, context.epochMillis),
+            )
+            return chosen
+        }
+
         val result = observations.recordImageObservation(
             modelId = identification.modelId,
             detection = ClassificationResult(
@@ -49,23 +65,17 @@ class ImageObservationRecorder(
             latitude = context.latitude,
             longitude = context.longitude,
             mediaPath = photoPath,
-            rarityOf = { speciesId ->
-                val latitude = context.latitude
-                val longitude = context.longitude
-                if (latitude == null || longitude == null) {
-                    RarityTier.UNKNOWN
-                } else {
-                    regions.rarityOf(
-                        speciesId,
-                        latitude,
-                        longitude,
-                        RegionRepository.monthOf(context.epochMillis),
-                    ) ?: RarityTier.UNKNOWN
-                }
-            },
+            rarityOf = { speciesId -> rarityAt(speciesId, context.latitude, context.longitude, context.epochMillis) },
         )
         return result?.second
     }
+
+    private suspend fun rarityAt(speciesId: String, latitude: Double?, longitude: Double?, epochMillis: Long): RarityTier =
+        if (latitude == null || longitude == null) {
+            RarityTier.UNKNOWN
+        } else {
+            regions.rarityOf(speciesId, latitude, longitude, RegionRepository.monthOf(epochMillis)) ?: RarityTier.UNKNOWN
+        }
 
     /**
      * Guarda la foto en sus dos tamanos (ver [PhotoStorage]) y devuelve la ruta
@@ -73,7 +83,7 @@ class ImageObservationRecorder(
      *
      * Si solo se pudo guardar uno de los dos, vale: la ficha ensena lo que haya.
      */
-    private suspend fun savePhoto(thumbnail: Bitmap, full: Bitmap?): String? =
+    internal suspend fun savePhoto(thumbnail: Bitmap, full: Bitmap?): String? =
         withContext(Dispatchers.IO) {
             runCatching {
                 photosDirectory.mkdirs()
