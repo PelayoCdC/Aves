@@ -316,6 +316,13 @@ Privacidad: cada tesela pedida dice a GBIF que zona se esta mirando (y, en la
 ficha de una especie, cual). Teselas cacheadas en la cache de la app, con tope
 de 120 MB. Atribucion obligatoria en pantalla.
 
+Trampa de osmdroid dentro de Compose: por defecto la `MapView` se
+**autodestruye** al separarse de la ventana (`onDetachedFromWindow` →
+`onDetach`), y en Compose la vista se separa y se vuelve a enganchar en momentos
+que no controlamos (una `LazyColumn`, una transicion). El resultado era un mapa
+gris para siempre o un `NullPointerException` al crear un marcador. `BirdMap`
+pone `setDestroyMode(false)` y destruye solo desde su `DisposableEffect`.
+
 ### Logros
 
 Medallas de hierro a diamante por la parte de una lista que tengas en la
@@ -378,9 +385,12 @@ lugar, notas) sirve para anotar a mano y para **corregir cualquier
 avistamiento** (`ObservationRepository.updateDetails`, que vuelve a congelar la
 rareza con el lugar y la fecha nuevos).
 
-La imagen de Wikipedia se guarda como miniatura y se pide más grande al pintar;
-Commons no amplía por encima del original, así que `WikipediaPhoto` prueba
-800 px → la URL guardada → 320 px antes de rendirse (`WikipediaImages.candidates`).
+La imagen de Wikipedia se guarda como miniatura (la de 330 px que da el
+resumen). **Commons solo sirve unos pocos anchos ya renderizados**: pedir
+800 px cambiando el número de la URL devuelve 400, y a ráfagas 429; eso dejaba
+la cabecera gris. Así que la cabecera pide la miniatura tal cual (y el original
+si falla) y el visor a pantalla completa pide el original, derivado de la URL
+de la miniatura (`WikipediaImages.original`), que pesa MB pero carga siempre.
 
 ### Vista, fotografiada, oída
 

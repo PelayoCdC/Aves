@@ -247,22 +247,20 @@ internal fun PhotoViewer(
 private val ViewerScrim = Color.Black.copy(alpha = 0.45f)
 
 /**
- * La imagen de Wikipedia de una ficha, del tamano que toca y sin quedarse gris.
+ * La imagen de Wikipedia de una ficha, sin quedarse gris.
  *
- * Commons sirve una miniatura de cualquier ancho... siempre que no sea mayor
- * que la imagen original: pedir 800 px de una foto de 600 devuelve un error, y
- * eso era lo que dejaba la cabecera gris. Asi que se intenta el tamano bueno y,
- * si falla, se cae a la URL tal como vino y a una miniatura pequena, en ese
- * orden ([WikipediaImages.candidates]). Si nada carga, un icono, no un hueco.
+ * Commons solo sirve las miniaturas de unos pocos anchos ya renderizados; pedir
+ * otro devuelve 400, y eso era lo que dejaba la cabecera gris. Asi que se pide
+ * la miniatura tal como la da Wikipedia y, si aun asi falla, el original
+ * ([WikipediaImages.headerCandidates]). Si nada carga, un icono, no un hueco.
  */
 @Composable
 internal fun WikipediaPhoto(
     url: String,
-    widthPx: Int,
     contentDescription: String?,
     modifier: Modifier = Modifier,
 ) {
-    val candidates = remember(url, widthPx) { WikipediaImages.candidates(url, widthPx) }
+    val candidates = remember(url) { WikipediaImages.headerCandidates(url) }
     var attempt by remember(url) { mutableIntStateOf(0) }
     val exhausted = attempt > candidates.lastIndex
 

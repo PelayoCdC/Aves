@@ -652,7 +652,6 @@ private fun SpeciesHeader(
             var showViewer by remember { mutableStateOf(false) }
             WikipediaPhoto(
                 url = url,
-                widthPx = WikipediaImages.HEADER_WIDTH_PX,
                 contentDescription = stringResource(R.string.pokedex_detail_open_image),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -662,7 +661,7 @@ private fun SpeciesHeader(
                     .clickable { showViewer = true },
             )
             if (showViewer) {
-                val candidates = WikipediaImages.candidates(url, WikipediaImages.VIEWER_WIDTH_PX)
+                val candidates = WikipediaImages.viewerCandidates(url)
                 ImageViewer(
                     model = candidates.first(),
                     fallbacks = candidates.drop(1),

@@ -2,43 +2,67 @@ package dev.pelayo.aves.core.common
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Pedir a Commons la imagen del tamano que toca, sin romper la URL. */
+/** Que pedir a Commons para que la foto cargue: miniatura estandar u original, nunca anchos inventados. */
 class WikipediaImagesTest {
 
     private val thumb =
-        "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Common_Blackbird.jpg/330px-Common_Blackbird.jpg?utm_source=es.wikipedia.org"
+        "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6e/Crabier_chevelu.jpg/330px-Crabier_chevelu.jpg?utm_source=es.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
 
     @Test
-    fun `cambia el ancho de una miniatura y respeta el resto`() {
+    fun `el original sale de la miniatura, en upload y sin la query`() {
         assertEquals(
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Common_Blackbird.jpg/800px-Common_Blackbird.jpg?utm_source=es.wikipedia.org",
-            WikipediaImages.sized(thumb, 800),
-        )
-        assertTrue(WikipediaImages.isResizable(thumb))
-    }
-
-    @Test
-    fun `una imagen original, sin ancho en la URL, se deja como esta`() {
-        val original = "https://upload.wikimedia.org/wikipedia/commons/a/a9/Common_Blackbird.jpg"
-        assertEquals(original, WikipediaImages.sized(original, 800))
-        assertFalse(WikipediaImages.isResizable(original))
-    }
-
-    @Test
-    fun `un nombre de fichero con numeros y px no engana al patron`() {
-        // El ancho va justo detras de una barra; "Bird_100px_photo.jpg" no lo es.
-        val tricky = "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/Bird_100px_photo.jpg/220px-Bird_100px_photo.jpg"
-        assertEquals(
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/Bird_100px_photo.jpg/1600px-Bird_100px_photo.jpg",
-            WikipediaImages.sized(tricky, 1600),
+            "https://upload.wikimedia.org/wikipedia/commons/6/6e/Crabier_chevelu.jpg",
+            WikipediaImages.original(thumb),
         )
     }
 
     @Test
-    fun `no se pide un ancho absurdo`() {
-        assertTrue(runCatching { WikipediaImages.sized(thumb, 0) }.isFailure)
+    fun `la miniatura estandar se deja como viene`() {
+        assertEquals(thumb, WikipediaImages.thumbnail(thumb))
+        assertTrue(WikipediaImages.isThumbnail(thumb))
+    }
+
+    @Test
+    fun `una miniatura de un ancho que Commons ya no sirve vuelve a 330`() {
+        // Las URLs que se guardaron a 800 px cuando aun se pensaba que se podia.
+        val broken = "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6e/Crabier_chevelu.jpg/800px-Crabier_chevelu.jpg?utm_source=x"
+        assertEquals(
+            "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6e/Crabier_chevelu.jpg/330px-Crabier_chevelu.jpg",
+            WikipediaImages.thumbnail(broken),
+        )
+    }
+
+    @Test
+    fun `una imagen original no es una miniatura`() {
+        val original = "https://upload.wikimedia.org/wikipedia/commons/6/6e/Crabier_chevelu.jpg"
+        assertNull(WikipediaImages.original(original))
+        assertEquals(original, WikipediaImages.thumbnail(original))
+        assertFalse(WikipediaImages.isThumbnail(original))
+    }
+
+    @Test
+    fun `las miniaturas de SVG y TIFF llevan prefijo antes del ancho y se entienden igual`() {
+        val svg = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Bird.svg/330px-Bird.svg.png"
+        assertEquals("https://upload.wikimedia.org/wikipedia/commons/a/ab/Bird.svg", WikipediaImages.original(svg))
+        val tif = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Bird.tif/lossy-page1-330px-Bird.tif.jpg"
+        assertEquals("https://upload.wikimedia.org/wikipedia/commons/a/ab/Bird.tif", WikipediaImages.original(tif))
+    }
+
+    @Test
+    fun `la cabecera prueba la miniatura y luego el original, el visor al reves`() {
+        val original = "https://upload.wikimedia.org/wikipedia/commons/6/6e/Crabier_chevelu.jpg"
+        assertEquals(listOf(thumb, original), WikipediaImages.headerCandidates(thumb))
+        assertEquals(listOf(original, thumb), WikipediaImages.viewerCandidates(thumb))
+    }
+
+    @Test
+    fun `con un original guardado solo hay una cosa que probar`() {
+        val original = "https://upload.wikimedia.org/wikipedia/commons/6/6e/Crabier_chevelu.jpg"
+        assertEquals(listOf(original), WikipediaImages.headerCandidates(original))
+        assertEquals(listOf(original), WikipediaImages.viewerCandidates(original))
     }
 }

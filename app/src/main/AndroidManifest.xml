@@ -7,6 +7,8 @@
         es exactamente el tipo de permiso que Play Store mira con lupa.
     -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- osmdroid mira si hay red antes de pedir teselas. Permiso normal, sin dialogo. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:name=".AvesApplication"

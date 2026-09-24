@@ -107,6 +107,14 @@ fun BirdMap(
         AndroidView(
             factory = { context ->
                 MapView(context).apply {
+                    // osmdroid, por defecto, se AUTODESTRUYE al separarse de la ventana
+                    // (onDetachedFromWindow -> onDetach): vacia su repositorio y deja
+                    // de pedir teselas. Dentro de Compose la vista se separa y se
+                    // vuelve a enganchar en momentos que no controlamos (una lista
+                    // perezosa, una transicion), y el resultado era un mapa gris
+                    // para siempre o un NullPointerException al crear un marcador.
+                    // La destruccion la decide el DisposableEffect de abajo, y solo el.
+                    setDestroyMode(false)
                     setTileSource(BASEMAP)
                     // Teselas a doble resolucion: no hace falta que osmdroid las
                     // reescale a la densidad de la pantalla, y quedan nitidas.
@@ -178,6 +186,8 @@ private const val ANIMATION_MILLIS = 500L
  * mapa: la capa de densidad de un taxon, los puntos y el receptor de toques.
  */
 private class OverlayHolder {
+    /** Tras [clear] no se toca mas el mapa: un marcador sobre un mapa destruido revienta. */
+    private var detached = false
     private var densityKey: Int? = null
     private var densityProvider: MapTileProviderBasic? = null
     private var density: TilesOverlay? = null
@@ -192,6 +202,7 @@ private class OverlayHolder {
         onPointClick: (MapPoint) -> Unit,
         onMapTap: (() -> Unit)?,
     ) {
+        if (detached) return
         var changed = false
 
         if (densityTaxonKey != densityKey) {
@@ -262,6 +273,7 @@ private class OverlayHolder {
     }
 
     fun clear(map: MapView) {
+        detached = true
         density?.let { map.overlays.remove(it) }
         densityProvider?.detach()
         markers.forEach { map.overlays.remove(it) }
