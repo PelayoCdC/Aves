@@ -4,6 +4,10 @@ plugins {
 
 android {
     namespace = "dev.pelayo.aves.core.listening"
+
+    // El motor escribe en el log de Android; en la JVM, `Log` no hace nada en
+    // vez de lanzar. Es lo que permite probar el bucle de escucha sin movil.
+    testOptions.unitTests.isReturnDefaultValues = true
 }
 
 // El bucle de escucha extraido del ViewModel para que pueda vivir tambien en un

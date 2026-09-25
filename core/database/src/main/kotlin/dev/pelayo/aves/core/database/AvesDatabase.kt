@@ -27,9 +27,11 @@ import dev.pelayo.aves.core.database.entity.SpeciesNameEntity
 
 /**
  * MIGRACIONES: cada cambio de esquema sube [version] y anade una
- * `AutoMigration`. Nunca `fallbackToDestructiveMigration`: eso borraria la
+ * `AutoMigration` (salvo 1 -> 2, que va a mano: ver `Migrations.kt`). Hay un
+ * test que migra de cada version a la ultima (`MigrationTest`).
+ * Nunca `fallbackToDestructiveMigration`: eso borraria la
  * coleccion del usuario, que es lo unico de esta base que no se puede
- * regenerar. Los esquemas exportados viven en `src/androidTest/assets/schemas`
+ * regenerar. Los esquemas exportados viven en `src/androidTest/assets`
  * y hay que versionarlos: sin el JSON de la version anterior Room no puede
  * generar la migracion.
  *
@@ -59,8 +61,8 @@ import dev.pelayo.aves.core.database.entity.SpeciesNameEntity
     ],
     version = 5,
     exportSchema = true,
+    // 1 -> 2 va a mano (ver MIGRATION_1_2): la automatica fallaba con duplicados.
     autoMigrations = [
-        AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5),
@@ -92,6 +94,10 @@ abstract class AvesDatabase : RoomDatabase() {
          */
         fun create(context: Context): AvesDatabase =
             Room.databaseBuilder(context.applicationContext, AvesDatabase::class.java, NAME)
+                .addMigrations(*MIGRATIONS)
                 .build()
+
+        /** Las migraciones escritas a mano. Las demas las genera Room. */
+        internal val MIGRATIONS = arrayOf(MIGRATION_1_2)
     }
 }

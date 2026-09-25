@@ -104,7 +104,7 @@ class AudioCaptureEngine(
     private val hopMillis: Long = DEFAULT_HOP_MILLIS,
     private val scaling: PcmScaling = PcmScaling.NORMALIZED,
     private val preferUnprocessed: Boolean = true,
-) {
+) : FrameSource {
     init {
         require(sampleRate > 0) { "sampleRate debe ser positivo" }
         require(windowSampleCount > 0) { "windowSampleCount debe ser positivo" }
@@ -112,7 +112,7 @@ class AudioCaptureEngine(
     }
 
     /** Muestras entre dos inferencias consecutivas. Con 800 ms sobre 3 s, el solape es del 73%. */
-    val hopSampleCount: Int = ((sampleRate * hopMillis) / 1000L).toInt()
+    override val hopSampleCount: Int = ((sampleRate * hopMillis) / 1000L).toInt()
 
     /**
      * Fuente de audio que se acabo usando, legible una vez arrancada la captura.
@@ -121,7 +121,7 @@ class AudioCaptureEngine(
      * "no capta nada" es indistinguible de "no hay pajaros".
      */
     @Volatile
-    var activeSourceName: String? = null
+    override var activeSourceName: String? = null
         private set
 
     /**
@@ -134,7 +134,7 @@ class AudioCaptureEngine(
      * escuchando. Siempre false antes de Android 10, donde no se puede saber.
      */
     @Volatile
-    var isSilenced: Boolean = false
+    override var isSilenced: Boolean = false
         private set
 
     /**
@@ -146,7 +146,7 @@ class AudioCaptureEngine(
      * vale mucho mas el audio de hace un segundo que el de hace treinta.
      */
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    fun frames(): Flow<AudioFrame> = flow {
+    override fun frames(): Flow<AudioFrame> = flow {
         val minBufferBytes = AudioRecord.getMinBufferSize(sampleRate, CHANNEL_CONFIG, ENCODING)
         check(minBufferBytes > 0) {
             "El dispositivo no admite $sampleRate Hz mono PCM 16-bit (codigo $minBufferBytes)"

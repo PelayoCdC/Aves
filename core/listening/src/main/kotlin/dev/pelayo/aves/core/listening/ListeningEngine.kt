@@ -7,6 +7,7 @@ import dev.pelayo.aves.core.audio.AudioCaptureEngine
 import dev.pelayo.aves.core.audio.AudioClipWriter
 import dev.pelayo.aves.core.audio.ClipStorage
 import dev.pelayo.aves.core.audio.EnergyGate
+import dev.pelayo.aves.core.audio.FrameSource
 import dev.pelayo.aves.core.audio.PcmScaling
 import dev.pelayo.aves.core.audio.PlaybackSignal
 import dev.pelayo.aves.core.audio.SpectrogramComputer
@@ -122,6 +123,11 @@ class ListeningEngine(
     private val settings: ListeningSettings = ListeningSettings(),
     private val namer: DetectionNamer? = null,
     private val preferUnprocessed: Boolean = true,
+    /** De donde salen las ventanas. El microfono, salvo en las pruebas. Ver [FrameSource]. */
+    private val frameSource: (sampleRate: Int, windowSampleCount: Int, scaling: PcmScaling, preferUnprocessed: Boolean) -> FrameSource =
+        { rate, count, scale, unprocessed ->
+            AudioCaptureEngine(sampleRate = rate, windowSampleCount = count, scaling = scale, preferUnprocessed = unprocessed)
+        },
 ) {
 
     /**
@@ -183,13 +189,13 @@ class ListeningEngine(
             )
             emit(ListeningEvent.Started(sessionId))
 
-            val capture = AudioCaptureEngine(
-                // Los parametros los manda el MODELO. Si manana se cambia a uno
-                // de 32 kHz y 5 s, esta linea no se toca.
-                sampleRate = classifier.requiredSampleRate,
-                windowSampleCount = classifier.requiredSampleCount,
-                scaling = scaling,
-                preferUnprocessed = preferUnprocessed,
+            // Los parametros los manda el MODELO. Si manana se cambia a uno de
+            // 32 kHz y 5 s, esta linea no se toca.
+            val capture = frameSource(
+                classifier.requiredSampleRate,
+                classifier.requiredSampleCount,
+                scaling,
+                preferUnprocessed,
             )
             val gate = EnergyGate(scaling)
             val clipWriter = clipsDirectory?.let {

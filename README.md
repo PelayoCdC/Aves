@@ -447,11 +447,21 @@ gradlew.bat test
 
 Unitarios en la JVM: aritmética del prior, estabilizador, remuestreo, FFT,
 lógica de la bandeja, estadísticas de la colección, clientes de red con
-`MockEngine`, ajustes, cross-walk (con DAOs falsos). Los instrumentados
-(`connectedDebugAndroidTest`) ejecutan los modelos reales: invariancia de
-escala, sentido común del geomodelo (un petirrojo en Madrid pesa más que un
-pingüino), siembra del catálogo y política de escritura. Necesitan los assets,
-que no están en el repositorio.
+`MockEngine`, ajustes, cross-walk (con DAOs falsos), el bucle de escucha
+entero con ventanas fabricadas y un clasificador falso (`ListeningEngineTest`,
+vía `FrameSource`), el cierre seguro de los modelos (`ModelGate`) y el CSV.
+Los instrumentados (`connectedDebugAndroidTest`) ejecutan los modelos reales:
+invariancia de escala, sentido común del geomodelo (un petirrojo en Madrid
+pesa más que un pingüino), siembra del catálogo y política de escritura.
+Necesitan los assets, que no están en el repositorio. `MigrationTest` no los
+necesita: migra cada versión del esquema a la última (incluida una v1 con
+candidatos repetidos, que la migración automática no abría) y corre en la CI
+con emulador.
+
+La CI compila los dos releases y comprueba en el mapping de R8 que las clases
+que buscan por nombre los runtimes nativos (ONNX Runtime, LiteRT) no se han
+renombrado: el primer release publicable compilaba y se habría roto en la
+primera inferencia.
 
 ---
 
