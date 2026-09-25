@@ -79,6 +79,9 @@ interface ListeningSessionDao {
     suspend fun delete(id: Long)
 }
 
+/** Una observacion y su fichero, para el mantenimiento de recortes y fotos. */
+data class MediaRef(val id: Long, val mediaPath: String)
+
 @Dao
 interface ObservationDao {
 
@@ -147,6 +150,13 @@ interface ObservationDao {
      */
     @Query("UPDATE observations SET userConfirmed = 0, userRejected = 0 WHERE id = :id")
     suspend fun clearReview(id: Long)
+
+    /** Todos los ficheros que nombra la coleccion. */
+    @Query("SELECT id, mediaPath FROM observations WHERE mediaPath IS NOT NULL")
+    suspend fun mediaRefs(): List<MediaRef>
+
+    @Query("UPDATE observations SET mediaPath = :mediaPath WHERE id = :id")
+    suspend fun updateMediaPath(id: Long, mediaPath: String)
 
     @Query("UPDATE observations SET notes = :notes WHERE id = :id")
     suspend fun updateNotes(id: Long, notes: String?)
@@ -250,16 +260,22 @@ interface ObservationDao {
         val existing = findInSession(sessionId, observation.speciesId)
             ?: return insert(observation)
 
-        if (observation.adjustedConfidence > existing.adjustedConfidence) {
+        // Las decisiones del usuario mandan sobre el modelo: si ya confirmo o
+        // rechazo esta especie, la fila se queda como estaba cuando decidio.
+        // Antes se conservaba la decision pero cambiaban la puntuacion, el
+        // recorte, la hora y el lugar: lo confirmado dejaba de ser lo que se
+        // habia escuchado al confirmar.
+        val decided = existing.userConfirmed || existing.userRejected
+        if (!decided && observation.adjustedConfidence > existing.adjustedConfidence) {
             update(
                 observation.copy(
                     id = existing.id,
-                    // Las decisiones del usuario mandan sobre el modelo: si ya
-                    // confirmo o rechazo esta especie, una deteccion mejor no
-                    // debe deshacer su criterio.
                     userConfirmed = existing.userConfirmed,
                     userRejected = existing.userRejected,
                     notes = existing.notes,
+                    // Si esta vez no se pudo escribir el recorte, el anterior
+                    // sigue en disco: mejor ese que ninguno.
+                    mediaPath = observation.mediaPath ?: existing.mediaPath,
                 ),
             )
         }

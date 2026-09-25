@@ -4,6 +4,7 @@ import dev.pelayo.aves.core.common.runSuspendCatching
 import dev.pelayo.aves.core.data.SpeciesRepository
 import dev.pelayo.aves.core.data.SpeciesResolver
 import dev.pelayo.aves.core.model.Species
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Lo que el usuario puede ajustar de una escucha.
@@ -72,15 +73,25 @@ class DetectionNamer(
     private val resolver: SpeciesResolver,
     private val species: SpeciesRepository,
 ) {
-    private val cache = HashMap<Pair<String, Int>, Species?>()
+    /**
+     * Lo ya resuelto, con el "no es un ave" incluido (por eso el envoltorio: un
+     * mapa concurrente no admite null). Concurrente porque lo comparten el
+     * servicio de escucha y las pantallas, en hilos distintos.
+     */
+    private class Resolved(val species: Species?)
+
+    private val cache = ConcurrentHashMap<Pair<String, Int>, Resolved>()
 
     suspend fun speciesFor(modelId: String, labelIndex: Int): Species? {
         val key = modelId to labelIndex
-        if (cache.containsKey(key)) return cache[key]
+        cache[key]?.let { return it.species }
+        // Un fallo NO se guarda: el tipico es la primera escucha tras instalar,
+        // con el catalogo aun sembrandose, y guardarlo dejaba esa especie sin
+        // nombre hasta reiniciar la app.
         val found = runSuspendCatching {
             resolver.resolve(modelId, labelIndex)?.let { species.find(it) }
-        }.getOrNull()
-        cache[key] = found
+        }.getOrElse { return null }
+        cache[key] = Resolved(found)
         return found
     }
 

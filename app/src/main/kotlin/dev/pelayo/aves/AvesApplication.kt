@@ -54,6 +54,10 @@ class AvesApplication : Application(), SingletonImageLoader.Factory {
             runCatching { container.catalogSeeder.seedIfNeeded() }
                 .onFailure { Log.e(TAG, "No se pudo sembrar el catalogo", it) }
             container.regionWarmer.fillRarities()
+            // Despues de sembrar: si la base no esta lista, el barrido no ve
+            // ninguna referencia (y por eso se niega a borrar nada).
+            runCatching { container.mediaHousekeeping.run() }
+                .onFailure { Log.w(TAG, "No se pudo hacer el mantenimiento de ficheros", it) }
         }
     }
 

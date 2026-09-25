@@ -9,6 +9,7 @@ import dev.pelayo.aves.core.database.entity.ModelLabelEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
+import java.util.zip.CRC32
 
 /** Lo que hizo una siembra. Todo a cero significa que no habia nada que hacer. */
 data class SeedReport(
@@ -55,20 +56,25 @@ class CatalogSeeder(
         val labelDao = database.modelLabelDao()
 
         var speciesImported = 0
-        val species = readSpecies()
-        if (speciesDao.count() != species.size) {
+        val speciesPrint = fingerprint(SPECIES_ASSET)
+        if (speciesDao.count() == 0 || imported(SPECIES_ASSET) != speciesPrint) {
+            val species = readSpecies()
             // Una sola transaccion: con inserciones sueltas cada una haria su
             // propio fsync y esto pasaria de segundos a minutos.
             database.withTransaction { speciesDao.upsertTaxonomy(species) }
+            remember(SPECIES_ASSET, speciesPrint)
             speciesImported = species.size
         }
 
         val modelsImported = ArrayList<String>()
         for (asset in modelLabelAssets()) {
             val modelId = modelIdOf(asset)
-            val labels = readModelLabels(modelId, "$CATALOG_DIR/$asset")
-            if (labelDao.countFor(modelId) != labels.size) {
+            val path = "$CATALOG_DIR/$asset"
+            val labelsPrint = fingerprint(path)
+            if (labelDao.countFor(modelId) == 0 || imported(path) != labelsPrint) {
+                val labels = readModelLabels(modelId, path)
                 database.withTransaction { labelDao.replaceModel(modelId, labels) }
+                remember(path, labelsPrint)
                 modelsImported += modelId
                 Log.i(
                     TAG,
@@ -87,6 +93,40 @@ class CatalogSeeder(
             )
         }
         report
+    }
+
+    /**
+     * Huella del contenido de un asset.
+     *
+     * Antes se comparaba el numero de filas con el de la tabla, y eso fallaba en
+     * los dos sentidos: una taxonomia nueva con el mismo numero de especies (un
+     * renombre de genero, un nombre comun corregido) no se aplicaba nunca, y una
+     * que quitaba especies no cuadraba jamas y se reescribian las ~11.000 filas
+     * en cada arranque. Con la huella se importa exactamente cuando el fichero
+     * cambia. Las especies que desaparecen del fichero NO se borran: alguna
+     * observacion puede seguir nombrandolas.
+     */
+    private fun fingerprint(asset: String): String =
+        context.assets.open(asset).use { input ->
+            val crc = CRC32()
+            val buffer = ByteArray(BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                crc.update(buffer, 0, read)
+            }
+            crc.value.toString(16)
+        }
+
+    private val importedPrints by lazy {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
+
+    /** La huella del asset que se importo la ultima vez, o null si nunca. */
+    private fun imported(asset: String): String? = importedPrints.getString(asset, null)
+
+    private fun remember(asset: String, print: String) {
+        importedPrints.edit().putString(asset, print).apply()
     }
 
     /** Los ficheros `model_labels_<modelId>.tsv` presentes en los assets. */
@@ -159,5 +199,9 @@ class CatalogSeeder(
         private const val SPECIES_ASSET = "$CATALOG_DIR/species.tsv"
         private const val MODEL_LABELS_PREFIX = "model_labels_"
         private const val TSV_SUFFIX = ".tsv"
+
+        /** Huellas de lo ya importado. Van con la base en la copia: si se restaura una, se restaura la otra. */
+        private const val PREFS_NAME = "catalog_seed"
+        private const val BUFFER_SIZE = 64 * 1024
     }
 }

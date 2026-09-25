@@ -57,4 +57,38 @@ object Geohash {
         }
         return hash.toString()
     }
+
+    /**
+     * El centro de la celda [hash], como (latitud, longitud).
+     *
+     * Es lo que se manda a GBIF en vez de la posicion del usuario: la descarga
+     * es por celda y la celda ya dice todo lo que hace falta. Mandar la
+     * posicion exacta contaba a un tercero donde estaba alguien con una
+     * precision que ni la cache ni la rareza necesitan.
+     */
+    fun center(hash: String): Pair<Double, Double> {
+        require(hash.isNotEmpty()) { "geohash vacio" }
+        var latMin = -90.0
+        var latMax = 90.0
+        var lonMin = -180.0
+        var lonMax = 180.0
+        var evenBit = true
+
+        for (char in hash) {
+            val index = BASE32.indexOf(char.lowercaseChar())
+            require(index >= 0) { "caracter no valido en un geohash: '$char'" }
+            for (shift in 4 downTo 0) {
+                val bitSet = (index shr shift) and 1 == 1
+                if (evenBit) {
+                    val mid = (lonMin + lonMax) / 2
+                    if (bitSet) lonMin = mid else lonMax = mid
+                } else {
+                    val mid = (latMin + latMax) / 2
+                    if (bitSet) latMin = mid else latMax = mid
+                }
+                evenBit = !evenBit
+            }
+        }
+        return (latMin + latMax) / 2 to (lonMin + lonMax) / 2
+    }
 }

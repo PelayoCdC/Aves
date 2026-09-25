@@ -32,6 +32,9 @@ class ObservationExporter(
             .associateBy { it.speciesId }
 
         return buildString {
+            // Con la marca de orden, Excel abre el fichero como UTF-8. Sin ella
+            // lo lee en la codificacion del sistema y los acentos salen rotos.
+            append(BOM)
             appendLine(HEADER.joinToString(SEPARATOR))
             for (row in rows) {
                 val found = catalog[row.speciesId]
@@ -58,24 +61,39 @@ class ObservationExporter(
                     row.modelId,
                     row.notes.orEmpty(),
                 )
-                appendLine(fields.joinToString(SEPARATOR, transform = ::quote))
+                appendLine(fields.joinToString(SEPARATOR, transform = ::csvField))
             }
         }
     }
 
     private fun Float.format(): String = String.format(java.util.Locale.ROOT, "%.3f", this)
 
-    /** RFC 4180: comillas dobles alrededor si hace falta, y las internas duplicadas. */
-    private fun quote(field: String): String =
-        if (field.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) {
-            "\"" + field.replace("\"", "\"\"") + "\""
-        } else {
-            field
-        }
-
     companion object {
         const val SEPARATOR = ","
         const val MIME_TYPE = "text/csv"
+
+        /** Marca de orden de bytes de UTF-8. */
+        val BOM = Char(0xFEFF)
+
+        /**
+         * Un campo listo para el CSV.
+         *
+         * RFC 4180: comillas dobles alrededor si hace falta, y las internas
+         * duplicadas. Ademas, lo que empieza por `=`, `+`, `@` o tabulador se
+         * desactiva con un apostrofo delante: una hoja de calculo lo ejecutaria
+         * como formula, y las notas las escribe cualquiera. El `-` se deja,
+         * porque las longitudes al oeste de Greenwich empiezan asi.
+         */
+        fun csvField(field: String): String {
+            val safe = if (field.isNotEmpty() && field[0] in FORMULA_TRIGGERS) "'$field" else field
+            return if (safe.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) {
+                "\"" + safe.replace("\"", "\"\"") + "\""
+            } else {
+                safe
+            }
+        }
+
+        private const val FORMULA_TRIGGERS = "=+@\t"
 
         val HEADER = listOf(
             "fecha", "nombre_comun", "nombre_cientifico", "familia", "orden", "species_id",

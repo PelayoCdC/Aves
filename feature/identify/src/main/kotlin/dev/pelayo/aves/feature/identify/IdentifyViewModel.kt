@@ -103,6 +103,8 @@ data class IdentifyUiState(
     val levelRms: Float = 0f,
     /** Fuente de microfono en uso. */
     val audioSource: String? = null,
+    /** Otra app se ha quedado el microfono. */
+    val micSilenced: Boolean = false,
     /** El mejor candidato de la ultima ventana, confirmado o no. */
     val glimpse: CandidateGlimpse? = null,
     /** Ultimas columnas del espectrograma, de mas antigua a mas nueva. */
@@ -191,6 +193,7 @@ class IdentifyViewModel(
                     lastInferenceMillis = service.lastInferenceMillis,
                     levelRms = service.levelRms,
                     audioSource = service.audioSource,
+                    micSilenced = service.micSilenced,
                     glimpse = service.glimpse,
                     spectrogram = service.spectrogram,
                     hasLocation = service.hasLocation,

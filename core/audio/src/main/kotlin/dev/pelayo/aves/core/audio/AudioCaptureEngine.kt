@@ -2,8 +2,11 @@ package dev.pelayo.aves.core.audio
 
 import android.Manifest
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
+import android.media.AudioRecordingConfiguration
 import android.media.MediaRecorder
+import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import kotlinx.coroutines.CancellationException
@@ -122,6 +125,19 @@ class AudioCaptureEngine(
         private set
 
     /**
+     * Si el sistema nos ha quitado el microfono para darselo a otra app (una
+     * llamada, una nota de voz, el asistente).
+     *
+     * Desde Android 10 eso no es un error: `AudioRecord` sigue entregando
+     * muestras, todas a cero. La puerta de energia las descarta como silencio y
+     * la pantalla decia "no se oye nada" cuando en realidad no se estaba
+     * escuchando. Siempre false antes de Android 10, donde no se puede saber.
+     */
+    @Volatile
+    var isSilenced: Boolean = false
+        private set
+
+    /**
      * Emite una ventana cada [hopMillis] mientras se recolecte.
      *
      * El flujo lleva un buffer de una posicion que descarta lo mas antiguo: si
@@ -140,11 +156,13 @@ class AudioCaptureEngine(
         val bufferBytes = max(minBufferBytes, windowSampleCount * BYTES_PER_SAMPLE * 2)
 
         val record = createRecord(bufferBytes)
+        var silenceWatch: AudioManager.AudioRecordingCallback? = null
         try {
             check(record.state == AudioRecord.STATE_INITIALIZED) {
                 "AudioRecord no se pudo inicializar"
             }
             record.startRecording()
+            silenceWatch = watchSilencing(record)
 
             val ring = ShortRingBuffer(windowSampleCount)
             val readChunk = ShortArray(hopSampleCount.coerceAtMost(windowSampleCount))
@@ -178,11 +196,29 @@ class AudioCaptureEngine(
                 }
             }
         } finally {
+            if (silenceWatch != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                runCatching { record.unregisterAudioRecordingCallback(silenceWatch) }
+            }
+            isSilenced = false
             runCatching { record.stop() }
             record.release()
         }
     }.buffer(onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST, capacity = 1)
         .flowOn(Dispatchers.IO)
+
+    /** Sigue si el sistema silencia esta grabacion. Ver [isSilenced]. */
+    private fun watchSilencing(record: AudioRecord): AudioManager.AudioRecordingCallback? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        val callback = object : AudioManager.AudioRecordingCallback() {
+            override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>?) {
+                isSilenced = record.activeRecordingConfiguration?.isClientSilenced == true
+            }
+        }
+        // Ejecutor directo: el aviso llega por binder y solo cambia un booleano.
+        record.registerAudioRecordingCallback({ it.run() }, callback)
+        isSilenced = record.activeRecordingConfiguration?.isClientSilenced == true
+        return callback
+    }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun createRecord(bufferBytes: Int): AudioRecord {

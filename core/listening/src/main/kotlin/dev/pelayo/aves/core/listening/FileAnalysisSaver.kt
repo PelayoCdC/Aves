@@ -8,6 +8,7 @@ import dev.pelayo.aves.core.model.Coordinates
 import dev.pelayo.aves.core.model.RarityTier
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -59,41 +60,57 @@ class FileAnalysisSaver(
             longitude = where?.longitude,
         )
         var saved = 0
-        for (entry in entries) {
-            val detection = entry.detection
-            val clipPath = entry.track?.let { keepTrack(it, sessionId, detection.speciesId) }
-            val rarity = where?.let { place ->
-                val canonical = detection.canonicalSpeciesId ?: detection.speciesId
-                try {
-                    rarityOf(canonical, place, recordedAt)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    null
-                }
-            } ?: RarityTier.UNKNOWN
-
-            val id = observations.recordDetection(
-                sessionId = sessionId,
-                modelId = modelId,
-                detection = ClassificationResult(
-                    speciesId = detection.speciesId,
-                    rawLabel = detection.label,
-                    labelIndex = detection.labelIndex,
-                    rawScore = detection.score,
-                    adjustedScore = detection.score,
-                ),
-                timestamp = recordedAt,
-                latitude = where?.latitude,
-                longitude = where?.longitude,
-                mediaPath = clipPath,
-                rarityTier = rarity,
-            )
-            if (id != null) saved++
+        // La sesion se cierra pase lo que pase: si el guardado fallaba o se
+        // cancelaba a mitad, se quedaba abierta para siempre en el historial.
+        try {
+            for (entry in entries) {
+                if (save(entry, modelId, sessionId, where, recordedAt)) saved++
+            }
+        } finally {
+            withContext(NonCancellable) {
+                observations.endSession(sessionId, recordedAt, processed = 0, skipped = 0)
+                observations.discardEmptySessions()
+            }
         }
-        observations.endSession(sessionId, recordedAt, processed = 0, skipped = 0)
-        observations.discardEmptySessions()
         return saved
+    }
+
+    private suspend fun save(
+        entry: FileAnalysisEntry,
+        modelId: String,
+        sessionId: Long,
+        where: Coordinates?,
+        recordedAt: Long,
+    ): Boolean {
+        val detection = entry.detection
+        val rarity = where?.let { place ->
+            val canonical = detection.canonicalSpeciesId ?: detection.speciesId
+            try {
+                rarityOf(canonical, place, recordedAt)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+        } ?: RarityTier.UNKNOWN
+
+        val id = observations.recordDetection(
+            sessionId = sessionId,
+            modelId = modelId,
+            detection = ClassificationResult(
+                speciesId = detection.speciesId,
+                rawLabel = detection.label,
+                labelIndex = detection.labelIndex,
+                rawScore = detection.score,
+                adjustedScore = detection.score,
+            ),
+            timestamp = recordedAt,
+            latitude = where?.latitude,
+            longitude = where?.longitude,
+            rarityTier = rarity,
+            clip = { entry.track?.let { keepTrack(it, sessionId, detection.speciesId) } },
+        )
+        return id != null
     }
 
     /**

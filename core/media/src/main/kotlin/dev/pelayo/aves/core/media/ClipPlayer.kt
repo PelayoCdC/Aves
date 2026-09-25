@@ -187,6 +187,14 @@ fun rememberClipPlayer(clipBaseDir: File? = null): ClipPlayerState {
                 if (playbackState == Player.STATE_ENDED) state.onPlaybackFinished()
             }
 
+            // La senal para la escucha sigue a lo que suena DE VERDAD. Una
+            // llamada o una notificacion quitan el foco de audio y ExoPlayer se
+            // pausa sin llegar a STATE_ENDED: la senal se quedaba en "sonando" y
+            // la escucha descartaba todas las ventanas hasta salir de la pantalla.
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying) PlaybackSignal.playbackStarted() else PlaybackSignal.playbackStopped()
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 // Un recorte corrupto o borrado entre la comprobacion y el
                 // prepare no puede tumbar la pantalla: se vuelve a "parado" y el

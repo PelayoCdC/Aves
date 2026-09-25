@@ -89,7 +89,7 @@ class RegionRepository(
 
         var refreshed = 0
         for (month in order) {
-            if (ensureMonthCached(cellId, latitude, longitude, month, now, force)) refreshed++
+            if (ensureMonthCached(cellId, month, now, force)) refreshed++
         }
         return refreshed
     }
@@ -102,13 +102,11 @@ class RegionRepository(
      */
     suspend fun ensureCurrentMonthCached(latitude: Double, longitude: Double, now: Long): Boolean {
         val cellId = Geohash.encode(latitude, longitude, CELL_PRECISION)
-        return ensureMonthCached(cellId, latitude, longitude, monthOf(now), now, force = false)
+        return ensureMonthCached(cellId, monthOf(now), now, force = false)
     }
 
     private suspend fun ensureMonthCached(
         cellId: String,
-        latitude: Double,
-        longitude: Double,
         month: Int,
         now: Long,
         force: Boolean,
@@ -117,13 +115,18 @@ class RegionRepository(
         val fresh = existing != null && now - existing.fetchedAt < freshnessMillis
         if (fresh && !force) return false
 
-        val summary = occurrenceSource.occurrencesInCell(latitude, longitude, radiusKm, month)
+        // Se pregunta por el centro de la celda, no por donde esta el usuario:
+        // la cache es por celda, y a GBIF no le hace falta saber mas. Antes se
+        // mandaba la posicion exacta, y ademas la consulta quedaba centrada en
+        // el primer sitio desde el que se abrio la celda.
+        val (centerLat, centerLon) = Geohash.center(cellId)
+        val summary = occurrenceSource.occurrencesInCell(centerLat, centerLon, radiusKm, month)
         val cell = regionDao.findCell(cellId)
         regionDao.replaceMonth(
             cell = RegionCellEntity(
                 cellId = cellId,
-                centerLat = latitude,
-                centerLon = longitude,
+                centerLat = centerLat,
+                centerLon = centerLon,
                 // El total de la celda es la suma de los meses que se conocen.
                 totalObservations = (cell?.totalObservations ?: 0L) -
                     (existing?.totalObservations ?: 0L) + summary.total,
@@ -143,8 +146,9 @@ class RegionRepository(
 
     /**
      * Tier de rareza de una especie aqui y ahora, o null si ese mes de esa celda
-     * no esta descargado todavia. Null quiere decir "no se", y quien llama debe
-     * tratarlo asi ([RarityTier.UNKNOWN]), nunca inventarse un tier.
+     * no esta descargado todavia o no tiene datos para decidir. Null quiere
+     * decir "no se", y quien llama debe tratarlo asi ([RarityTier.UNKNOWN]),
+     * nunca inventarse un tier.
      */
     suspend fun rarityOf(
         speciesId: String,
@@ -153,13 +157,20 @@ class RegionRepository(
         month: Int,
     ): RarityTier? {
         val cellId = Geohash.encode(latitude, longitude, CELL_PRECISION)
-        if (regionDao.findMonth(cellId, month) == null) return null
+        val monthData = regionDao.findMonth(cellId, month) ?: return null
         val frequency = regionDao.frequencyOf(cellId, speciesId, month)
-            // Sin registro local la especie no es "desconocida", es excepcional:
-            // GBIF tiene cientos de millones de observaciones, y que ninguna sea
-            // de esta especie aqui significa algo.
-            ?: return RarityTier.EXCEPTIONAL
-        return RarityTier.fromLevel(frequency.rarityTier)
+        if (frequency != null) return RarityTier.fromLevel(frequency.rarityTier)
+
+        // Sin registro local la especie es excepcional... solo si la celda tiene
+        // datos de sobra para que la ausencia signifique algo. En alta mar, en
+        // una sierra poco visitada o en un mes con cuatro registros, TODAS las
+        // especies salian excepcionales, que es justo el fallo que [RarityTier]
+        // dice que no hay que repetir.
+        return if (monthData.totalObservations >= MIN_OBSERVATIONS_FOR_ABSENCE) {
+            RarityTier.EXCEPTIONAL
+        } else {
+            null
+        }
     }
 
     override suspend fun prior(context: ObservationContext): SpeciesPrior {
@@ -228,6 +239,17 @@ class RegionRepository(
         const val CELL_PRECISION = 4
 
         const val DEFAULT_RADIUS_KM = 50
+
+        /**
+         * Registros que tiene que tener un mes de una celda para que NO
+         * encontrar una especie la haga excepcional.
+         *
+         * Sale de los cortes de [RarityTier.fromShare]: "rara" es una cuota por
+         * debajo de 1e-4, asi que con menos de 10.000 registros un solo avistamiento
+         * ya pesa mas que eso, y no verla no distingue "excepcional" de "nadie ha
+         * mirado". Por debajo se responde "no se".
+         */
+        const val MIN_OBSERVATIONS_FOR_ABSENCE = 10_000L
 
         /** Los datos de GBIF cambian despacio; refrescar cada 30 dias sobra. */
         const val DEFAULT_FRESHNESS_MILLIS = 30L * 24 * 60 * 60 * 1000

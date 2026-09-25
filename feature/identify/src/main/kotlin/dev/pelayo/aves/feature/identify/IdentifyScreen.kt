@@ -241,6 +241,17 @@ fun IdentifyScreen(
                     sourceName = state.audioSource,
                     modifier = Modifier.padding(top = 8.dp),
                 )
+                // Sin este aviso, un microfono cedido a otra app (una llamada, el
+                // asistente) se veia igual que un campo en silencio.
+                if (state.micSilenced) {
+                    Text(
+                        text = stringResource(R.string.identify_mic_silenced),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
             }
         }
 

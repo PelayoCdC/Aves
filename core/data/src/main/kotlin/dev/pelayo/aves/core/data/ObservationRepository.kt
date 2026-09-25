@@ -1,8 +1,10 @@
 package dev.pelayo.aves.core.data
 
+import androidx.room.withTransaction
 import dev.pelayo.aves.core.common.Geohash
 import dev.pelayo.aves.core.common.runSuspendCatching
 import dev.pelayo.aves.core.database.AvesDatabase
+import dev.pelayo.aves.core.database.dao.MediaRef
 import dev.pelayo.aves.core.database.dao.SessionWithCounts
 import dev.pelayo.aves.core.database.entity.ListeningSessionEntity
 import dev.pelayo.aves.core.database.entity.ObservationCandidateEntity
@@ -102,6 +104,12 @@ class ObservationRepository(
      * @param candidates los otros candidatos de la MISMA ventana, para que la
      *   bandeja pueda ofrecer "no era esto, era lo segundo". Se sustituyen
      *   enteros con cada deteccion mejor.
+     * @param clip escribe el recorte y devuelve su ruta. Solo se llama si la
+     *   deteccion va a quedar guardada: el recorte de una especie en una sesion
+     *   vive siempre en el mismo fichero, y escribirlo antes de saber si la
+     *   deteccion entra machacaba el audio de una observacion que el usuario ya
+     *   habia confirmado (la base conservaba su decision, pero la prueba
+     *   sonaba a otra cosa).
      * @return id de la observacion, o null si la clase no corresponde a un ave.
      */
     suspend fun recordDetection(
@@ -112,56 +120,74 @@ class ObservationRepository(
         latitude: Double? = null,
         longitude: Double? = null,
         source: ObservationSource = ObservationSource.AUDIO,
-        mediaPath: String? = null,
         rarityTier: RarityTier = RarityTier.UNKNOWN,
         candidates: List<ClassificationResult> = emptyList(),
+        clip: suspend () -> String? = { null },
     ): Long? {
         // La tabla model_labels manda sobre el speciesId provisional que trae el
         // clasificador: es la que sabe de codigos caducados y agrupaciones.
         val speciesId = speciesResolver.resolve(modelId, detection.labelIndex) ?: return null
 
+        // Lo que ya decidio el usuario no se toca: ni la puntuacion, ni el
+        // recorte, ni cuando ni donde. Y si no mejora, tampoco.
         val existing = observationDao.findInSession(sessionId, speciesId)
-        val observationId = observationDao.recordBestInSession(
-            ObservationEntity(
-                speciesId = speciesId,
-                sessionId = sessionId,
-                timestamp = timestamp,
-                latitude = latitude,
-                longitude = longitude,
-                source = source,
-                rawConfidence = detection.rawScore,
-                adjustedConfidence = detection.adjustedScore,
-                modelId = modelId,
-                mediaPath = mediaPath,
-                // Se congela el tier del momento: si el usuario se muda, sus
-                // capturas antiguas no deben cambiar de valor retroactivamente.
-                rarityTierAtCapture = rarityTier.level,
-            ),
-        )
+        if (existing != null) {
+            val decided = existing.userConfirmed || existing.userRejected
+            if (decided || detection.adjustedScore <= existing.adjustedConfidence) return existing.id
+        }
 
-        // Los candidatos solo se tocan si esta deteccion es la que manda: si
-        // no mejoro a la existente, los suyos son los que explican la fila.
-        val improved = existing == null || detection.adjustedScore > existing.adjustedConfidence
-        if (improved) {
-            observationDao.replaceCandidates(
-                observationId,
-                candidates
-                    .filter { it.labelIndex != detection.labelIndex }
-                    .mapIndexedNotNull { index, candidate ->
-                        val candidateSpeciesId =
-                            speciesResolver.resolve(modelId, candidate.labelIndex)
-                                ?: return@mapIndexedNotNull null
-                        if (candidateSpeciesId == speciesId) return@mapIndexedNotNull null
+        // Los candidatos se resuelven fuera de la transaccion: consultan el
+        // catalogo y no hace falta tener la base bloqueada mientras.
+        val alternatives = candidates
+            .filter { it.labelIndex != detection.labelIndex }
+            .mapIndexedNotNull { index, candidate ->
+                val candidateSpeciesId = speciesResolver.resolve(modelId, candidate.labelIndex)
+                    ?: return@mapIndexedNotNull null
+                if (candidateSpeciesId == speciesId) return@mapIndexedNotNull null
+                Triple(candidateSpeciesId, index, candidate.adjustedScore)
+            }
+
+        val mediaPath = clip()
+
+        // La fila y sus candidatos, juntos o nada: antes eran tres operaciones
+        // sueltas y la comprobacion de "mejoro" podia trabajar con datos viejos.
+        return database.withTransaction {
+            val observationId = observationDao.recordBestInSession(
+                ObservationEntity(
+                    speciesId = speciesId,
+                    sessionId = sessionId,
+                    timestamp = timestamp,
+                    latitude = latitude,
+                    longitude = longitude,
+                    source = source,
+                    rawConfidence = detection.rawScore,
+                    adjustedConfidence = detection.adjustedScore,
+                    modelId = modelId,
+                    mediaPath = mediaPath,
+                    // Se congela el tier del momento: si el usuario se muda, sus
+                    // capturas antiguas no deben cambiar de valor retroactivamente.
+                    rarityTierAtCapture = rarityTier.level,
+                ),
+            )
+
+            // Los candidatos solo se tocan si esta deteccion es la que manda. El
+            // DAO vuelve a comprobarlo dentro de la transaccion: entre la
+            // consulta de arriba y esta el usuario pudo decidir en Revisar.
+            if (observationDao.findById(observationId)?.adjustedConfidence == detection.adjustedScore) {
+                observationDao.replaceCandidates(
+                    observationId,
+                    alternatives.map { (candidateSpeciesId, rank, score) ->
                         ObservationCandidateEntity(
                             observationId = observationId,
                             speciesId = candidateSpeciesId,
-                            rank = index,
-                            score = candidate.adjustedScore,
+                            rank = rank,
+                            score = score,
                         )
                     },
-            )
+                )
+            }
+            observationId
         }
-        return observationId
     }
 
     /**
@@ -297,6 +323,12 @@ class ObservationRepository(
     )
 
     suspend fun delete(observationId: Long) = observationDao.delete(observationId)
+
+    /** Todos los ficheros que nombra la coleccion, para el mantenimiento. */
+    suspend fun mediaRefs(): List<MediaRef> = observationDao.mediaRefs()
+
+    suspend fun updateMediaPath(observationId: Long, mediaPath: String) =
+        observationDao.updateMediaPath(observationId, mediaPath)
 
     suspend fun find(observationId: Long): ObservationEntity? = observationDao.findById(observationId)
 

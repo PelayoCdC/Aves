@@ -233,14 +233,20 @@ class BirdNetPlusGeoPriorProvider(
  *
  * Va a `noBackupFilesDir` y no a `filesDir`: la copia de seguridad automatica
  * de Android tiene una cuota de 25 MB, y un fichero de 67 MB dentro hacia que
- * fallara ENTERA, coleccion incluida. Y el nombre lleva el tamano del asset:
- * asi un modelo actualizado en el APK sustituye a la copia vieja, en vez de
- * quedarse esta para siempre como pasaba antes.
+ * fallara ENTERA, coleccion incluida. Y el nombre lleva el tamano del asset y
+ * la fecha de instalacion del APK: asi un modelo actualizado en el APK
+ * sustituye a la copia vieja, en vez de quedarse esta para siempre.
  */
 internal object BirdNetPlusAssets {
 
     private const val DIRECTORY = "models"
 
+    /**
+     * Sincronizado: la escucha y el analisis de un fichero pueden arrancar a la
+     * vez la primera vez, y compartian el temporal; la limpieza de uno borraba
+     * el fichero que estaba escribiendo el otro.
+     */
+    @Synchronized
     fun materialize(context: Context, asset: String): String? {
         val available = context.assets.list("").orEmpty()
         if (asset !in available) return null
@@ -251,14 +257,20 @@ internal object BirdNetPlusAssets {
         val directory = File(context.noBackupFilesDir, DIRECTORY).apply { mkdirs() }
         val stem = asset.substringBeforeLast('.')
         val extension = asset.substringAfterLast('.', "")
-        val target = File(directory, "$stem-$declaredLength.$extension")
+        // El tamano solo no basta: unos pesos reentrenados con la misma
+        // arquitectura pesan lo mismo byte a byte, y la copia vieja se quedaba.
+        // La fecha de instalacion del APK cambia con cada actualizacion.
+        val installed = runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+        }.getOrDefault(0L)
+        val target = File(directory, "$stem-$declaredLength-$installed.$extension")
         if (target.exists() && target.length() == declaredLength) return target.absolutePath
 
         // Copias de versiones anteriores, y la que dejaba la primera version en filesDir.
         directory.listFiles()?.filter { it.name.startsWith("$stem-") }?.forEach { it.delete() }
         File(context.filesDir, asset).delete()
 
-        val temp = File(directory, "$stem-$declaredLength.tmp")
+        val temp = File(directory, "$stem-$declaredLength-$installed.tmp")
         context.assets.open(asset).use { source ->
             temp.outputStream().use { destination -> source.copyTo(destination) }
         }

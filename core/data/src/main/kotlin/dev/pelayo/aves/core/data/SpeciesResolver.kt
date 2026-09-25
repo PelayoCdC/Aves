@@ -3,6 +3,7 @@ package dev.pelayo.aves.core.data
 import dev.pelayo.aves.core.database.dao.ModelLabelDao
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Traduce indices de tensor a especies canonicas.
@@ -20,7 +21,8 @@ import kotlinx.coroutines.sync.withLock
 class SpeciesResolver(private val modelLabelDao: ModelLabelDao) {
 
     private val mutex = Mutex()
-    private val cache = HashMap<String, Array<String?>>()
+    // Concurrente: se lee fuera del cerrojo (la via rapida) desde varios hilos.
+    private val cache = ConcurrentHashMap<String, Array<String?>>()
 
     /**
      * @return speciesId canonico, o null si la clase no es un ave: las 11 de

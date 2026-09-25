@@ -108,18 +108,24 @@ class AudioClipWriter(
      * Codifica [samples] y lo deja en [target], creando los directorios que
      * falten. Si [target] ya existe se sobreescribe.
      *
-     * Si algo falla se borra el fichero a medias antes de propagar: un .m4a
-     * truncado no se puede reproducir, ocupa igual y ensucia la coleccion, asi
-     * que es peor que no tener nada.
+     * Se codifica a un temporal al lado y solo al terminar se renombra encima
+     * de [target]. El recorte de una especie en una sesion vive siempre en el
+     * mismo fichero, asi que escribir directamente en el y borrarlo si fallaba
+     * se llevaba por delante el recorte BUENO de la deteccion anterior, al que
+     * la base seguia apuntando. Si algo falla, se borra solo el temporal: un
+     * .m4a truncado no se puede reproducir y es peor que el que habia.
      */
     suspend fun write(samples: FloatArray, target: File): ClipResult {
         require(samples.isNotEmpty()) { "No se puede guardar un recorte sin muestras" }
         return withContext(Dispatchers.IO) {
             target.parentFile?.mkdirs()
+            val partial = File(target.parentFile, target.name + PARTIAL_SUFFIX)
             try {
-                encode(Pcm16Converter.toPcm16Bytes(samples, scaling), target)
-                val sizeBytes = target.length()
+                encode(Pcm16Converter.toPcm16Bytes(samples, scaling), partial)
+                val sizeBytes = partial.length()
                 check(sizeBytes > 0) { "El codificador no escribio nada en ${target.name}" }
+                // En el mismo directorio, renameTo sustituye de forma atomica.
+                check(partial.renameTo(target)) { "No se pudo colocar ${target.name}" }
                 ClipResult(
                     file = target,
                     sizeBytes = sizeBytes,
@@ -128,7 +134,7 @@ class AudioClipWriter(
             } catch (e: Throwable) {
                 // Throwable y no Exception a proposito: la cancelacion tambien
                 // deja un fichero a medias que hay que limpiar.
-                target.delete()
+                partial.delete()
                 throw e
             }
         }
@@ -237,6 +243,9 @@ class AudioClipWriter(
     }
 
     companion object {
+        /** Sufijo del temporal mientras se codifica. El barrido de huerfanos lo reconoce. */
+        const val PARTIAL_SUFFIX = ".part"
+
         /**
          * 64 kbps. Es holgado para una sola voz mono y deja el recorte de 3 s en
          * ~24 KB. Bajar a 32 kbps ahorraria la mitad, pero empieza a comerse los

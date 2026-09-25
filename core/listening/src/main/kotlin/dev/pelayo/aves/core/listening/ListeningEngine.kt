@@ -70,6 +70,8 @@ sealed interface ListeningEvent {
         val sourceName: String? = null,
         val glimpse: CandidateGlimpse? = null,
         val spectrogram: List<FloatArray> = emptyList(),
+        /** Otra app tiene el microfono y nos llegan ceros. Ver AudioCaptureEngine.isSilenced. */
+        val micSilenced: Boolean = false,
     ) : ListeningEvent
 
     /**
@@ -145,6 +147,9 @@ class ListeningEngine(
             confirmThreshold = settings.confirmThreshold,
             keepThreshold = settings.keepThreshold,
         )
+        // Una mas que la racha que confirma: asi, al confirmar, todas las
+        // ventanas de la racha siguen a mano para elegir la mejor.
+        val recent = RecentWindows(DetectionStabilizer.DEFAULT_REQUIRED_CONSECUTIVE + 1)
 
         /**
          * Mejor puntuacion ya escrita para cada especie de la sesion.
@@ -159,7 +164,10 @@ class ListeningEngine(
         var sessionId: Long? = null
         var processed = 0
         var skipped = 0
-        var lastDetections: List<StableDetection> = emptyList()
+        // Lo que se enseno la ultima vez, sin la racha: la racha cambia en cada
+        // ventana, y compararla hacia que la lista y la notificacion se
+        // repintaran cada 800 ms aunque no hubiera cambiado nada visible.
+        var lastShown: List<StableDetection> = emptyList()
 
         try {
             emit(ListeningEvent.WarmingUp)
@@ -213,6 +221,7 @@ class ListeningEngine(
                             processed, skipped, 0L,
                             levelRms = gate.normalizedRms(frame.samples),
                             sourceName = capture.activeSourceName,
+                            micSilenced = capture.isSilenced,
                             spectrogram = columns,
                         ),
                     )
@@ -232,6 +241,7 @@ class ListeningEngine(
                             processed, skipped, 0L,
                             levelRms = level,
                             sourceName = capture.activeSourceName,
+                            micSilenced = capture.isSilenced,
                             spectrogram = columns,
                         ),
                     )
@@ -250,18 +260,17 @@ class ListeningEngine(
                 )
                 val elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000
                 processed++
+                recent.add(frame.samples, frame.endTimestampMillis, results)
 
                 val stable = stabilizer.update(results).map { detection ->
                     namer?.name(modelId, detection) ?: detection
                 }
                 persistSafely(
                     detections = stable,
-                    candidates = results,
+                    recent = recent,
                     sessionId = sessionId,
                     location = location,
                     recordedScores = recordedScores,
-                    timestamp = frame.endTimestampMillis,
-                    samples = frame.samples,
                     clipWriter = clipWriter,
                 )
 
@@ -270,12 +279,14 @@ class ListeningEngine(
                         processed, skipped, elapsedMillis,
                         levelRms = level,
                         sourceName = capture.activeSourceName,
+                        micSilenced = capture.isSilenced,
                         glimpse = glimpseOf(modelId, results),
                         spectrogram = columns,
                     ),
                 )
-                if (stable != lastDetections) {
-                    lastDetections = stable
+                val shown = stable.map { it.copy(streak = 0) }
+                if (shown != lastShown) {
+                    lastShown = shown
                     emit(ListeningEvent.Detections(stable))
                 }
             }
@@ -312,16 +323,14 @@ class ListeningEngine(
      */
     private suspend fun persistSafely(
         detections: List<StableDetection>,
-        candidates: List<ClassificationResult>,
+        recent: RecentWindows,
         sessionId: Long?,
         location: Coordinates?,
         recordedScores: HashMap<String, Float>,
-        timestamp: Long,
-        samples: FloatArray,
         clipWriter: AudioClipWriter?,
     ) {
         try {
-            persist(detections, candidates, sessionId, location, recordedScores, timestamp, samples, clipWriter)
+            persist(detections, recent, sessionId, location, recordedScores, clipWriter)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -339,47 +348,46 @@ class ListeningEngine(
      */
     private suspend fun persist(
         detections: List<StableDetection>,
-        candidates: List<ClassificationResult>,
+        recent: RecentWindows,
         sessionId: Long?,
         location: Coordinates?,
         recordedScores: HashMap<String, Float>,
-        timestamp: Long,
-        samples: FloatArray,
         clipWriter: AudioClipWriter?,
     ) {
         val repository = observationRepository ?: return
         val session = sessionId ?: return
 
         for (detection in detections) {
-            val alreadyWritten = recordedScores[detection.speciesId]
-            if (alreadyWritten != null && detection.score <= alreadyWritten) continue
+            // El recorte, la puntuacion, la hora y los candidatos salen de la
+            // MISMA ventana: la mejor de las recientes para esta especie. Es la
+            // prueba de por que el modelo dijo lo que dijo, y es lo que hace que
+            // la bandeja de revision se pueda usar de verdad en vez de pedir un
+            // acto de fe. Ver [RecentWindows].
+            val window = recent.bestFor(detection.speciesId) ?: continue
+            val best = window.resultFor(detection.speciesId) ?: continue
 
-            // El recorte se escribe con la ventana que PRODUJO esta deteccion, no
-            // con una posterior: es la prueba de por que el modelo dijo lo que
-            // dijo, y es lo que hace que la bandeja de revision se pueda usar de
-            // verdad en vez de pedir un acto de fe.
-            val clipPath = writeClip(clipWriter, session, detection.speciesId, samples)
+            val alreadyWritten = recordedScores[detection.speciesId]
+            if (alreadyWritten != null && best.adjustedScore <= alreadyWritten) continue
 
             repository.recordDetection(
                 sessionId = session,
                 modelId = classifier.descriptor.modelId,
-                detection = ClassificationResult(
-                    speciesId = detection.speciesId,
-                    rawLabel = detection.label,
-                    labelIndex = detection.labelIndex,
-                    rawScore = detection.score,
-                    adjustedScore = detection.score,
-                ),
-                timestamp = timestamp,
+                detection = best,
+                timestamp = window.endTimestampMillis,
                 latitude = location?.latitude,
                 longitude = location?.longitude,
-                mediaPath = clipPath,
-                rarityTier = rarityOf(detection.canonicalSpeciesId ?: detection.speciesId, location, timestamp),
+                rarityTier = rarityOf(
+                    detection.canonicalSpeciesId ?: detection.speciesId,
+                    location,
+                    window.endTimestampMillis,
+                ),
                 // Los demas candidatos de la MISMA ventana: la bandeja los
                 // ofrece como "no era esto, era lo segundo".
-                candidates = candidates,
+                candidates = window.results,
+                // Solo se escribe si la deteccion entra: ver recordDetection.
+                clip = { writeClip(clipWriter, session, detection.speciesId, window.samples) },
             )
-            recordedScores[detection.speciesId] = detection.score
+            recordedScores[detection.speciesId] = best.adjustedScore
         }
     }
 

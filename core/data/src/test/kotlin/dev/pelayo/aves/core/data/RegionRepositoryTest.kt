@@ -1,5 +1,6 @@
 package dev.pelayo.aves.core.data
 
+import dev.pelayo.aves.core.common.Geohash
 import dev.pelayo.aves.core.database.dao.RegionDao
 import dev.pelayo.aves.core.database.entity.RegionCellEntity
 import dev.pelayo.aves.core.database.entity.RegionMonthEntity
@@ -189,6 +190,44 @@ class RegionRepositoryTest {
             repository(FakeSource(emptyMap()), dao)
                 .rarityOf("struthio_camelus", oviedo.first, oviedo.second, 6),
         )
+    }
+
+    @Test
+    fun `en una celda con pocos datos no encontrar una especie no la hace excepcional`() = runTest {
+        // Alta mar o una sierra poco visitada: con 40 registros en el mes, casi
+        // todas las especies faltan, y eso no las convierte en rarezas doradas.
+        val sparse = OccurrenceSummary(
+            total = 40,
+            byScientificName = mapOf("Turdus merula Linnaeus, 1758" to 12L),
+        )
+        val dao = FakeRegionDao()
+        repository(FakeSource(mapOf(6 to sparse)), dao)
+            .ensureCellCached(oviedo.first, oviedo.second, JUNE_MILLIS)
+
+        val repository = repository(FakeSource(emptyMap()), dao)
+        assertNull(repository.rarityOf("struthio_camelus", oviedo.first, oviedo.second, 6))
+        // Lo que si esta registrado se sigue calculando.
+        assertEquals(RarityTier.VERY_COMMON, repository.rarityOf("turdus_merula", oviedo.first, oviedo.second, 6))
+    }
+
+    @Test
+    fun `a GBIF se le pregunta por el centro de la celda y no por la posicion`() = runTest {
+        val asked = mutableListOf<Pair<Double, Double>>()
+        val source = object : OccurrenceSource {
+            override suspend fun occurrencesInCell(
+                latitude: Double,
+                longitude: Double,
+                radiusKm: Int,
+                month: Int,
+            ): OccurrenceSummary {
+                asked += latitude to longitude
+                return juneNearOviedo
+            }
+        }
+        repository(source).ensureCurrentMonthCached(oviedo.first, oviedo.second, JUNE_MILLIS)
+
+        val center = Geohash.center(Geohash.encode(oviedo.first, oviedo.second, RegionRepository.CELL_PRECISION))
+        assertEquals(listOf(center), asked)
     }
 
     @Test

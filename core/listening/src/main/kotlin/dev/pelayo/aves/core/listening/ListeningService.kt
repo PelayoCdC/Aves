@@ -135,6 +135,8 @@ data class ListeningServiceState(
     val levelRms: Float = 0f,
     /** Fuente de microfono en uso, para poder diagnosticar un "no capta nada". */
     val audioSource: String? = null,
+    /** Otra app se ha quedado el microfono: llegan ceros y no se escucha nada. */
+    val micSilenced: Boolean = false,
     /** El mejor candidato de la ultima ventana, confirmado o no. */
     val glimpse: CandidateGlimpse? = null,
     /** Las ultimas columnas del espectrograma, de mas antigua a mas nueva. */
@@ -412,6 +414,7 @@ class ListeningService : Service() {
                         lastInferenceMillis = event.inferenceMillis,
                         levelRms = event.levelRms,
                         audioSource = event.sourceName ?: it.audioSource,
+                        micSilenced = event.micSilenced,
                         glimpse = event.glimpse ?: it.glimpse?.takeIf { event.inferenceMillis == 0L },
                         spectrogram = (it.spectrogram + event.spectrogram).takeLast(SPECTROGRAM_COLUMNS),
                     )
@@ -613,7 +616,7 @@ class ListeningService : Service() {
         private const val REQUEST_STOP = 1
         private const val REQUEST_OPEN = 2
 
-        /** Columnas de espectrograma que se conservan para pintar: ~25 s a 512 muestras por columna. */
+        /** Columnas de espectrograma que se conservan para pintar: a 512 muestras por columna, ~1,7 s a 48 kHz y ~2,6 s a 32 kHz. */
         private const val SPECTROGRAM_COLUMNS = 160
 
         const val ACTION_STOP = "dev.pelayo.aves.core.listening.action.STOP"

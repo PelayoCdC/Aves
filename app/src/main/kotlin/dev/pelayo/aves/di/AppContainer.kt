@@ -196,6 +196,15 @@ class AppContainer(
         },
     )
 
+    /** Rutas de otro perfil y ficheros huerfanos. Ver [MediaHousekeeping]. */
+    val mediaHousekeeping: MediaHousekeeping by lazy {
+        MediaHousekeeping(
+            filesDirectory = context.filesDir,
+            mediaDirectories = listOf(clipsDirectory, photosDirectory),
+            observations = observationRepository,
+        )
+    }
+
     /** Borra una escucha con sus observaciones y sus recortes. */
     suspend fun deleteSession(sessionId: Long) {
         observationRepository.deleteSession(sessionId)

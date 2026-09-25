@@ -67,6 +67,11 @@ class ImageObservationRecorder(
             mediaPath = photoPath,
             rarityOf = { speciesId -> rarityAt(speciesId, context.latitude, context.longitude, context.epochMillis) },
         )
+        // La foto se guardo antes de saber si la clase mapeaba a alguna especie:
+        // si no, no la nombra ninguna observacion y solo ocuparia sitio.
+        if (result == null && photoPath != null) {
+            withContext(Dispatchers.IO) { PhotoStorage.delete(photoPath) }
+        }
         return result?.second
     }
 
