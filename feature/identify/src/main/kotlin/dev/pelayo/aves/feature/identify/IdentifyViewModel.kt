@@ -326,7 +326,7 @@ class IdentifyViewModel(
                     contextInfluence = if (place != null) current.contextInfluence else 0f,
                 )
 
-                val gate = EnergyGate(INPUT_SCALING)
+                val gate = EnergyGate(INPUT_SCALING, sampleRate = active.requiredSampleRate)
                 val accumulator = FileAnalysisAccumulator(confirmThreshold = current.confirmThreshold)
                 var processed = 0
                 var skipped = 0

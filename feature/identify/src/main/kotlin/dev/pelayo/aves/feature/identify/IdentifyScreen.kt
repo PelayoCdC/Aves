@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.pelayo.aves.core.audio.AudioFileDecoder
+import dev.pelayo.aves.core.audio.EnergyGate
 import dev.pelayo.aves.core.designsystem.components.ErrorCard
 import dev.pelayo.aves.core.designsystem.components.LocalShowConfidence
 import dev.pelayo.aves.core.designsystem.components.PermissionBlockedHint
@@ -787,5 +788,8 @@ private fun rmsToDbfs(rms: Float): Float =
 /** Suelo del medidor. Por debajo de -80 dBFS no hay nada que mirar. */
 private const val METER_FLOOR_DBFS = -80f
 
-/** Equivale a EnergyGate.DEFAULT_THRESHOLD_FRACTION (0,001). */
-private const val GATE_THRESHOLD_DBFS = -60f
+/**
+ * La marca del corte, derivada del de la puerta y no copiada a mano: el
+ * medidor ensena el nivel de la banda del canto, que es con el que decide.
+ */
+private val GATE_THRESHOLD_DBFS = (20.0 * log10(EnergyGate.DEFAULT_BAND_THRESHOLD_FRACTION.toDouble())).toFloat()

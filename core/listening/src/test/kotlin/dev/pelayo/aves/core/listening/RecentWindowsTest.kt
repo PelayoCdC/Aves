@@ -43,6 +43,35 @@ class RecentWindowsTest {
         assertEquals(2_000L, recent.bestFor("mirlo")!!.endTimestampMillis)
     }
 
+    @Test
+    fun `el recorte lleva delante el primer salto de las ventanas anteriores`() {
+        // Ventanas de 4 muestras con salto de 2: cada una empieza 2 despues de
+        // la anterior. La senal seguida es 0,1,2,3,4,5,6,7.
+        val recent = RecentWindows(capacity = 5)
+        recent.add(floatArrayOf(0f, 1f, 2f, 3f), 1_000, emptyList())
+        recent.add(floatArrayOf(2f, 3f, 4f, 5f), 1_800, emptyList())
+        recent.add(floatArrayOf(4f, 5f, 6f, 7f), 2_600, listOf(result("mirlo", 0.9f)))
+
+        val best = recent.bestFor("mirlo")!!
+        val audio = recent.audioEndingWith(best, hopSamples = 2, hopMillis = 800, preRollWindows = 3)
+
+        assertEquals(listOf(0f, 1f, 2f, 3f, 4f, 5f, 6f, 7f), audio.toList())
+    }
+
+    @Test
+    fun `si falta una ventana el preambulo se corta ahi`() {
+        // Entre 1.000 y 2.600 falta la de 1.800 (descartada, o sonaba un recorte
+        // propio): pegar la de 1.000 meteria un salto en el audio.
+        val recent = RecentWindows(capacity = 5)
+        recent.add(floatArrayOf(0f, 1f, 2f, 3f), 1_000, emptyList())
+        recent.add(floatArrayOf(4f, 5f, 6f, 7f), 2_600, listOf(result("mirlo", 0.9f)))
+
+        val best = recent.bestFor("mirlo")!!
+        val audio = recent.audioEndingWith(best, hopSamples = 2, hopMillis = 800, preRollWindows = 3)
+
+        assertEquals(listOf(4f, 5f, 6f, 7f), audio.toList())
+    }
+
     private fun result(speciesId: String, score: Float) =
         ClassificationResult(speciesId, speciesId, speciesId.length, score, score)
 }

@@ -153,9 +153,10 @@ class ListeningEngine(
             confirmThreshold = settings.confirmThreshold,
             keepThreshold = settings.keepThreshold,
         )
-        // Una mas que la racha que confirma: asi, al confirmar, todas las
-        // ventanas de la racha siguen a mano para elegir la mejor.
-        val recent = RecentWindows(DetectionStabilizer.DEFAULT_REQUIRED_CONSECUTIVE + 1)
+        // Una mas que la racha que confirma (asi, al confirmar, todas las
+        // ventanas de la racha siguen a mano para elegir la mejor) y las del
+        // preambulo del recorte.
+        val recent = RecentWindows(DetectionStabilizer.DEFAULT_REQUIRED_CONSECUTIVE + 1 + PRE_ROLL_WINDOWS)
 
         /**
          * Mejor puntuacion ya escrita para cada especie de la sesion.
@@ -197,7 +198,9 @@ class ListeningEngine(
                 scaling,
                 preferUnprocessed,
             )
-            val gate = EnergyGate(scaling)
+            // Energia en la banda del canto: el viento y el trafico ya no abren
+            // la puerta, y un ave lejana si. Ver EnergyGate.
+            val gate = EnergyGate(scaling, sampleRate = classifier.requiredSampleRate)
             val clipWriter = clipsDirectory?.let {
                 AudioClipWriter(sampleRate = classifier.requiredSampleRate, scaling = scaling)
             }
@@ -225,7 +228,7 @@ class ListeningEngine(
                     emit(
                         ListeningEvent.Window(
                             processed, skipped, 0L,
-                            levelRms = gate.normalizedRms(frame.samples),
+                            levelRms = gate.level(frame.samples),
                             sourceName = capture.activeSourceName,
                             micSilenced = capture.isSilenced,
                             spectrogram = columns,
@@ -239,8 +242,11 @@ class ListeningEngine(
                 // no canta nada, asi que esta linea se ahorra la mayoria del
                 // gasto de bateria. Se calcula UNA vez y se reutiliza para
                 // decidir y para informar.
-                val level = gate.normalizedRms(frame.samples)
+                val level = gate.level(frame.samples)
                 if (level < gate.thresholdFraction) {
+                    // Sin resultados, pero a la historia: es audio seguido que
+                    // puede servir de preambulo al recorte de la siguiente.
+                    recent.add(frame.samples, frame.endTimestampMillis, emptyList())
                     skipped++
                     emit(
                         ListeningEvent.Window(
@@ -278,6 +284,7 @@ class ListeningEngine(
                     location = location,
                     recordedScores = recordedScores,
                     clipWriter = clipWriter,
+                    hopSamples = capture.hopSampleCount,
                 )
 
                 emit(
@@ -334,9 +341,10 @@ class ListeningEngine(
         location: Coordinates?,
         recordedScores: HashMap<String, Float>,
         clipWriter: AudioClipWriter?,
+        hopSamples: Int,
     ) {
         try {
-            persist(detections, recent, sessionId, location, recordedScores, clipWriter)
+            persist(detections, recent, sessionId, location, recordedScores, clipWriter, hopSamples)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -359,8 +367,10 @@ class ListeningEngine(
         location: Coordinates?,
         recordedScores: HashMap<String, Float>,
         clipWriter: AudioClipWriter?,
+        hopSamples: Int,
     ) {
         val repository = observationRepository ?: return
+        val hopMillis = hopSamples * 1000L / classifier.requiredSampleRate
         val session = sessionId ?: return
 
         for (detection in detections) {
@@ -391,7 +401,12 @@ class ListeningEngine(
                 // ofrece como "no era esto, era lo segundo".
                 candidates = window.results,
                 // Solo se escribe si la deteccion entra: ver recordDetection.
-                clip = { writeClip(clipWriter, session, detection.speciesId, window.samples) },
+                // La ventana que convencio al modelo, con unos segundos de antes
+                // delante: tres segundos a secas empezaban a mitad de la frase.
+                clip = {
+                    val audio = recent.audioEndingWith(window, hopSamples, hopMillis, PRE_ROLL_WINDOWS)
+                    writeClip(clipWriter, session, detection.speciesId, audio)
+                },
             )
             recordedScores[detection.speciesId] = best.adjustedScore
         }
@@ -478,5 +493,12 @@ class ListeningEngine(
 
     private companion object {
         const val TAG = "ListeningEngine"
+
+        /**
+         * Saltos de preambulo en el recorte: 3 x 800 ms = 2,4 s antes de la
+         * ventana de 3 s, unos 5,4 s en total (~45 KB en AAC). Lo justo para
+         * que el canto se oiga entero y no empiece a mitad.
+         */
+        const val PRE_ROLL_WINDOWS = 3
     }
 }

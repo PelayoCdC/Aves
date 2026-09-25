@@ -157,10 +157,11 @@ AudioRecord(UNPROCESSED si el sistema lo declara; si no, VOICE_RECOGNITION)
   → ring buffer de 3 s (el tamaño lo dice el modelo)
   → ventana cada 800 ms (solape del 73%)
   → se descarta si la propia app está reproduciendo un recorte
-  → gate de energía (-60 dBFS): en el campo casi nunca canta nada
+  → gate de energía en la banda del canto (1–10 kHz, -66 dBFS)
   → clasificador (el del flavor) + prior geo-temporal (peso ajustable)
   → histéresis: 3 ventanas consecutivas por encima de 0,35 para confirmar
-  → persistencia: una fila por (especie, sesión), la mejor puntuación
+  → persistencia: una fila por (especie, sesión), la mejor puntuación, con el
+    recorte de ESA ventana y 2,4 s de preámbulo (~5,4 s)
   → pantalla: espectrograma, nivel, "oyendo… ¿X?", confirmadas
 ```
 
@@ -187,8 +188,23 @@ Cosas que no son obvias y conviene no "arreglar":
   (44,1/48 kHz) baja a 32 kHz en `open`; sin paso-bajo, lo que hay por encima
   de 16 kHz se pliega sobre la banda donde cantan las aves.
 - **`noCompress` para `tflite` y `onnx`.** Los modelos se mapean en memoria.
-  El ONNX se copia una vez a `noBackupFilesDir` (con el tamaño en el nombre,
-  para que un modelo actualizado sustituya la copia).
+  El ONNX se copia una vez a `noBackupFilesDir` (con el tamaño y la fecha de
+  instalación del APK en el nombre, para que un modelo actualizado sustituya
+  la copia).
+- **La puerta de energía mide solo la banda del canto.** Dos biquads
+  (paso-alto a 1 kHz, paso-bajo a 10 kHz, ~2 ms por ventana). El viento, el
+  tráfico y el roce del bolsillo, por debajo de 1 kHz, abrían la puerta con la
+  energía de toda la banda; un ave lejana apenas movía el total. El medidor de
+  la pantalla enseña ese mismo nivel, para que la marca del corte signifique lo
+  que parece.
+- **El recorte y la puntuación son de la misma ventana.** `RecentWindows`
+  guarda las últimas ventanas (sin copiar: cada una es un array nuevo) y se
+  guarda la mejor de la racha, no la última. Delante va el primer salto de las
+  tres anteriores si son seguidas de verdad: tres segundos a secas empezaban a
+  mitad de la frase.
+- **Nada decidido se toca.** Una detección mejor sobre una observación ya
+  confirmada o descartada no cambia su recorte, hora ni lugar, y el recorte
+  solo se escribe si la detección entra (a un `.part` que se renombra).
 
 ---
 
