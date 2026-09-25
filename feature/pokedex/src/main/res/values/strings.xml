@@ -158,6 +158,23 @@
     <string name="pokedex_source_manual">Anotado a mano</string>
 
     <!-- Cómo se ha conseguido: ojo, cámara y clave de sol -->
+    <string name="pokedex_seasonality_title">Cuándo se ve por aquí</string>
+    <string name="pokedex_seasonality_subtitle">Registros en GBIF de cada mes, a unos 50 km.</string>
+    <string name="pokedex_seasonality_description">Meses con más registros por aquí: %1$s.</string>
+
+    <!-- Qué hay aquí ahora -->
+    <string name="nearby_header">En tu zona se registran en %1$s %2$d aves que la app sabe identificar, de la más común a la más escasa.</string>
+    <plurals name="nearby_missing">
+        <item quantity="one">Te falta %1$d.</item>
+        <item quantity="other">Te faltan %1$d.</item>
+    </plurals>
+    <string name="nearby_only_missing">Solo las que me faltan</string>
+    <string name="nearby_collected">Ya la tienes</string>
+    <string name="nearby_missing_label">Te falta</string>
+    <string name="nearby_no_location">Para saber qué aves hay por aquí hace falta tu ubicación. Revisa el permiso y que el modo sin ubicación de los ajustes esté apagado.</string>
+    <string name="nearby_no_data">No hay datos de esta zona para este mes y no se han podido descargar. Prueba cuando tengas conexión.</string>
+    <string name="nearby_open">Qué hay aquí</string>
+
     <string name="pokedex_sort_taxonomic">Por familias</string>
     <string name="pokedex_sort_recent">Recientes</string>
     <string name="pokedex_sort_rarity">Más raras</string>

@@ -32,6 +32,9 @@ class SpeciesResolverTest {
 
         override suspend fun modelIds(): List<String> = labels.keys.toList()
 
+        override suspend fun detectableSpeciesIds(): List<String> =
+            labels.values.flatten().mapNotNull { it.speciesId }.distinct()
+
         override fun detectableSpeciesCount(): kotlinx.coroutines.flow.Flow<Int> =
             kotlinx.coroutines.flow.flowOf(
                 labels.values.flatten().mapNotNull { it.speciesId }.distinct().size,

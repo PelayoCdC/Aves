@@ -11,6 +11,7 @@ import dev.pelayo.aves.core.database.dao.ListeningSessionDao
 import dev.pelayo.aves.core.database.dao.ModelLabelDao
 import dev.pelayo.aves.core.database.dao.ObservationDao
 import dev.pelayo.aves.core.database.dao.RegionDao
+import dev.pelayo.aves.core.database.dao.SeasonalityDao
 import dev.pelayo.aves.core.database.dao.SpeciesDao
 import dev.pelayo.aves.core.database.entity.ListeningSessionEntity
 import dev.pelayo.aves.core.database.entity.ModelLabelEntity
@@ -21,6 +22,7 @@ import dev.pelayo.aves.core.database.entity.RegionCellEntity
 import dev.pelayo.aves.core.database.entity.RegionChecklistEntity
 import dev.pelayo.aves.core.database.entity.RegionChecklistSpeciesEntity
 import dev.pelayo.aves.core.database.entity.RegionMonthEntity
+import dev.pelayo.aves.core.database.entity.SeasonalityEntity
 import dev.pelayo.aves.core.database.entity.SpeciesEntity
 import dev.pelayo.aves.core.database.entity.SpeciesFrequencyEntity
 import dev.pelayo.aves.core.database.entity.SpeciesNameEntity
@@ -43,6 +45,7 @@ import dev.pelayo.aves.core.database.entity.SpeciesNameEntity
  *     `region_checklist_species`) y preferencias de la Pokedex.
  *  4. Zona elegida a mano (`pokedex_preferences.customZone*`).
  *  5. `species.taxonOrder`, para ordenar las familias como las guias.
+ *  6. `species_seasonality`: cuando se ve cada especie alrededor de una celda.
  */
 @Database(
     entities = [
@@ -58,14 +61,16 @@ import dev.pelayo.aves.core.database.entity.SpeciesNameEntity
         RegionChecklistEntity::class,
         RegionChecklistSpeciesEntity::class,
         PokedexPreferencesEntity::class,
+        SeasonalityEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
     // 1 -> 2 va a mano (ver MIGRATION_1_2): la automatica fallaba con duplicados.
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5),
+        AutoMigration(from = 5, to = 6),
     ],
 )
 @TypeConverters(Converters::class)
@@ -77,6 +82,7 @@ abstract class AvesDatabase : RoomDatabase() {
     abstract fun observationDao(): ObservationDao
     abstract fun regionDao(): RegionDao
     abstract fun checklistDao(): ChecklistDao
+    abstract fun seasonalityDao(): SeasonalityDao
 
     companion object {
         const val NAME = "aves.db"

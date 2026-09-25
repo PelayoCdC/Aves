@@ -136,6 +136,10 @@ interface ModelLabelDao {
     @Query("SELECT COUNT(DISTINCT speciesId) FROM model_labels WHERE speciesId IS NOT NULL")
     fun detectableSpeciesCount(): Flow<Int>
 
+    /** Las especies que algun modelo enlazado sabe identificar. */
+    @Query("SELECT DISTINCT speciesId FROM model_labels WHERE speciesId IS NOT NULL")
+    suspend fun detectableSpeciesIds(): List<String>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(labels: List<ModelLabelEntity>)
 

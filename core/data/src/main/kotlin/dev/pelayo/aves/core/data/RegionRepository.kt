@@ -173,6 +173,19 @@ class RegionRepository(
         }
     }
 
+    /**
+     * Lo que se registra en la celda de ([latitude], [longitude]) en [month],
+     * de mas a menos abundante, o null si ese mes de esa celda no esta
+     * descargado. Es la lista de "que hay aqui ahora".
+     */
+    suspend fun speciesInCell(latitude: Double, longitude: Double, month: Int): List<CellSpecies>? {
+        val cellId = Geohash.encode(latitude, longitude, CELL_PRECISION)
+        regionDao.findMonth(cellId, month) ?: return null
+        return regionDao.frequenciesFor(cellId, month)
+            .sortedByDescending { it.share }
+            .map { CellSpecies(it.speciesId, it.share, RarityTier.fromLevel(it.rarityTier)) }
+    }
+
     override suspend fun prior(context: ObservationContext): SpeciesPrior {
         val latitude = context.latitude
         val longitude = context.longitude
@@ -284,3 +297,10 @@ class RegionRepository(
         }
     }
 }
+
+/** Una especie registrada en una celda un mes: cuanto pesa sobre el total y su rareza ahi. */
+data class CellSpecies(
+    val speciesId: String,
+    val share: Float,
+    val rarity: RarityTier,
+)

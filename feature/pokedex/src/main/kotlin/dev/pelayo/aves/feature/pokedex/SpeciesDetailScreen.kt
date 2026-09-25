@@ -242,6 +242,16 @@ internal fun SpeciesDetailContent(
             }
         }
 
+        // Cuando se ve por aqui: la otra mitad de "¿y esta por aqui?".
+        state.seasonality?.takeIf { months -> months.any { it > 0 } }?.let { months ->
+            item(key = "estacionalidad") {
+                Column {
+                    Spacer(Modifier.size(8.dp))
+                    SeasonalityCard(monthlyCounts = months)
+                }
+            }
+        }
+
         item(key = "separador") {
             Column {
                 Spacer(Modifier.size(16.dp))

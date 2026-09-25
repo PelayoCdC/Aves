@@ -11,6 +11,7 @@
     <string name="title_sessions">Historial de escuchas</string>
     <string name="title_session">Escucha</string>
     <string name="title_camera">Identificar por foto</string>
+    <string name="title_nearby">Qué hay aquí</string>
     <string name="navigate_up">Volver</string>
     <string name="export_failed">No se pudo exportar. Prueba a elegir otra carpeta.</string>
     <string name="photo_save_failed">No se pudo guardar la foto.</string>

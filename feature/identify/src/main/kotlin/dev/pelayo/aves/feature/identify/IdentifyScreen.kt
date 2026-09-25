@@ -112,6 +112,8 @@ fun IdentifyScreen(
     placePicker: PlacePickerActions? = null,
     /** Abre la camara. La foto es la via secundaria: se usa cuando ves el ave pero no la oyes. */
     onOpenCamera: (() -> Unit)? = null,
+    /** "¿Que puedo oir aqui?": lo que se registra por aqui este mes. Null esconde el boton. */
+    onOpenNearby: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -460,6 +462,14 @@ fun IdentifyScreen(
                         contentDescription = stringResource(R.string.identify_by_photo),
                     )
                 }
+            }
+        }
+
+        // Antes de escuchar, o mientras no se confirma nada: que se puede oir por
+        // aqui en esta epoca, y que te falta.
+        if (onOpenNearby != null && !state.isAnalyzingFile) {
+            TextButton(onClick = onOpenNearby, modifier = Modifier.padding(top = 8.dp)) {
+                Text(stringResource(R.string.identify_open_nearby))
             }
         }
 

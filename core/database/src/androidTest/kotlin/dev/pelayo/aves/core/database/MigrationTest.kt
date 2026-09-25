@@ -78,6 +78,6 @@ class MigrationTest {
 
     private companion object {
         const val DB = "migracion.db"
-        const val LATEST = 5
+        const val LATEST = 6
     }
 }

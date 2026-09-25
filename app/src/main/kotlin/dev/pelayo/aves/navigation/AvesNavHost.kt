@@ -43,6 +43,8 @@ import dev.pelayo.aves.feature.pokedex.AchievementsScreen
 import dev.pelayo.aves.feature.pokedex.AchievementsViewModel
 import dev.pelayo.aves.feature.pokedex.MapScreen
 import dev.pelayo.aves.feature.pokedex.MapViewModel
+import dev.pelayo.aves.feature.pokedex.NearbyScreen
+import dev.pelayo.aves.feature.pokedex.NearbyViewModel
 import dev.pelayo.aves.feature.pokedex.PendingPhotoConfirmation
 import dev.pelayo.aves.feature.pokedex.PokedexScreen
 import dev.pelayo.aves.feature.pokedex.PokedexViewModel
@@ -95,6 +97,9 @@ private const val SESSION_ID_ARG = "sessionId"
  * la practica no lo son.
  */
 private const val CAMERA_ROUTE = "camera"
+
+/** "¿Que hay aqui ahora?": las aves de tu celda este mes. Cuelga de la Pokedex y de Identificar. */
+private const val NEARBY_ROUTE = "nearby"
 
 /** Lo maximo que espera la camara una ubicacion fresca cuando no hay ninguna conocida. */
 private const val CAMERA_FIX_TIMEOUT_MILLIS = 2_000L
@@ -166,6 +171,7 @@ internal fun subScreenTitle(route: String?): Int? {
         SESSIONS_ROUTE -> R.string.title_sessions
         SESSION_DETAIL_ROUTE -> R.string.title_session
         CAMERA_ROUTE -> R.string.title_camera
+        NEARBY_ROUTE -> R.string.title_nearby
         else -> null
     }
 }
@@ -331,6 +337,7 @@ fun AvesNavHost(
                 settings = { container.settingsStore.settings.first().toListeningSettings() },
                 placePicker = placePicker,
                 onOpenCamera = { navController.navigate(CAMERA_ROUTE) },
+                onOpenNearby = { navController.navigate(NEARBY_ROUTE) },
                 startListeningToken = startListeningToken,
                 onStartListeningHandled = onStartListeningHandled,
             )
@@ -356,6 +363,7 @@ fun AvesNavHost(
                 onOpenHistory = { navController.navigate(SESSIONS_ROUTE) },
                 onOpenAchievements = { navController.navigate(ACHIEVEMENTS_ROUTE) },
                 onOpenMap = { navController.navigate(MAP_ROUTE) },
+                onOpenNearby = { navController.navigate(NEARBY_ROUTE) },
             )
         }
 
@@ -377,6 +385,25 @@ fun AvesNavHost(
                         speciesRepository = container.speciesRepository,
                         observationRepository = container.observationRepository,
                         rangeMaps = container.rangeMapRepository,
+                    )
+                },
+                onSpeciesClick = { speciesId -> navController.navigate("$SPECIES_DETAIL_ROUTE/$speciesId") },
+            )
+        }
+
+        composable(NEARBY_ROUTE) {
+            NearbyScreen(
+                viewModelFactory = {
+                    NearbyViewModel(
+                        speciesRepository = container.speciesRepository,
+                        observationRepository = container.observationRepository,
+                        currentLocation = currentLocation,
+                        speciesHere = { where, month ->
+                            container.regionRepository.speciesInCell(where.latitude, where.longitude, month)
+                        },
+                        downloadHere = { where, now ->
+                            container.regionRepository.ensureCurrentMonthCached(where.latitude, where.longitude, now)
+                        },
                     )
                 },
                 onSpeciesClick = { speciesId -> navController.navigate("$SPECIES_DETAIL_ROUTE/$speciesId") },
@@ -538,6 +565,16 @@ fun AvesNavHost(
                         },
                         savePhoto = container.galleryPhotoSaver::save,
                         currentPlaceName = container.currentPlaceName,
+                        seasonalityOf = { species ->
+                            currentLocation()?.let { where ->
+                                container.seasonalityRepository.profile(
+                                    species,
+                                    where.latitude,
+                                    where.longitude,
+                                    System.currentTimeMillis(),
+                                )
+                            }
+                        },
                     )
                 },
             )

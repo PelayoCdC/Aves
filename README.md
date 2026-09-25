@@ -339,6 +339,21 @@ que no controlamos (una `LazyColumn`, una transicion). El resultado era un mapa
 gris para siempre o un `NullPointerException` al crear un marcador. `BirdMap`
 pone `setDestroyMode(false)` y destruye solo desde su `DisposableEffect`.
 
+### Qué hay aquí ahora y cuándo se ve
+
+**"¿Qué puedo oír aquí?"** (desde Identificar y desde la Pokédex) lista las
+aves registradas en tu celda (~40 km) **este mes** que algún modelo sabe
+identificar, de la más común a la más escasa, y marca las que te faltan
+(filtro "solo las que me faltan"). Sale de los mismos datos de GBIF que la
+rareza (`RegionRepository.speciesInCell`); si ese mes no está descargado, se
+descarga. Sin porcentajes: el orden y la palabra de rareza bastan.
+
+En la ficha de cada especie, **"Cuándo se ve por aquí"**: doce barras con sus
+registros de cada mes a unos 50 km (`SeasonalityRepository`, sobre
+`GbifClient.monthlyProfile`), con el mes actual resaltado y sin cifras: importa
+la forma (residente, estival, de paso). Se pregunta por el centro de la celda y
+se guarda en Room 90 días (`species_seasonality`, Room v6).
+
 ### Logros
 
 Medallas de hierro a diamante por la parte de una lista que tengas en la

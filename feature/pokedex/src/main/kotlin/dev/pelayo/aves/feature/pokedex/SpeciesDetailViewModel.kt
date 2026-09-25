@@ -35,6 +35,8 @@ data class SpeciesDetailUiState(
     val isLoadingEncyclopedia: Boolean = false,
     /** El taxon de GBIF, para el mapa de donde se registra. Null mientras no se sepa o si GBIF no la reconoce. */
     val gbifTaxonKey: Int? = null,
+    /** Registros por mes por aqui (enero a diciembre), o null si no se sabe. */
+    val seasonality: IntArray? = null,
     /** Una foto subida desde la ficha, ya en disco, a la espera de cuando y donde fue. */
     val photoDraft: SavedPhoto? = null,
     /** Se esta leyendo y guardando la foto elegida. */
@@ -84,6 +86,8 @@ class SpeciesDetailViewModel(
     private val savePhoto: (suspend (Uri) -> SavedPhoto?)? = null,
     /** Como se llama la ubicacion actual en el selector de lugar. Lo da quien tiene los recursos. */
     private val currentPlaceName: String = "",
+    /** Registros por mes (12) de la especie por aqui, o null. Null esconde la tarjeta. */
+    private val seasonalityOf: (suspend (Species) -> IntArray?)? = null,
 ) : ViewModel() {
 
     val canAddPhotos: Boolean get() = savePhoto != null
@@ -96,6 +100,7 @@ class SpeciesDetailViewModel(
     private val resolved = MutableStateFlow(false)
     private val loadingEncyclopedia = MutableStateFlow(false)
     private val taxonKey = MutableStateFlow<Int?>(null)
+    private val seasonality = MutableStateFlow<IntArray?>(null)
 
     private val photoState = combine(photoDraft, photoBusy, photoFailed) { draft, busy, failed -> Triple(draft, busy, failed) }
 
@@ -103,15 +108,16 @@ class SpeciesDetailViewModel(
         species,
         resolved,
         observationRepository.collectionOf(speciesId),
-        combine(loadingEncyclopedia, taxonKey) { loading, key -> loading to key },
+        combine(loadingEncyclopedia, taxonKey, seasonality) { loading, key, months -> Triple(loading, key, months) },
         photoState,
-    ) { found, isResolved, observations, (loading, key), (draft, busy, failed) ->
+    ) { found, isResolved, observations, (loading, key, months), (draft, busy, failed) ->
         SpeciesDetailUiState(
             isLoading = !isResolved,
             species = found,
             sightings = observations.map(ObservationEntity::toSighting),
             isLoadingEncyclopedia = loading,
             gbifTaxonKey = key,
+            seasonality = months,
             photoDraft = draft,
             isSavingPhoto = busy,
             photoFailed = failed,
@@ -139,6 +145,11 @@ class SpeciesDetailViewModel(
                         null
                     }
                 }
+            }
+            // Cuando se ve por aqui, tambien en paralelo y sin bloquear nada.
+            val loadSeasonality = seasonalityOf
+            if (found != null && loadSeasonality != null) {
+                launch { seasonality.value = runSuspendCatching { loadSeasonality(found) }.getOrNull() }
             }
             // La enciclopedia se pide DESPUES de pintar lo que ya hay: la ficha
             // no espera a la red para ensenar el nombre y la familia.

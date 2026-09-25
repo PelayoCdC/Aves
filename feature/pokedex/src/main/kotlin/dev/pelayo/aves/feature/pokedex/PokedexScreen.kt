@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
@@ -81,6 +82,8 @@ fun PokedexScreen(
     onOpenAchievements: (() -> Unit)? = null,
     onOpenMap: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    /** "¿Que hay aqui ahora?". Null esconde el boton. */
+    onOpenNearby: (() -> Unit)? = null,
 ) {
     val viewModel: PokedexViewModel = viewModel { viewModelFactory() }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -104,6 +107,7 @@ fun PokedexScreen(
         onChooseZone = viewModel::chooseZone,
         onSortChange = viewModel::onSortChange,
         onSourceFilterChange = viewModel::onSourceFilterChange,
+        onOpenNearby = onOpenNearby,
         modifier = modifier,
     )
 }
@@ -132,6 +136,7 @@ internal fun PokedexContent(
     onChooseZone: (PokedexZone) -> Unit = {},
     onSortChange: (CollectionSort) -> Unit = {},
     onSourceFilterChange: (SourceFilter) -> Unit = {},
+    onOpenNearby: (() -> Unit)? = null,
 ) {
     state.zoneBrowser?.let { browser ->
         ZoneBrowserDialog(
@@ -150,6 +155,7 @@ internal fun PokedexContent(
             onOpenHistory = onOpenHistory,
             onOpenAchievements = onOpenAchievements,
             onOpenMap = onOpenMap,
+            onOpenNearby = onOpenNearby,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         )
 
@@ -604,6 +610,7 @@ private fun ProgressHeader(
     onOpenAchievements: (() -> Unit)? = null,
     onOpenMap: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    onOpenNearby: (() -> Unit)? = null,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
@@ -627,6 +634,11 @@ private fun ProgressHeader(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (onOpenNearby != null) {
+                IconButton(onClick = onOpenNearby) {
+                    Icon(Icons.Filled.NearMe, contentDescription = stringResource(R.string.nearby_open))
+                }
+            }
             if (onOpenMap != null) {
                 IconButton(onClick = onOpenMap) {
                     Icon(Icons.Filled.Map, contentDescription = stringResource(R.string.pokedex_map_open))

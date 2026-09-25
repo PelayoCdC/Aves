@@ -40,6 +40,9 @@ class SpeciesRepository(private val database: AvesDatabase) {
      */
     fun detectableSpeciesCount(): Flow<Int> = modelLabelDao.detectableSpeciesCount()
 
+    /** Lo que algun modelo enlazado sabe identificar, para cruzar con listas de fuera. */
+    suspend fun detectableSpeciesIds(): Set<String> = modelLabelDao.detectableSpeciesIds().toHashSet()
+
     /** Guarda lo que trajo la enciclopedia para no volver a pedirlo. */
     suspend fun saveEncyclopedia(
         speciesId: String,
