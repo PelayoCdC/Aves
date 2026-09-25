@@ -33,6 +33,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import dev.pelayo.aves.core.designsystem.components.LocalShowConfidence
+import dev.pelayo.aves.core.designsystem.components.formatConfidence
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
 
 /**
@@ -200,22 +202,22 @@ internal fun CandidateList(
 }
 
 /**
- * Un candidato. Solo el nombre: el porcentaje se quito porque no ayudaba a
- * decidir (la decision es mirar al ave y al nombre) y un "23 %" junto a una
- * especie hacia desconfiar de las tres. El orden ya dice cual es la mas
- * probable, y la confianza se guarda con la observacion para quien la quiera
- * auditar.
+ * Un candidato. Por defecto solo el nombre: la decision es mirar al ave y al
+ * nombre, y un "23 %" junto a una especie hacia desconfiar de las tres. El orden
+ * ya dice cual es la mas probable. Con el ajuste "Mostrar confianza", el
+ * porcentaje va al lado.
  */
 @Composable
 internal fun CandidateRow(
     candidate: ImageCandidate,
     onIdentified: (ImageCandidate) -> Unit,
     modifier: Modifier = Modifier,
+    showConfidence: Boolean = LocalShowConfidence.current,
 ) {
     val selectable = candidate.speciesId != null
     val common = candidate.commonName
 
-    Column(
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
@@ -225,7 +227,26 @@ internal fun CandidateRow(
                 role = Role.Button,
             ) { onIdentified(candidate) }
             .padding(horizontal = 8.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
+        CandidateNames(candidate, Modifier.weight(1f))
+        // Con "Mostrar confianza": la misma puntuacion que ordena la lista (la
+        // del modelo con el contexto del lugar, si lo hay).
+        if (showConfidence) {
+            Text(
+                text = formatConfidence(candidate.confidence),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CandidateNames(candidate: ImageCandidate, modifier: Modifier = Modifier) {
+    val common = candidate.commonName
+    Column(modifier = modifier) {
         // El nombre en castellano manda; el cientifico, debajo, como en la
         // Pokedex. Si el catalogo no lo conoce, solo hay cientifico.
         if (common != null) {

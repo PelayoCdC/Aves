@@ -86,6 +86,8 @@ class SettingsViewModel(
 
     fun setSkin(skin: AvesSkin) = edit { it.copy(skin = skin.name) }
 
+    fun setShowConfidence(show: Boolean) = edit { it.copy(showConfidence = show) }
+
     /**
      * Recorre las carpetas de recortes y de fotos.
      *

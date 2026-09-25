@@ -152,7 +152,7 @@
     <string name="pokedex_detail_photo_failed_ok">Entendido</string>
     <string name="pokedex_detail_notes_label">Notas (opcional)</string>
     <string name="pokedex_detail_notes_placeholder">Dónde, cómo, con quién…</string>
-    <string name="pokedex_detail_confidence">%1$d %% de confianza</string>
+    <string name="pokedex_detail_confidence">%1$s de confianza</string>
     <string name="pokedex_source_audio">Canto</string>
     <string name="pokedex_source_image">Foto</string>
     <string name="pokedex_source_manual">Anotado a mano</string>
@@ -194,7 +194,7 @@
     <string name="pokedex_session_model">modelo %1$s</string>
     <string name="pokedex_session_play">Reproducir</string>
     <string name="pokedex_session_clip_missing">Sin grabación</string>
-    <string name="pokedex_session_row">%1$d %% · %2$s</string>
+    <string name="pokedex_session_row">%1$s · %2$s</string>
     <string name="pokedex_status_confirmed">confirmada</string>
     <string name="pokedex_status_pending">por revisar</string>
     <string name="pokedex_status_rejected">descartada</string>

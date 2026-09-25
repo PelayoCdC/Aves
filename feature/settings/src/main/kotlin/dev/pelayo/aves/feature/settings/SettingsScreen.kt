@@ -78,6 +78,7 @@ fun SettingsScreen(
         onLocationDisabledChange = viewModel::setLocationDisabled,
         onListeningCutoffChange = viewModel::setListeningCutoff,
         onSkinChange = viewModel::setSkin,
+        onShowConfidenceChange = viewModel::setShowConfidence,
         onExportData = onExportData,
         modifier = modifier,
     )
@@ -97,6 +98,7 @@ internal fun SettingsContent(
     onExportData: (() -> Unit)?,
     modifier: Modifier = Modifier,
     onSkinChange: (AvesSkin) -> Unit = {},
+    onShowConfidenceChange: (Boolean) -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -120,6 +122,7 @@ internal fun SettingsContent(
                 settings = state.settings,
                 onContextInfluenceChange = onContextInfluenceChange,
                 onConfidenceThresholdChange = onConfidenceThresholdChange,
+                onShowConfidenceChange = onShowConfidenceChange,
             )
 
             PrivacySection(
@@ -204,6 +207,7 @@ private fun IdentificationSection(
     settings: AvesSettings,
     onContextInfluenceChange: (Float) -> Unit,
     onConfidenceThresholdChange: (Float) -> Unit,
+    onShowConfidenceChange: (Boolean) -> Unit,
 ) {
     SettingsSection(
         title = stringResource(R.string.settings_identification_title),
@@ -227,6 +231,17 @@ private fun IdentificationSection(
             steps = CONFIDENCE_THRESHOLD_STEPS,
             explanation = ::confidenceThresholdLine,
             onCommit = onConfidenceThresholdChange,
+        )
+
+        Spacer(Modifier.size(16.dp))
+
+        SwitchSetting(
+            label = stringResource(R.string.settings_show_confidence),
+            checked = settings.showConfidence,
+            onCheckedChange = onShowConfidenceChange,
+            explanation = stringResource(
+                if (settings.showConfidence) R.string.settings_show_confidence_on else R.string.settings_show_confidence_off,
+            ),
         )
     }
 }

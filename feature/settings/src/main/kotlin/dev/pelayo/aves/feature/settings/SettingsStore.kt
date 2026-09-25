@@ -72,6 +72,7 @@ internal class DataStoreSettingsStore(
             preferences[KEY_CONFIDENCE_THRESHOLD] = next.confidenceThreshold
             preferences[KEY_LISTENING_CUTOFF] = next.listeningCutoffMinutes
             preferences[KEY_SKIN] = next.skin
+            preferences[KEY_SHOW_CONFIDENCE] = next.showConfidence
         }
     }
 
@@ -83,6 +84,7 @@ internal class DataStoreSettingsStore(
         listeningCutoffMinutes = this[KEY_LISTENING_CUTOFF]
             ?: AvesSettings.DEFAULT_LISTENING_CUTOFF_MINUTES,
         skin = this[KEY_SKIN] ?: AvesSettings().skin,
+        showConfidence = this[KEY_SHOW_CONFIDENCE] ?: false,
     ).sanitized()
 
     private companion object {
@@ -91,6 +93,7 @@ internal class DataStoreSettingsStore(
         val KEY_CONFIDENCE_THRESHOLD = floatPreferencesKey("confidence_threshold")
         val KEY_LISTENING_CUTOFF = intPreferencesKey("listening_cutoff_minutes")
         val KEY_SKIN = stringPreferencesKey("skin")
+        val KEY_SHOW_CONFIDENCE = booleanPreferencesKey("show_confidence")
     }
 }
 

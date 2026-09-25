@@ -24,6 +24,9 @@
 
     <string name="settings_privacy_title">Privacidad</string>
     <string name="settings_privacy_subtitle">Qué recoge la app y qué sale de tu móvil.</string>
+    <string name="settings_show_confidence">Mostrar confianza</string>
+    <string name="settings_show_confidence_off">Solo se ven los nombres de las especies seguras, sin números, al estilo de Merlin.</string>
+    <string name="settings_show_confidence_on">Junto a cada especie se ve lo seguro que está el modelo, en porcentaje. La lista es la misma: solo entra lo que pasa el umbral.</string>
     <string name="settings_location_disabled">Modo sin ubicación</string>
     <string name="settings_location_disabled_on">Activado: no se consulta la ubicación, el filtro geográfico y estacional no se aplica y las observaciones se guardan sin coordenadas. Identificarás peor, pero no queda rastro de dónde estabas.</string>
     <string name="settings_location_disabled_off">Desactivado: se usa una ubicación aproximada, una sola vez al empezar cada escucha, para saber qué aves son plausibles aquí y ahora.</string>

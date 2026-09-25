@@ -353,8 +353,11 @@ prior y la rareza se aplican como en una escucha, para ese sitio y esa fecha;
 sin él, el análisis va a ciegas. El análisis enseña en qué fase está
 (modelo, decodificación, ventanas con porcentaje, pistas) y **solo las especies
 seguras**: dos ventanas por encima del umbral, o una muy rotunda
-(`FileAnalysisAccumulator`). Sin porcentajes en pantalla; la confianza sigue
-en la base de datos. Lo mismo en la escucha en directo, la cámara y Revisar.
+(`FileAnalysisAccumulator`). De fábrica, sin porcentajes en pantalla (estilo
+Merlin); la confianza sigue en la base de datos. Lo mismo en la escucha en
+directo, la cámara, Revisar, el historial y la ficha. El ajuste **Mostrar
+confianza** pone el porcentaje junto a cada especie en todas esas pantallas
+(`LocalShowConfidence`); la lista es la misma, solo entra lo que pasa el umbral.
 
 **Una pista por especie.** De cada especie encontrada se monta una pista con
 solo sus tramos (`SpeciesTrackBuilder`), limpiada con una resta espectral del

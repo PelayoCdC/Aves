@@ -66,8 +66,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import dev.pelayo.aves.core.common.PhotoStorage
 import dev.pelayo.aves.core.common.WikipediaImages
+import dev.pelayo.aves.core.designsystem.components.LocalShowConfidence
 import dev.pelayo.aves.core.designsystem.components.PickedPlace
 import dev.pelayo.aves.core.designsystem.components.PlacePickerActions
+import dev.pelayo.aves.core.designsystem.components.formatConfidence
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
 import dev.pelayo.aves.core.media.ClipPlayIcon
@@ -558,6 +560,7 @@ private fun SightingRow(
     onOpenPhoto: () -> Unit = {},
     onEditNotes: () -> Unit = {},
     onDelete: () -> Unit = {},
+    showConfidence: Boolean = LocalShowConfidence.current,
 ) {
     Card(modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
@@ -583,8 +586,10 @@ private fun SightingRow(
                     Text(
                         text = buildList {
                             add(sourceLabel(sighting.source))
-                            if (sighting.source != ObservationSource.MANUAL) {
-                                add(stringResource(R.string.pokedex_detail_confidence, (sighting.confidence * 100).toInt()))
+                            // El porcentaje, solo con "Mostrar confianza" (y nunca en lo
+                            // anotado a mano, que no tiene modelo detras).
+                            if (showConfidence && sighting.source != ObservationSource.MANUAL) {
+                                add(stringResource(R.string.pokedex_detail_confidence, formatConfidence(sighting.confidence)))
                             }
                             add(rarityText(sighting.rarity).lowercase())
                         }.joinToString(SEPARATOR),

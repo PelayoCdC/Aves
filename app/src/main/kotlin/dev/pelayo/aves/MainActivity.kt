@@ -8,11 +8,13 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.pelayo.aves.core.designsystem.components.LocalShowConfidence
 import dev.pelayo.aves.core.designsystem.theme.AvesSkin
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import dev.pelayo.aves.core.listening.ListeningTileService
@@ -56,11 +58,14 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
             AvesTheme(skin = skin) {
-                AvesApp(
-                    container,
-                    startListeningToken = startListeningToken,
-                    onStartListeningHandled = { startListeningToken = 0 },
-                )
+                // "Mostrar confianza" llega a cualquier pantalla que ensene detecciones.
+                CompositionLocalProvider(LocalShowConfidence provides settings.showConfidence) {
+                    AvesApp(
+                        container,
+                        startListeningToken = startListeningToken,
+                        onStartListeningHandled = { startListeningToken = 0 },
+                    )
+                }
             }
         }
     }

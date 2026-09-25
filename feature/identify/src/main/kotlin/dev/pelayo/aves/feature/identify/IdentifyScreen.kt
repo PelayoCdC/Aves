@@ -65,14 +65,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.pelayo.aves.core.audio.AudioFileDecoder
 import dev.pelayo.aves.core.designsystem.components.ErrorCard
+import dev.pelayo.aves.core.designsystem.components.LocalShowConfidence
 import dev.pelayo.aves.core.designsystem.components.PermissionBlockedHint
 import dev.pelayo.aves.core.designsystem.components.PlacePickerActions
 import dev.pelayo.aves.core.designsystem.components.PlacePickerDialog
+import dev.pelayo.aves.core.designsystem.components.formatConfidence
 import dev.pelayo.aves.core.designsystem.components.hasPermission
 import dev.pelayo.aves.core.designsystem.components.isPermanentlyDenied
 import dev.pelayo.aves.core.designsystem.components.openAppSettings
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
+import dev.pelayo.aves.core.listening.CandidateGlimpse
 import dev.pelayo.aves.core.listening.DetectionNamer
 import dev.pelayo.aves.core.listening.FileAnalysisSaver
 import dev.pelayo.aves.core.listening.ListeningSettings
@@ -100,6 +103,8 @@ fun IdentifyScreen(
     startListeningToken: Int = 0,
     /** Avisa de que la peticion de [startListeningToken] ya se ha atendido, para que no se repita. */
     onStartListeningHandled: () -> Unit = {},
+    /** Ajuste "Mostrar confianza": el porcentaje junto a cada especie. */
+    showConfidence: Boolean = LocalShowConfidence.current,
     /** Los ajustes del usuario, para que un fichero se mida con el mismo liston que la escucha. */
     settings: suspend () -> ListeningSettings = { ListeningSettings() },
     /** Para decir donde se grabo un fichero. Nulo esconde el selector. */
@@ -359,7 +364,7 @@ fun IdentifyScreen(
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    glimpse?.let { GlimpseRow() }
+                    glimpse?.let { GlimpseRow(it, showConfidence) }
                 }
 
                 else -> LazyColumn(
@@ -373,12 +378,13 @@ fun IdentifyScreen(
                         val key = detection.speciesId.hashCode().toLong()
                         DetectionCard(
                             detection = detection,
+                            showConfidence = showConfidence,
                             hasTrack = track != null,
                             isPlaying = clipPlayer.isPlaying(key),
                             onTogglePlay = { clipPlayer.toggle(key, track) },
                         )
                     }
-                    glimpse?.let { item(key = "glimpse") { GlimpseRow() } }
+                    glimpse?.let { item(key = "glimpse") { GlimpseRow(it, showConfidence) } }
                     if (finished) {
                         item(key = "cerrar") {
                             TextButton(onClick = viewModel::stopFileAnalysis, modifier = Modifier.fillMaxWidth()) {
@@ -525,11 +531,10 @@ private fun StableDetection.displayNames(): Pair<String, String> {
 }
 
 /**
- * Una especie reconocida. Sin porcentaje y sin barra: lo que llega hasta aqui ya
- * paso el liston, y a partir de ahi un "73 %" no le dice nada a quien mira la
- * lista (y un "41 %" solo le hace desconfiar de algo que la app da por bueno).
- * La puntuacion se sigue guardando con la observacion, para quien la quiera
- * auditar en la exportacion.
+ * Una especie reconocida. Por defecto sin porcentaje y sin barra: lo que llega
+ * hasta aqui ya paso el liston, y un "41 %" solo hace desconfiar de algo que la
+ * app da por bueno. Con el ajuste "Mostrar confianza" encendido, el numero va
+ * al lado, discreto; la lista es la misma.
  *
  * @param hasTrack hay una pista con solo el canto de esta especie (analisis de
  *   fichero). En directo el recorte se escucha luego, en Revisar.
@@ -538,6 +543,7 @@ private fun StableDetection.displayNames(): Pair<String, String> {
 private fun DetectionCard(
     detection: StableDetection,
     modifier: Modifier = Modifier,
+    showConfidence: Boolean = LocalShowConfidence.current,
     hasTrack: Boolean = false,
     isPlaying: Boolean = false,
     onTogglePlay: () -> Unit = {},
@@ -554,6 +560,14 @@ private fun DetectionCard(
                     Text(text = common, style = MaterialTheme.typography.titleMedium)
                 }
                 Text(text = scientific, style = ScientificNameStyle)
+            }
+            if (showConfidence) {
+                Text(
+                    text = formatConfidence(detection.score),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                )
             }
             if (hasTrack) {
                 IconButton(onClick = onTogglePlay) {
@@ -573,15 +587,21 @@ private fun DetectionCard(
 /**
  * El modelo esta oyendo ALGO, aunque aun no lo de por bueno.
  *
- * Sin nombre de especie y sin porcentaje a proposito: en la lista solo salen
- * aves seguras, y un "¿mirlo? 28 %" es justo lo contrario. Se queda como senal
- * de vida, que es para lo que nacio tras la primera prueba de campo: que se
- * distinga "no capta nada" de "capta pero todavia no confirma".
+ * Por defecto sin nombre y sin porcentaje: en la lista solo salen aves seguras,
+ * y un "¿mirlo? 28 %" es justo lo contrario. Se queda como senal de vida, que es
+ * para lo que nacio tras la primera prueba de campo: que se distinga "no capta
+ * nada" de "capta pero todavia no confirma". Con "Mostrar confianza", quien lo
+ * ha pedido ve tambien que cree que es y cuanto.
  */
 @Composable
-private fun GlimpseRow(modifier: Modifier = Modifier) {
+private fun GlimpseRow(glimpse: CandidateGlimpse, showConfidence: Boolean, modifier: Modifier = Modifier) {
+    val name = glimpse.commonName ?: glimpse.scientificName
     Text(
-        text = stringResource(R.string.identify_glimpse),
+        text = if (showConfidence && name != null) {
+            stringResource(R.string.identify_glimpse_named, name, formatConfidence(glimpse.score))
+        } else {
+            stringResource(R.string.identify_glimpse)
+        },
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,

@@ -267,7 +267,7 @@ class IdentifyViewModel(
      * A diferencia del modo en directo no hay histeresis (no hay un flujo
      * continuo que estabilizar, hay un fichero finito), pero si el mismo
      * liston: [FileAnalysisAccumulator] solo deja pasar lo que convence, y la
-     * pantalla ensena especies, no porcentajes.
+     * pantalla ensena especies (con su porcentaje solo si el usuario lo pide).
      */
     fun analyzePending() {
         val pending = fileState.value.pendingFile ?: return

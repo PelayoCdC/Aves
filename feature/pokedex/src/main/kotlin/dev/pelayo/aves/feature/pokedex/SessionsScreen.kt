@@ -44,6 +44,8 @@ import dev.pelayo.aves.core.data.SpeciesRepository
 import dev.pelayo.aves.core.database.dao.SessionWithCounts
 import dev.pelayo.aves.core.database.entity.ListeningSessionEntity
 import dev.pelayo.aves.core.database.entity.ObservationEntity
+import dev.pelayo.aves.core.designsystem.components.LocalShowConfidence
+import dev.pelayo.aves.core.designsystem.components.formatConfidence
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
 import dev.pelayo.aves.core.media.ClipPlayIcon
 import dev.pelayo.aves.core.media.rememberClipPlayer
@@ -337,11 +339,16 @@ fun SessionDetailScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text(
-                                text = stringResource(
-                                    R.string.pokedex_session_row,
-                                    (row.confidence * 100).toInt(),
-                                    statusText(row.status),
-                                ),
+                                // El porcentaje, solo con "Mostrar confianza".
+                                text = if (LocalShowConfidence.current) {
+                                    stringResource(
+                                        R.string.pokedex_session_row,
+                                        formatConfidence(row.confidence),
+                                        statusText(row.status),
+                                    )
+                                } else {
+                                    statusText(row.status)
+                                },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = when (row.status) {
                                     ReviewStatus.CONFIRMED -> MaterialTheme.colorScheme.primary

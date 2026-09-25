@@ -16,6 +16,13 @@ class SettingsPreferencesTest {
     // --- Influencia del contexto -------------------------------------------
 
     @Test
+    fun `la confianza no se ensena de fabrica`() {
+        // Estilo Merlin: nombres, no numeros, hasta que el usuario lo pida.
+        assertEquals(false, AvesSettings().showConfidence)
+        assertEquals(true, AvesSettings(showConfidence = true).sanitized().showConfidence)
+    }
+
+    @Test
     fun `la influencia del contexto por defecto es la mitad`() {
         // A la mitad y no al maximo: el prior es una estadistica, no una verdad.
         assertEquals(0.5f, AvesSettings().contextInfluence, 1e-6f)

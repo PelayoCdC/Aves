@@ -23,6 +23,13 @@ data class AvesSettings(
     val listeningCutoffMinutes: Int = DEFAULT_LISTENING_CUTOFF_MINUTES,
     /** La piel de la app, por su nombre (`AvesSkin`). Texto y no enum para que el DataStore no sepa de temas. */
     val skin: String = AvesSkin.SYSTEM.name,
+    /**
+     * Ensenar el porcentaje de confianza junto a cada especie. Apagado de
+     * fabrica: una lista corta de nombres seguros, al estilo Merlin; un "23 %"
+     * al lado hace desconfiar de la lista entera. Encendido, la lista es la
+     * misma (se sigue filtrando por el umbral) con el numero al lado.
+     */
+    val showConfidence: Boolean = false,
 ) {
 
     /** Version de este objeto con todos los valores dentro de rango. */

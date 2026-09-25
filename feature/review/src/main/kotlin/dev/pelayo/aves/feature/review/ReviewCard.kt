@@ -1,11 +1,7 @@
 package dev.pelayo.aves.feature.review
 
-import androidx.compose.material3.Icon
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.Icons
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,11 +11,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -36,6 +36,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import dev.pelayo.aves.core.designsystem.components.LocalShowConfidence
+import dev.pelayo.aves.core.designsystem.components.formatConfidence
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
 import dev.pelayo.aves.core.media.ClipPlayIcon
@@ -70,6 +72,8 @@ fun ReviewCard(
     onTogglePlay: () -> Unit = {},
     /** Abre la ficha de la especie. Null si el catalogo no la conoce. */
     onOpenSpecies: (() -> Unit)? = null,
+    /** Ajuste "Mostrar confianza": el porcentaje junto al nivel y a cada alternativa. */
+    showConfidence: Boolean = LocalShowConfidence.current,
 ) {
     val accent = accentFor(observation.level)
 
@@ -132,9 +136,9 @@ fun ReviewCard(
 
             Spacer(Modifier.size(12.dp))
 
-            // Una linea del color del nivel, sin porcentaje: "segura", "probable"
-            // o "dudosa" es lo que hay que saber para decidir; el numero solo
-            // hacia desconfiar de las tres.
+            // Una linea del color del nivel: "segura", "probable" o "dudosa" es
+            // lo que hay que saber para decidir. El numero solo con el ajuste
+            // "Mostrar confianza"; por defecto hacia desconfiar de las tres.
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -151,7 +155,11 @@ fun ReviewCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = levelLabel(observation.level),
+                    text = if (showConfidence) {
+                        "${levelLabel(observation.level)} · ${formatConfidence(observation.confidence)}"
+                    } else {
+                        levelLabel(observation.level)
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     color = accent,
                 )
@@ -187,7 +195,13 @@ fun ReviewCard(
                         AssistChip(
                             onClick = { onConfirmAs(alternative) },
                             label = {
-                                Text(alternative.commonName)
+                                Text(
+                                    if (showConfidence) {
+                                        "${alternative.commonName} · ${formatConfidence(alternative.score)}"
+                                    } else {
+                                        alternative.commonName
+                                    },
+                                )
                             },
                         )
                     }

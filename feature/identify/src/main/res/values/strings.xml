@@ -27,6 +27,7 @@
 
     <string name="identify_nothing_confirmed">Nada confirmado todavía.\nHacen falta unos segundos de canto seguido.</string>
     <string name="identify_glimpse">Se oye algo… todavía sin confirmar</string>
+    <string name="identify_glimpse_named">Se oye algo… ¿%1$s? %2$s, todavía sin confirmar</string>
 
     <string name="identify_stop">Parar</string>
     <string name="identify_listen">Escuchar</string>

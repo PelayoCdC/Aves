@@ -30,8 +30,9 @@ data class FileDetection(
  *  - la supera en **una sola pero con rotundidad** ([strongThreshold]): un
  *    reclamo aislado y clarisimo tambien es una deteccion.
  *
- * Sin porcentajes hacia fuera: la puntuacion se guarda para ordenar y para la
- * base de datos, pero lo que se ensena es la lista, como hace Merlin.
+ * Lo que se ensena es la lista, como hace Merlin; el porcentaje solo si el
+ * usuario enciende "Mostrar confianza". La puntuacion se guarda siempre, para
+ * ordenar y para la base de datos.
  *
  * @param confirmThreshold el mismo umbral que usa la escucha en directo.
  */
