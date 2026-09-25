@@ -160,7 +160,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: MigrationTest en emulador
+      - name: MigrationTest y LookalikesDaoTest en emulador
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -168,7 +168,7 @@ jobs:
           target: google_apis
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
-          script: ./gradlew :core:database:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.pelayo.aves.core.database.MigrationTest --no-daemon
+          script: ./gradlew :core:database:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.pelayo.aves.core.database.MigrationTest,dev.pelayo.aves.core.database.LookalikesDaoTest --no-daemon
 
   # TODO: el resto de tests instrumentados. Necesitan los modelos y el
   # catalogo, que no estan en el repositorio. Habria que descargarlos en el

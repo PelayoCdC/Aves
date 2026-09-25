@@ -37,6 +37,8 @@ data class SpeciesDetailUiState(
     val gbifTaxonKey: Int? = null,
     /** Registros por mes por aqui (enero a diciembre), o null si no se sabe. */
     val seasonality: IntArray? = null,
+    /** Las especies con las que el modelo la confunde en tus detecciones. */
+    val lookalikes: List<Lookalike> = emptyList(),
     /** Una foto subida desde la ficha, ya en disco, a la espera de cuando y donde fue. */
     val photoDraft: SavedPhoto? = null,
     /** Se esta leyendo y guardando la foto elegida. */
@@ -101,6 +103,7 @@ class SpeciesDetailViewModel(
     private val loadingEncyclopedia = MutableStateFlow(false)
     private val taxonKey = MutableStateFlow<Int?>(null)
     private val seasonality = MutableStateFlow<IntArray?>(null)
+    private val lookalikes = MutableStateFlow<List<Lookalike>>(emptyList())
 
     private val photoState = combine(photoDraft, photoBusy, photoFailed) { draft, busy, failed -> Triple(draft, busy, failed) }
 
@@ -108,16 +111,19 @@ class SpeciesDetailViewModel(
         species,
         resolved,
         observationRepository.collectionOf(speciesId),
-        combine(loadingEncyclopedia, taxonKey, seasonality) { loading, key, months -> Triple(loading, key, months) },
+        combine(loadingEncyclopedia, taxonKey, seasonality, lookalikes) { loading, key, months, similar ->
+            Extras(loading, key, months, similar)
+        },
         photoState,
-    ) { found, isResolved, observations, (loading, key, months), (draft, busy, failed) ->
+    ) { found, isResolved, observations, extras, (draft, busy, failed) ->
         SpeciesDetailUiState(
             isLoading = !isResolved,
             species = found,
             sightings = observations.map(ObservationEntity::toSighting),
-            isLoadingEncyclopedia = loading,
-            gbifTaxonKey = key,
-            seasonality = months,
+            isLoadingEncyclopedia = extras.loadingEncyclopedia,
+            gbifTaxonKey = extras.taxonKey,
+            seasonality = extras.seasonality,
+            lookalikes = extras.lookalikes,
             photoDraft = draft,
             isSavingPhoto = busy,
             photoFailed = failed,
@@ -146,6 +152,10 @@ class SpeciesDetailViewModel(
                     }
                 }
             }
+            // Con que se confunde, de tus propias detecciones: es local y barato.
+            if (found != null) {
+                launch { lookalikes.value = runSuspendCatching { loadLookalikes(found.speciesId) }.getOrDefault(emptyList()) }
+            }
             // Cuando se ve por aqui, tambien en paralelo y sin bloquear nada.
             val loadSeasonality = seasonalityOf
             if (found != null && loadSeasonality != null) {
@@ -160,6 +170,24 @@ class SpeciesDetailViewModel(
             }
         }
     }
+
+    private suspend fun loadLookalikes(speciesId: String): List<Lookalike> {
+        val counts = observationRepository.lookalikesOf(speciesId)
+        if (counts.isEmpty()) return emptyList()
+        val catalog = speciesRepository.findAll(counts.map { it.speciesId }).associateBy { it.speciesId }
+        return counts.mapNotNull { count ->
+            val other = catalog[count.speciesId] ?: return@mapNotNull null
+            Lookalike(other, count.times, observationRepository.bestClipOf(count.speciesId))
+        }
+    }
+
+    /** Lo que no cabe en un `combine` de cinco. */
+    private data class Extras(
+        val loadingEncyclopedia: Boolean,
+        val taxonKey: Int?,
+        val seasonality: IntArray?,
+        val lookalikes: List<Lookalike>,
+    )
 
     /** "Lo he visto": un avistamiento anotado a mano, cuando y donde diga el usuario. */
     fun addManualSighting(draft: SightingDraft) {
@@ -263,3 +291,15 @@ class SpeciesDetailViewModel(
         const val STOP_TIMEOUT_MILLIS = 5_000L
     }
 }
+
+/**
+ * Una especie con la que se confunde la de la ficha.
+ *
+ * @param times cuantas veces se han cruzado en tus detecciones confirmadas.
+ * @param clipPath tu mejor recorte de esa especie, para oirlas una tras otra.
+ */
+data class Lookalike(
+    val species: Species,
+    val times: Int,
+    val clipPath: String?,
+)

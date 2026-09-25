@@ -162,6 +162,15 @@
     <string name="pokedex_seasonality_subtitle">Registros en GBIF de cada mes, a unos 50 km.</string>
     <string name="pokedex_seasonality_description">Meses con más registros por aquí: %1$s.</string>
 
+    <string name="pokedex_lookalikes_title">Se confunde con…</string>
+    <string name="pokedex_lookalikes_subtitle">Lo que el modelo propuso como alternativa en tus propias detecciones. Escúchalas una tras otra.</string>
+    <plurals name="pokedex_lookalikes_times">
+        <item quantity="one">%1$d vez</item>
+        <item quantity="other">%1$d veces</item>
+    </plurals>
+    <string name="pokedex_lookalikes_play">Escuchar tu recorte de %1$s</string>
+    <string name="pokedex_lookalikes_stop">Parar el recorte de %1$s</string>
+
     <!-- Qué hay aquí ahora -->
     <string name="nearby_header">En tu zona se registran en %1$s %2$d aves que la app sabe identificar, de la más común a la más escasa.</string>
     <plurals name="nearby_missing">

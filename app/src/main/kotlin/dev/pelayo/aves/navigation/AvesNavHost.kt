@@ -518,6 +518,7 @@ fun AvesNavHost(
             SpeciesDetailScreen(
                 speciesId = speciesId,
                 onOpenMap = { navController.navigate("$MAP_ROUTE?$SPECIES_ID_ARG=$speciesId") },
+                onOpenSpecies = { other -> navController.navigate("$SPECIES_DETAIL_ROUTE/$other") },
                 placePicker = placePicker,
                 pendingPhoto = awaiting?.let { identification ->
                     PendingPhotoConfirmation(

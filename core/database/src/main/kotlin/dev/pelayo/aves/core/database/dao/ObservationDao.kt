@@ -82,6 +82,9 @@ interface ListeningSessionDao {
 /** Una observacion y su fichero, para el mantenimiento de recortes y fotos. */
 data class MediaRef(val id: Long, val mediaPath: String)
 
+/** Otra especie y cuantas veces se ha cruzado con una dada en las detecciones. */
+data class LookalikeCount(val speciesId: String, val times: Int)
+
 @Dao
 interface ObservationDao {
 
@@ -160,6 +163,45 @@ interface ObservationDao {
      */
     @Query("UPDATE observations SET userConfirmed = 0, userRejected = 0 WHERE id = :id")
     suspend fun clearReview(id: Long)
+
+    /**
+     * Con que especies se confunde [speciesId], segun las detecciones propias.
+     *
+     * Cuenta dos cosas, solo en observaciones confirmadas: las alternativas que
+     * el modelo propuso cuando era [speciesId] ("¿era otra?"), y las veces que
+     * [speciesId] fue la alternativa de otra especie confirmada. Las dos dicen
+     * lo mismo: para el modelo, en tus grabaciones, esas dos se parecen.
+     */
+    @Query(
+        """
+        SELECT speciesId, SUM(times) AS times FROM (
+            SELECT c.speciesId AS speciesId, COUNT(*) AS times
+            FROM observation_candidates c JOIN observations o ON o.id = c.observationId
+            WHERE o.speciesId = :speciesId AND o.userConfirmed = 1 AND c.speciesId != :speciesId
+            GROUP BY c.speciesId
+            UNION ALL
+            SELECT o.speciesId AS speciesId, COUNT(*) AS times
+            FROM observation_candidates c JOIN observations o ON o.id = c.observationId
+            WHERE c.speciesId = :speciesId AND o.userConfirmed = 1 AND o.speciesId != :speciesId
+            GROUP BY o.speciesId
+        )
+        GROUP BY speciesId
+        ORDER BY times DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun lookalikesOf(speciesId: String, limit: Int): List<LookalikeCount>
+
+    /** El mejor recorte propio de una especie: el de mas confianza entre lo confirmado. */
+    @Query(
+        """
+        SELECT mediaPath FROM observations
+        WHERE speciesId = :speciesId AND userConfirmed = 1 AND source = 'AUDIO' AND mediaPath IS NOT NULL
+        ORDER BY adjustedConfidence DESC
+        LIMIT 1
+        """,
+    )
+    suspend fun bestClipOf(speciesId: String): String?
 
     /** Todos los ficheros que nombra la coleccion. */
     @Query("SELECT id, mediaPath FROM observations WHERE mediaPath IS NOT NULL")

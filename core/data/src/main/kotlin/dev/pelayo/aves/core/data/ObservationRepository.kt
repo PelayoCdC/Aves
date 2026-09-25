@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import dev.pelayo.aves.core.common.Geohash
 import dev.pelayo.aves.core.common.runSuspendCatching
 import dev.pelayo.aves.core.database.AvesDatabase
+import dev.pelayo.aves.core.database.dao.LookalikeCount
 import dev.pelayo.aves.core.database.dao.MediaRef
 import dev.pelayo.aves.core.database.dao.SessionWithCounts
 import dev.pelayo.aves.core.database.entity.ListeningSessionEntity
@@ -327,6 +328,13 @@ class ObservationRepository(
 
     suspend fun delete(observationId: Long) = observationDao.delete(observationId)
 
+    /** Con que especies se confunde esta en tus detecciones. Ver el DAO. */
+    suspend fun lookalikesOf(speciesId: String, limit: Int = LOOKALIKE_LIMIT): List<LookalikeCount> =
+        observationDao.lookalikesOf(speciesId, limit)
+
+    /** El mejor recorte propio de una especie, o null si no tiene ninguno. */
+    suspend fun bestClipOf(speciesId: String): String? = observationDao.bestClipOf(speciesId)
+
     /** Todos los ficheros que nombra la coleccion, para el mantenimiento. */
     suspend fun mediaRefs(): List<MediaRef> = observationDao.mediaRefs()
 
@@ -369,5 +377,8 @@ class ObservationRepository(
 
         /** Lo que consta como "modelo" en una observacion anotada a mano. */
         const val MANUAL_MODEL_ID = "manual"
+
+        /** Mas de cuatro parecidas no aclaran nada: son ruido del modelo. */
+        const val LOOKALIKE_LIMIT = 4
     }
 }

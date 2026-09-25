@@ -108,6 +108,8 @@ fun SpeciesDetailScreen(
     onOpenMap: (() -> Unit)? = null,
     /** Para decir donde fue un avistamiento. Nulo esconde el chip de lugar. */
     placePicker: PlacePickerActions? = null,
+    /** Abre la ficha de otra especie (las parecidas). */
+    onOpenSpecies: (String) -> Unit = {},
 ) {
     // La clave evita que al navegar de una especie a otra se reutilice el
     // ViewModel de la anterior y la ficha se quede con los datos viejos.
@@ -138,6 +140,7 @@ fun SpeciesDetailScreen(
         onConfirmPhoto = viewModel::confirmPhoto,
         onDiscardPhoto = viewModel::discardPhoto,
         onDismissPhotoFailure = viewModel::dismissPhotoFailure,
+        onOpenSpecies = onOpenSpecies,
     )
 }
 
@@ -156,6 +159,7 @@ internal fun SpeciesDetailContent(
     onConfirmPhoto: (SightingDraft) -> Unit = {},
     onDiscardPhoto: () -> Unit = {},
     onDismissPhotoFailure: () -> Unit = {},
+    onOpenSpecies: (String) -> Unit = {},
 ) {
     val species = state.species
 
@@ -248,6 +252,22 @@ internal fun SpeciesDetailContent(
                 Column {
                     Spacer(Modifier.size(8.dp))
                     SeasonalityCard(monthlyCounts = months)
+                }
+            }
+        }
+
+        // Con que se confunde, en TUS detecciones: la ayuda para distinguir
+        // parejas dificiles (mosquitero comun e iberico, carbonero y garrapinos)
+        // con los cantos propios de cada una, uno tras otro.
+        if (state.lookalikes.isNotEmpty()) {
+            item(key = "parecidas") {
+                Column {
+                    Spacer(Modifier.size(8.dp))
+                    LookalikesCard(
+                        lookalikes = state.lookalikes,
+                        clipPlayer = clipPlayer,
+                        onOpenSpecies = onOpenSpecies,
+                    )
                 }
             }
         }

@@ -354,6 +354,15 @@ registros de cada mes a unos 50 km (`SeasonalityRepository`, sobre
 la forma (residente, estival, de paso). Se pregunta por el centro de la celda y
 se guarda en Room 90 días (`species_seasonality`, Room v6).
 
+### Se confunde con…
+
+En la ficha, las especies con las que el modelo confunde a esta **en tus
+propias detecciones**: las alternativas que propuso cuando era esta, y las
+veces que esta fue la alternativa de otra, solo en lo confirmado
+(`ObservationDao.lookalikesOf`). Si tienes un recorte de cada una, se oyen
+desde ahí, una tras otra. No es una lista genérica de parecidas: es la de tu
+oído y tu micrófono, y por eso solo aparece cuando hay datos.
+
 ### Logros
 
 Medallas de hierro a diamante por la parte de una lista que tengas en la
