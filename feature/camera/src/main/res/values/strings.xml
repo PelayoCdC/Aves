@@ -32,6 +32,8 @@
     <string name="camera_permission_body">Identificar por foto es la vía para cuando ves al ave pero no la oyes. Las fotos se analizan en el propio teléfono y no salen de él.</string>
     <string name="camera_permission_hint">Sin este permiso el resto de la app sigue funcionando: escuchar cantos no lo necesita, e identificar una foto que ya tengas en la galería tampoco.</string>
     <string name="camera_permission_button">Conceder acceso a la cámara</string>
+    <string name="camera_permission_settings">Abrir los ajustes de la app</string>
+    <string name="camera_permission_blocked">El permiso de la cámara está denegado y el sistema ya no deja volver a preguntarlo. Se concede desde los ajustes de la app.</string>
     <string name="camera_permission_gallery">Elegir una foto de la galería</string>
 
     <string name="camera_error_no_model_title">Esta versión no incluye modelo de imagen</string>

@@ -179,14 +179,14 @@ class AppContainer(
             if (locationDisabled()) {
                 null
             } else {
-                locationProvider.current()?.let { PickedPlace(it.latitude, it.longitude, CURRENT_PLACE_NAME) }
+                locationProvider.current()?.let { PickedPlace(it.latitude, it.longitude, currentPlaceName) }
             }
         },
         search = placeSearch::search,
         recent = { synchronized(recentPlaces) { recentPlaces.toList() } },
         remember = { place ->
             // La ubicacion actual no se recuerda: mañana "actual" es otro sitio.
-            if (place.name != CURRENT_PLACE_NAME) {
+            if (place.name != currentPlaceName) {
                 synchronized(recentPlaces) {
                     recentPlaces.removeAll { it.name == place.name }
                     recentPlaces.addFirst(place)
@@ -231,7 +231,10 @@ class AppContainer(
     val photosDirectory: File by lazy {
         File(context.filesDir, "photos").apply { mkdirs() }
     }
+
+    /** "Mi ubicacion actual", del mismo recurso que usa el selector de lugar. */
+    val currentPlaceName: String
+        get() = context.getString(dev.pelayo.aves.core.designsystem.R.string.place_current)
 }
 
-private const val CURRENT_PLACE_NAME = "Mi ubicación actual"
 private const val MAX_RECENT_PLACES = 3

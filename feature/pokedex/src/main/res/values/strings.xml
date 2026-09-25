@@ -158,6 +158,12 @@
     <string name="pokedex_source_manual">Anotado a mano</string>
 
     <!-- Cómo se ha conseguido: ojo, cámara y clave de sol -->
+    <string name="pokedex_sort_taxonomic">Por familias</string>
+    <string name="pokedex_sort_recent">Recientes</string>
+    <string name="pokedex_sort_rarity">Más raras</string>
+    <string name="pokedex_source_filter_all">Todas</string>
+    <string name="pokedex_group_recent">Lo último que has visto</string>
+    <string name="pokedex_group_by_rarity">De la más rara a la más común</string>
     <string name="pokedex_source_seen">Vista</string>
     <string name="pokedex_source_photographed">Fotografiada</string>
     <string name="pokedex_source_heard">Oída</string>

@@ -50,6 +50,13 @@ data class SpeciesEntity(
     val summary: String? = null,
     /** Atribucion de la imagen, que en Commons varia por fichero. */
     val imageAttribution: String? = null,
+    /**
+     * Posicion en la taxonomia de eBird, que es el orden de las guias de campo
+     * (de avestruces a paseriformes). Sale del orden de las filas del TSV.
+     * Ordenar familias por su nombre latino ponia a los Accipitridae junto a los
+     * Acrocephalidae, y ninguna guia hace eso.
+     */
+    @ColumnInfo(defaultValue = "0") val taxonOrder: Int = 0,
 )
 
 /**

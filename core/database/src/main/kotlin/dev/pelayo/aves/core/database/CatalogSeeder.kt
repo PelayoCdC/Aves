@@ -140,7 +140,7 @@ class CatalogSeeder(
 
     private fun readSpecies(): List<SpeciesTaxonomy> =
         context.assets.open(SPECIES_ASSET).bufferedReader().use { reader ->
-            reader.dataRows().map { columns ->
+            reader.dataRows().mapIndexed { index, columns ->
                 val scientific = columns[1]
                 val common = columns[5]
                 SpeciesTaxonomy(
@@ -154,6 +154,9 @@ class CatalogSeeder(
                     // Nombre comun y cientifico juntos: se busca por cualquiera
                     // de los dos y asi basta una columna y un indice.
                     searchName = SearchText.fold("$common $scientific"),
+                    // El TSV sale de la taxonomia de eBird en su orden: la fila
+                    // es la posicion taxonomica.
+                    taxonOrder = index + 1,
                 )
             }.toList()
         }

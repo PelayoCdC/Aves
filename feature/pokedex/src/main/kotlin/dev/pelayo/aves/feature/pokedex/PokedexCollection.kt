@@ -176,9 +176,10 @@ internal fun buildCollection(
 /**
  * Agrupa por familia y ordena alfabeticamente dentro de cada una.
  *
- * El orden alfabetico por nombre comun es el de las guias de campo: predecible
- * y buscable con la vista. Ordenar por rareza seria mas vistoso pero moveria
- * las tarjetas de sitio cada vez que cambia un tier.
+ * Las familias van en orden taxonomico ([familyOrder]), que es el de las guias
+ * de campo; dentro de cada familia, alfabetico por nombre comun: predecible y
+ * buscable con la vista. Ordenar por rareza seria mas vistoso pero moveria las
+ * tarjetas de sitio cada vez que cambia un tier.
  */
 internal fun groupByFamily(entries: List<CollectedSpecies>): List<FamilyGroup> = entries
     .groupBy { it.species.family }
@@ -190,7 +191,24 @@ internal fun groupByFamily(entries: List<CollectedSpecies>): List<FamilyGroup> =
             ),
         )
     }
-    .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.family })
+    .sortedWith(familyOrder(entries.map { it.species }) { it.family })
+
+/**
+ * Orden de las familias: el taxonomico de eBird (la primera especie de cada
+ * familia marca su sitio), que es el de cualquier guia de campo. Antes era el
+ * alfabetico del nombre latino, que ponia a los Accipitridae junto a los
+ * Acrocephalidae. Lo que no trae orden taxonomico (0) va al final, por nombre.
+ */
+internal fun <T> familyOrder(species: List<Species>, familyOf: (T) -> String): Comparator<T> {
+    val firstInFamily = HashMap<String, Int>()
+    for (entry in species) {
+        val order = entry.taxonOrder.takeIf { it > 0 } ?: continue
+        val current = firstInFamily[entry.family]
+        if (current == null || order < current) firstInFamily[entry.family] = order
+    }
+    return compareBy<T> { firstInFamily[familyOf(it)] ?: Int.MAX_VALUE }
+        .thenBy(String.CASE_INSENSITIVE_ORDER) { familyOf(it) }
+}
 
 /**
  * Filtro de texto sobre la coleccion.
@@ -368,8 +386,9 @@ internal fun groupByFamily(
     val missingByFamily = missing.groupBy { it.species.family }
     val byName = compareBy<Species, String>(String.CASE_INSENSITIVE_ORDER) { it.commonName }
 
+    val allSpecies = entries.map { it.species } + missing.map { it.species }
     return (collectedByFamily.keys + missingByFamily.keys)
-        .sortedWith(String.CASE_INSENSITIVE_ORDER)
+        .sortedWith(familyOrder<String>(allSpecies) { it })
         .map { family ->
             FamilyGroup(
                 family = family,
@@ -389,4 +408,66 @@ internal fun filterMissing(entries: List<MissingSpecies>, query: String): List<M
             foldForSearch(species.family).contains(needle) ||
             foldForSearch(species.genus).contains(needle)
     }
+}
+
+/** Como se ordena la coleccion. */
+enum class CollectionSort {
+    /** Por familias, en el orden de las guias. Es el de siempre, y el unico con "las que faltan". */
+    TAXONOMIC,
+
+    /** Lo ultimo que viste, primero. */
+    RECENT,
+
+    /** Lo mas raro que tienes, primero; lo de rareza desconocida, al final. */
+    RARITY,
+}
+
+/** Que capturas cuentan para ensenar una especie: todas, o solo las de un origen. */
+enum class SourceFilter(val source: ObservationSource?) {
+    ALL(null),
+    SEEN(ObservationSource.MANUAL),
+    PHOTOGRAPHED(ObservationSource.IMAGE),
+    HEARD(ObservationSource.AUDIO),
+}
+
+/**
+ * Nombre del bloque unico cuando la coleccion no va por familias. Vacio a
+ * proposito: la cabecera la pone la pantalla, que es quien sabe los textos.
+ */
+internal const val FLAT_GROUP = ""
+
+/**
+ * Aplica el orden y el filtro de origen a los bloques ya agrupados por familia.
+ *
+ * Con un orden que no es el taxonomico, las familias dejan de tener sentido y
+ * todo va en un solo bloque ([FLAT_GROUP]); "las que faltan" solo se ensenan
+ * por familias, que es donde dicen algo. El filtro de origen deja las especies
+ * con al menos una captura de ese tipo ("que he fotografiado").
+ */
+internal fun arrange(
+    groups: List<FamilyGroup>,
+    sort: CollectionSort,
+    filter: SourceFilter,
+): List<FamilyGroup> {
+    val wanted = filter.source
+    val filtered = if (wanted == null) {
+        groups
+    } else {
+        groups.mapNotNull { group ->
+            val members = group.members.filter { entry -> entry.sightings.any { it.source == wanted } }
+            // Con un filtro de origen, lo que falta no se ha capturado de ninguna forma: fuera.
+            if (members.isEmpty()) null else group.copy(members = members, missing = emptyList())
+        }
+    }
+    if (sort == CollectionSort.TAXONOMIC) return filtered
+
+    val all = filtered.flatMap { it.members }
+    val sorted = when (sort) {
+        CollectionSort.RECENT -> all.sortedByDescending { it.lastSeenAt }
+        CollectionSort.RARITY -> all.sortedWith(
+            compareByDescending<CollectedSpecies> { it.rarity.level }.thenByDescending { it.lastSeenAt },
+        )
+        CollectionSort.TAXONOMIC -> all
+    }
+    return if (sorted.isEmpty()) emptyList() else listOf(FamilyGroup(family = FLAT_GROUP, members = sorted))
 }

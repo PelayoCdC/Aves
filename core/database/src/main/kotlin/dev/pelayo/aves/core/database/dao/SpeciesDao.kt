@@ -28,6 +28,7 @@ data class SpeciesTaxonomy(
     val defaultCommonName: String,
     val ebirdCode: String?,
     val searchName: String,
+    val taxonOrder: Int,
 )
 
 @Dao

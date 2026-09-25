@@ -57,6 +57,7 @@ fun ReviewScreen(
         onReject = viewModel::reject,
         onConfirmAs = viewModel::confirmAs,
         onUndo = viewModel::undo,
+        onUndoExpired = viewModel::undoWindowClosed,
         onOpenSpecies = onSpeciesClick,
         modifier = modifier,
     )
@@ -72,6 +73,8 @@ internal fun ReviewContent(
     onReject: (Long) -> Unit,
     onUndo: () -> Unit,
     modifier: Modifier = Modifier,
+    /** El aviso se fue sin que nadie pulsara "Deshacer": ya se puede escribir. */
+    onUndoExpired: (ReviewAction) -> Unit = {},
     onConfirmAs: (Long, Alternative) -> Unit = { _, _ -> },
     onOpenSpecies: (String) -> Unit = {},
 ) {
@@ -105,7 +108,10 @@ internal fun ReviewContent(
             withDismissAction = false,
             duration = SnackbarDuration.Short,
         )
-        if (result == SnackbarResult.ActionPerformed) onUndo()
+        // La decision se escribe cuando el aviso se va, no a los N segundos de
+        // un reloj aparte: con TalkBack el aviso dura bastante mas, y el boton
+        // "Deshacer" seguia en pantalla cuando ya no podia deshacer nada.
+        if (result == SnackbarResult.ActionPerformed) onUndo() else onUndoExpired(undoable)
     }
 
     Box(modifier = modifier.fillMaxSize()) {

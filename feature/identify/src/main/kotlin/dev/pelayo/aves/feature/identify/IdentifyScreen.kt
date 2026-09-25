@@ -2,10 +2,9 @@ package dev.pelayo.aves.feature.identify
 
 import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.provider.OpenableColumns
 import android.os.Build
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -34,7 +33,6 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -63,12 +61,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.pelayo.aves.core.audio.AudioFileDecoder
+import dev.pelayo.aves.core.designsystem.components.ErrorCard
+import dev.pelayo.aves.core.designsystem.components.PermissionBlockedHint
 import dev.pelayo.aves.core.designsystem.components.PlacePickerActions
 import dev.pelayo.aves.core.designsystem.components.PlacePickerDialog
+import dev.pelayo.aves.core.designsystem.components.hasPermission
+import dev.pelayo.aves.core.designsystem.components.isPermanentlyDenied
+import dev.pelayo.aves.core.designsystem.components.openAppSettings
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import dev.pelayo.aves.core.designsystem.theme.ScientificNameStyle
 import dev.pelayo.aves.core.listening.DetectionNamer
@@ -145,12 +147,16 @@ fun IdentifyScreen(
     // vez la primera vez; despues, solo el que falte, una sola vez.
     var pendingStart by remember { mutableStateOf(false) }
     var askedOptional by rememberSaveable { mutableStateOf(false) }
+    // Tras un "no" definitivo, pedir el permiso vuelve al instante sin ensenar
+    // nada y el boton parecia roto. Entonces se explica y se lleva a Ajustes.
+    var microphoneBlocked by rememberSaveable { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { _ ->
         if (pendingStart && context.hasPermission(Manifest.permission.RECORD_AUDIO)) {
             viewModel.toggleListening()
         }
+        microphoneBlocked = context.isPermanentlyDenied(Manifest.permission.RECORD_AUDIO)
         pendingStart = false
     }
 
@@ -158,6 +164,8 @@ fun IdentifyScreen(
         val hasMicrophone = context.hasPermission(Manifest.permission.RECORD_AUDIO)
         val optionalMissing = optionalPermissions().filterNot(context::hasPermission)
         when {
+            !hasMicrophone && microphoneBlocked -> context.openAppSettings()
+
             !hasMicrophone -> {
                 pendingStart = true
                 permissionLauncher.launch((listOf(Manifest.permission.RECORD_AUDIO) + optionalMissing).toTypedArray())
@@ -448,6 +456,13 @@ fun IdentifyScreen(
             }
         }
 
+        if (microphoneBlocked && !context.hasPermission(Manifest.permission.RECORD_AUDIO)) {
+            PermissionBlockedHint(
+                reason = stringResource(R.string.identify_mic_blocked),
+                modifier = Modifier.padding(top = 12.dp),
+            )
+        }
+
         // Requisito de la licencia CC BY-NC-SA, no un detalle de cortesia.
         attribution?.let { text ->
             Spacer(Modifier.size(12.dp))
@@ -488,9 +503,6 @@ private fun Context.displayNameOf(uri: Uri): String {
         ?: uri.lastPathSegment?.substringAfterLast('/')
         ?: "audio"
 }
-
-private fun Context.hasPermission(permission: String): Boolean =
-    ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
 /** Los que mejoran la app pero no la bloquean. */
 private fun optionalPermissions(): List<String> = buildList {
@@ -605,23 +617,7 @@ private fun ErrorCard(
                 stringResource(R.string.identify_error_analysis_help)
     }
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer,
-            contentColor = MaterialTheme.colorScheme.onErrorContainer,
-        ),
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(text = title, style = MaterialTheme.typography.titleSmall)
-            Spacer(Modifier.size(4.dp))
-            Text(text = help, style = MaterialTheme.typography.bodySmall)
-            if (detail != null) {
-                Spacer(Modifier.size(4.dp))
-                Text(text = detail, style = MaterialTheme.typography.labelSmall)
-            }
-        }
-    }
+    ErrorCard(title = title, help = help, detail = detail, modifier = modifier)
 }
 
 @Preview

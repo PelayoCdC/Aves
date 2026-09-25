@@ -32,6 +32,9 @@ class ObservationRepository(
     /** Solo lo que el usuario ha confirmado. Esa es la coleccion de verdad. */
     fun collection(): Flow<List<ObservationEntity>> = observationDao.confirmed()
 
+    /** Lo confirmado de una especie, del mas reciente al mas antiguo. */
+    fun collectionOf(speciesId: String): Flow<List<ObservationEntity>> = observationDao.confirmedOf(speciesId)
+
     /** Lo detectado pero aun sin revisar: la bandeja. */
     fun pendingReview(): Flow<List<ObservationEntity>> = observationDao.pendingReview()
 

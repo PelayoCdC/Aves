@@ -25,6 +25,8 @@ data class Species(
     val wikipediaUrl: String? = null,
     val summary: String? = null,
     val imageAttribution: String? = null,
+    /** Posicion en la taxonomia de eBird: el orden de las guias de campo. 0 si no se sabe. */
+    val taxonOrder: Int = 0,
 ) {
     /** Ya se consulto la enciclopedia, con o sin exito: no hay que volver a pedirla. */
     val hasEncyclopedia: Boolean get() = summary != null || imageUrl != null || wikipediaUrl != null

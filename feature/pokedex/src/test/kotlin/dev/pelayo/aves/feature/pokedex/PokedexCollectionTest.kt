@@ -198,6 +198,56 @@ class PokedexCollectionTest {
 
     private fun List<CollectedSpecies>.ids() = map { it.species.speciesId }
 
+    @Test
+    fun `las familias van en orden taxonomico, como en las guias`() {
+        // Alfabeticamente, Accipitridae iria antes que Anatidae; en eBird (y en
+        // cualquier guia) los patos van mucho antes que las rapaces.
+        val anade = species("anapla", "Ánade azulón", "Anas platyrhynchos", "Anatidae").copy(taxonOrder = 300)
+        val busardo = species("butbut", "Busardo ratonero", "Buteo buteo", "Accipitridae").copy(taxonOrder = 2_000)
+        val sinOrden = species("xxx", "Sin orden", "Aaa aaa", "Aaaidae")
+
+        val families = groupByFamily(listOf(entryOf(busardo), entryOf(sinOrden), entryOf(anade)))
+            .map { it.family }
+
+        assertEquals(listOf("Anatidae", "Accipitridae", "Aaaidae"), families)
+    }
+
+    @Test
+    fun `recientes junta todo en un bloque, de lo ultimo a lo primero`() {
+        val old = CollectedSpecies(mirlo, listOf(sighting(1, mirlo.speciesId, timestamp = 1_000)))
+        val new = CollectedSpecies(carbonero, listOf(sighting(2, carbonero.speciesId, timestamp = 9_000)))
+
+        val arranged = arrange(groupByFamily(listOf(old, new)), CollectionSort.RECENT, SourceFilter.ALL)
+
+        assertEquals(1, arranged.size)
+        assertEquals(FLAT_GROUP, arranged.single().family)
+        assertEquals(listOf(carbonero, mirlo), arranged.single().members.map { it.species })
+    }
+
+    @Test
+    fun `mas raras pone lo desconocido al final`() {
+        val rare = CollectedSpecies(mirlo, listOf(sighting(1, mirlo.speciesId, 1_000, RarityTier.RARE)))
+        val unknown = CollectedSpecies(zorzal, listOf(sighting(2, zorzal.speciesId, 9_000, RarityTier.UNKNOWN)))
+        val common = CollectedSpecies(carbonero, listOf(sighting(3, carbonero.speciesId, 5_000, RarityTier.COMMON)))
+
+        val arranged = arrange(groupByFamily(listOf(unknown, common, rare)), CollectionSort.RARITY, SourceFilter.ALL)
+
+        assertEquals(listOf(mirlo, carbonero, zorzal), arranged.single().members.map { it.species })
+    }
+
+    @Test
+    fun `el filtro de origen deja solo lo capturado asi`() {
+        val heard = CollectedSpecies(mirlo, listOf(sighting(1, mirlo.speciesId, 1_000)))
+        val photographed = CollectedSpecies(
+            carbonero,
+            listOf(sighting(2, carbonero.speciesId, 2_000).copy(source = ObservationSource.IMAGE)),
+        )
+
+        val arranged = arrange(groupByFamily(listOf(heard, photographed)), CollectionSort.TAXONOMIC, SourceFilter.PHOTOGRAPHED)
+
+        assertEquals(listOf(carbonero), arranged.flatMap { it.members }.map { it.species })
+    }
+
     private val mirlo = species("turmer", "Mirlo común", "Turdus merula", "Turdidae")
     private val zorzal = species("turphi", "Zorzal común", "Turdus philomelos", "Turdidae")
     private val carbonero = species("parmaj", "Carbonero común", "Parus major", "Paridae")

@@ -25,6 +25,17 @@ enum class AvesSkin {
     companion object {
         fun fromName(name: String?): AvesSkin = entries.firstOrNull { it.name == name } ?: SYSTEM
     }
+
+    /**
+     * Si esta piel pinta oscuro. Solo [SYSTEM] depende del sistema; el resto
+     * manda aunque el movil diga otra cosa, y los iconos de la barra de estado
+     * tienen que seguirla a ella, no al sistema.
+     */
+    fun isDark(systemDark: Boolean): Boolean = when (this) {
+        SYSTEM -> systemDark
+        FOREST, DAWN -> false
+        NIGHT -> true
+    }
 }
 
 /** Bosque: los verdes de la marca en claro, con fondos con un punto de hoja. */

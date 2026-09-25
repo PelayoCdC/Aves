@@ -18,6 +18,7 @@ import dev.pelayo.aves.core.model.Coordinates
 import dev.pelayo.aves.core.model.RarityTier
 import dev.pelayo.aves.core.model.Species
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
@@ -30,6 +31,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -109,6 +111,14 @@ data class PokedexUiState(
     val chosenZone: PokedexZone? = null,
     /** El navegador de zonas, mientras esta abierto. */
     val zoneBrowser: ZoneBrowserState? = null,
+    val sort: CollectionSort = CollectionSort.TAXONOMIC,
+    val sourceFilter: SourceFilter = SourceFilter.ALL,
+)
+
+/** Orden y filtro de la rejilla, que solo le importan a esta pantalla. */
+private data class ViewOptions(
+    val sort: CollectionSort = CollectionSort.TAXONOMIC,
+    val filter: SourceFilter = SourceFilter.ALL,
 )
 
 /**
@@ -139,6 +149,7 @@ class PokedexViewModel(
     private val zoneStatus = MutableStateFlow(ZoneStatus.READY)
     private val detecting = MutableStateFlow(false)
     private val browser = MutableStateFlow<ZoneBrowserState?>(null)
+    private val viewOptions = MutableStateFlow(ViewOptions())
 
     /** Lo efimero de la zona, junto: `combine` admite cinco flujos y ya eran cinco. */
     private val zoneUi = combine(zoneStatus, detecting, browser) { status, isDetecting, browsing ->
@@ -152,9 +163,17 @@ class PokedexViewModel(
      */
     private val detectableTotal = speciesRepository.detectableSpeciesCount()
 
-    /** Busqueda en el catalogo entero, con un respiro para no consultar en cada tecla. */
-    private val catalogMatches = query
-        .debounce(SEARCH_DEBOUNCE_MILLIS)
+    /**
+     * La consulta que se aplica, con un respiro para no rehacer la coleccion
+     * entera (buscar en el catalogo, agrupar, estadisticas) en cada tecla.
+     * Borrarla se aplica al instante: ahi no hay nada que ahorrar.
+     */
+    private val appliedQuery = query
+        .debounce { text -> if (text.isEmpty()) 0L else SEARCH_DEBOUNCE_MILLIS }
+        .distinctUntilChanged()
+
+    /** Busqueda en el catalogo entero. */
+    private val catalogMatches = appliedQuery
         .flatMapLatest { text -> speciesRepository.search(text, limit = CATALOG_MATCH_LIMIT) }
 
     private val preferences: Flow<PokedexPreferences> =
@@ -186,7 +205,7 @@ class PokedexViewModel(
         // riesgo de que se contradigan.
         observationRepository.collectedSpeciesIds(),
         observationRepository.collection(),
-        query,
+        appliedQuery,
         detectableTotal,
         catalogMatches,
     ) { ids, observations, text, total, matches ->
@@ -198,7 +217,8 @@ class PokedexViewModel(
         preferences,
         zoneSpecies,
         zoneUi,
-    ) { snapshot, prefs, species, ui ->
+        viewOptions,
+    ) { snapshot, prefs, species, ui, options ->
         val catalog = speciesRepository.findAll(snapshot.ids).associateBy { it.speciesId }
         val collected = buildCollection(
             sightings = snapshot.observations.map(ObservationEntity::toSighting),
@@ -219,7 +239,7 @@ class PokedexViewModel(
             isLoading = false,
             query = snapshot.query,
             progress = view.progress,
-            groups = view.groups,
+            groups = arrange(view.groups, options.sort, options.filter),
             hasAnyCollected = collected.isNotEmpty(),
             stats = computeStats(collected, clock()),
             catalogMatches = snapshot.matches.filterNot { it.speciesId in onScreen },
@@ -232,8 +252,12 @@ class PokedexViewModel(
             homeCountryCode = prefs.home.countryCode,
             chosenZone = prefs.chosen,
             zoneBrowser = ui.browser,
+            sort = options.sort,
+            sourceFilter = options.filter,
         )
     }
+        // Agrupar y contar miles de especies no es trabajo del hilo principal.
+        .flowOn(Dispatchers.Default)
         .stateIn(
             scope = viewModelScope,
             // La coleccion se recompone tras un cruce con la base de datos; si se
@@ -284,6 +308,14 @@ class PokedexViewModel(
 
     fun onQueryChange(value: String) {
         query.value = value
+    }
+
+    fun onSortChange(sort: CollectionSort) {
+        viewOptions.update { it.copy(sort = sort) }
+    }
+
+    fun onSourceFilterChange(filter: SourceFilter) {
+        viewOptions.update { it.copy(filter = filter) }
     }
 
     fun onZoneLevelChange(level: ZoneLevel) {

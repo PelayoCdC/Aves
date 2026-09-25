@@ -111,6 +111,13 @@ class ReviewViewModel(
      * Es gratis precisamente porque la escritura estaba diferida: no hay que
      * "des-confirmar" nada en la base de datos, basta con no llegar a escribir.
      */
+    /**
+     * El aviso de deshacer se ha ido sin que se pulsara: la decision ya es
+     * firme. Solo si [action] sigue siendo la reversible; si ya se consolido
+     * por otro camino (una decision nueva, el reloj de respaldo), no hace nada.
+     */
+    fun undoWindowClosed(action: ReviewAction) = expire(action)
+
     fun undo() {
         val action = synchronized(undoStack) { undoStack.pop() } ?: return
         expiryJob?.cancel()
@@ -185,10 +192,13 @@ class ReviewViewModel(
 
     companion object {
         /**
-         * Algo mas larga que el aviso en pantalla (unos 4 s): asi nunca se da el
-         * caso de un boton "Deshacer" visible que ya no hace nada.
+         * Respaldo, no el plazo normal. Lo normal es que la decision se escriba
+         * cuando el aviso de la pantalla se va ([undoWindowClosed]), dure lo que
+         * dure: con los servicios de accesibilidad activos, Material alarga el
+         * aviso "corto" muy por encima de los 4 s de siempre. Este reloj solo
+         * cubre que la pantalla deje de verse con una decision a medias.
          */
-        const val UNDO_WINDOW_MILLIS = 5_000L
+        const val UNDO_WINDOW_MILLIS = 60_000L
 
         /** Sobrevive a un giro de pantalla sin volver a consultar la base. */
         private const val SUBSCRIPTION_TIMEOUT_MILLIS = 5_000L

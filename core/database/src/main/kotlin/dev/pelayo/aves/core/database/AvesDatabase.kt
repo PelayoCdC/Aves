@@ -39,6 +39,8 @@ import dev.pelayo.aves.core.database.entity.SpeciesNameEntity
  *     `region_cell_months` e indice unico en los candidatos.
  *  3. Listas de especies por zona (`region_checklists`,
  *     `region_checklist_species`) y preferencias de la Pokedex.
+ *  4. Zona elegida a mano (`pokedex_preferences.customZone*`).
+ *  5. `species.taxonOrder`, para ordenar las familias como las guias.
  */
 @Database(
     entities = [
@@ -55,12 +57,13 @@ import dev.pelayo.aves.core.database.entity.SpeciesNameEntity
         RegionChecklistSpeciesEntity::class,
         PokedexPreferencesEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
+        AutoMigration(from = 4, to = 5),
     ],
 )
 @TypeConverters(Converters::class)

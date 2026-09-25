@@ -41,6 +41,7 @@
     <string name="identify_error_mic_help">Puede que otra aplicación lo tenga ocupado, o que falte el permiso.</string>
     <string name="identify_error_audio_title">Ese fichero no se puede analizar</string>
     <string name="identify_error_audio_help">No se pudo decodificar. Se admiten %1$s. Si es una grabación protegida o de un formato raro, expórtala antes a uno de esos.</string>
+    <string name="identify_mic_blocked">El permiso del micrófono está denegado. Sin él no se puede escuchar; se concede desde los ajustes de la app.</string>
     <string name="identify_mic_silenced">Otra aplicación está usando el micrófono: ahora mismo no se oye nada. Se reanuda solo cuando lo suelte.</string>
     <string name="identify_error_analysis_title">El análisis se interrumpió</string>
     <string name="identify_error_analysis_help">El modelo falló a mitad del fichero. Vuelve a intentarlo; si se repite, prueba con otro fichero o reinicia la app.</string>

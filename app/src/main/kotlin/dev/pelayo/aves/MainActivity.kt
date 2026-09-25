@@ -1,18 +1,22 @@
 package dev.pelayo.aves
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.pelayo.aves.core.designsystem.theme.AvesSkin
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
-import dev.pelayo.aves.feature.settings.AvesSettings
 import dev.pelayo.aves.core.listening.ListeningTileService
+import dev.pelayo.aves.feature.settings.AvesSettings
 import dev.pelayo.aves.ui.AvesApp
 
 class MainActivity : ComponentActivity() {
@@ -39,7 +43,19 @@ class MainActivity : ComponentActivity() {
             // La piel la elige el usuario en Ajustes. Hasta la primera lectura
             // del disco, la del sistema: es la que menos desentona un instante.
             val settings by container.settingsStore.settings.collectAsStateWithLifecycle(initialValue = AvesSettings())
-            AvesTheme(skin = AvesSkin.fromName(settings.skin)) {
+            val skin = AvesSkin.fromName(settings.skin)
+            // Los iconos de la barra de estado siguen a la PIEL, no al sistema:
+            // con Noche en un movil en modo claro salian oscuros sobre oscuro.
+            val dark = skin.isDark(isSystemInDarkTheme())
+            LaunchedEffect(dark) {
+                val style = if (dark) {
+                    SystemBarStyle.dark(Color.TRANSPARENT)
+                } else {
+                    SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                }
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+            }
+            AvesTheme(skin = skin) {
                 AvesApp(
                     container,
                     startListeningToken = startListeningToken,

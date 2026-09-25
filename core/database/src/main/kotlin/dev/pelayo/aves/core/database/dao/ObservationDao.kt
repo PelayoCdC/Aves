@@ -101,6 +101,16 @@ interface ObservationDao {
     )
     fun confirmed(): Flow<List<ObservationEntity>>
 
+    /** Lo confirmado de una especie, para su ficha: sin traerse la coleccion entera para filtrarla. */
+    @Query(
+        """
+        SELECT * FROM observations
+        WHERE userConfirmed = 1 AND speciesId = :speciesId
+        ORDER BY timestamp DESC
+        """,
+    )
+    fun confirmedOf(speciesId: String): Flow<List<ObservationEntity>>
+
     /** La bandeja de revision: ni confirmado ni rechazado todavia. */
     @Query(
         """

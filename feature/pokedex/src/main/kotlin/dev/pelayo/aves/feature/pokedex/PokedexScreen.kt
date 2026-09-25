@@ -1,6 +1,8 @@
 package dev.pelayo.aves.feature.pokedex
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +39,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -99,6 +102,8 @@ fun PokedexScreen(
         onBrowseBack = viewModel::browseBack,
         onCloseBrowser = viewModel::closeZoneBrowser,
         onChooseZone = viewModel::chooseZone,
+        onSortChange = viewModel::onSortChange,
+        onSourceFilterChange = viewModel::onSourceFilterChange,
         modifier = modifier,
     )
 }
@@ -125,6 +130,8 @@ internal fun PokedexContent(
     onBrowseBack: () -> Unit = {},
     onCloseBrowser: () -> Unit = {},
     onChooseZone: (PokedexZone) -> Unit = {},
+    onSortChange: (CollectionSort) -> Unit = {},
+    onSourceFilterChange: (SourceFilter) -> Unit = {},
 ) {
     state.zoneBrowser?.let { browser ->
         ZoneBrowserDialog(
@@ -168,6 +175,11 @@ internal fun PokedexContent(
         // devuelve el flujo (que llega un instante despues, tras cruzar la base
         // de datos), el cursor saltaria a la posicion anterior con cada letra.
         var queryText by rememberSaveable { mutableStateOf(state.query) }
+        // El texto sobrevive a la muerte del proceso y el ViewModel no: sin
+        // esto el campo decia "mirlo" y la lista salia entera, sin filtrar.
+        LaunchedEffect(Unit) {
+            if (queryText.isNotEmpty() && queryText != state.query) onQueryChange(queryText)
+        }
         OutlinedTextField(
             value = queryText,
             onValueChange = { text ->
@@ -193,6 +205,16 @@ internal fun PokedexContent(
                 }
             },
         )
+
+        if (state.hasAnyCollected) {
+            SortAndSourceRow(
+                sort = state.sort,
+                filter = state.sourceFilter,
+                onSortChange = onSortChange,
+                onFilterChange = onSourceFilterChange,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+        }
 
         Spacer(Modifier.size(12.dp))
 
@@ -221,6 +243,69 @@ internal fun PokedexContent(
             )
         }
     }
+}
+
+/**
+ * Orden de la rejilla (un desplegable) y filtro por origen (chips): "que he
+ * fotografiado", "lo ultimo que oi", "lo mas raro que tengo".
+ */
+@Composable
+private fun SortAndSourceRow(
+    sort: CollectionSort,
+    filter: SourceFilter,
+    onSortChange: (CollectionSort) -> Unit,
+    onFilterChange: (SourceFilter) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box {
+            FilterChip(
+                selected = sort != CollectionSort.TAXONOMIC,
+                onClick = { menuOpen = true },
+                label = { Text(stringResource(sort.label())) },
+                trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
+            )
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                CollectionSort.entries.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(stringResource(option.label())) },
+                        onClick = {
+                            menuOpen = false
+                            onSortChange(option)
+                        },
+                    )
+                }
+            }
+        }
+        SourceFilter.entries.forEach { option ->
+            FilterChip(
+                selected = filter == option,
+                onClick = { onFilterChange(option) },
+                label = { Text(stringResource(option.label())) },
+            )
+        }
+    }
+}
+
+private fun CollectionSort.label(): Int = when (this) {
+    CollectionSort.TAXONOMIC -> R.string.pokedex_sort_taxonomic
+    CollectionSort.RECENT -> R.string.pokedex_sort_recent
+    CollectionSort.RARITY -> R.string.pokedex_sort_rarity
+}
+
+private fun SourceFilter.label(): Int = when (this) {
+    SourceFilter.ALL -> R.string.pokedex_source_filter_all
+    SourceFilter.SEEN -> R.string.pokedex_source_seen
+    SourceFilter.PHOTOGRAPHED -> R.string.pokedex_source_photographed
+    SourceFilter.HEARD -> R.string.pokedex_source_heard
 }
 
 @Composable
@@ -254,7 +339,13 @@ private fun CollectionGrid(
                 contentType = "cabecera",
             ) {
                 FamilyHeader(
-                    family = group.family,
+                    family = if (group.family == FLAT_GROUP) {
+                        stringResource(
+                            if (state.sort == CollectionSort.RARITY) R.string.pokedex_group_by_rarity else R.string.pokedex_group_recent,
+                        )
+                    } else {
+                        group.family
+                    },
                     count = group.size,
                     collected = group.members.size.takeIf { group.missing.isNotEmpty() },
                 )

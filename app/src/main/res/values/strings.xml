@@ -5,6 +5,17 @@
     <string name="destination_review">Revisar</string>
     <string name="destination_pokedex">Pokédex</string>
     <string name="destination_settings">Ajustes</string>
+    <string name="title_species">Ficha</string>
+    <string name="title_map">Mapa</string>
+    <string name="title_achievements">Logros</string>
+    <string name="title_sessions">Historial de escuchas</string>
+    <string name="title_session">Escucha</string>
+    <string name="title_camera">Identificar por foto</string>
+    <string name="navigate_up">Volver</string>
     <string name="export_failed">No se pudo exportar. Prueba a elegir otra carpeta.</string>
     <string name="photo_save_failed">No se pudo guardar la foto.</string>
+    <plurals name="review_pending_badge">
+        <item quantity="one">%1$d detección por revisar</item>
+        <item quantity="other">%1$d detecciones por revisar</item>
+    </plurals>
 </resources>

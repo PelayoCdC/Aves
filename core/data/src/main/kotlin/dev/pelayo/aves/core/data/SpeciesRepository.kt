@@ -67,4 +67,5 @@ internal fun SpeciesEntity.toDomain() = Species(
     wikipediaUrl = wikipediaUrl,
     summary = summary,
     imageAttribution = imageAttribution,
+    taxonOrder = taxonOrder,
 )

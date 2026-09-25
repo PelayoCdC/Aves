@@ -21,7 +21,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -91,12 +92,13 @@ internal fun SightingEditorDialog(
     onDismiss: () -> Unit,
     locateIfEmpty: (suspend () -> PickedPlace?)? = null,
 ) {
-    var timestamp by remember { mutableLongStateOf(initial.timestamp) }
-    var place by remember { mutableStateOf(initial.place) }
-    var notes by remember { mutableStateOf(initial.notes.orEmpty()) }
-    var showDate by remember { mutableStateOf(false) }
-    var showPlace by remember { mutableStateOf(false) }
-    var placeTouched by remember { mutableStateOf(false) }
+    // Saveable: girar el movil a mitad de escribir las notas las borraba.
+    var timestamp by rememberSaveable { mutableLongStateOf(initial.timestamp) }
+    var place by rememberSaveable(stateSaver = PickedPlaceSaver) { mutableStateOf(initial.place) }
+    var notes by rememberSaveable { mutableStateOf(initial.notes.orEmpty()) }
+    var showDate by rememberSaveable { mutableStateOf(false) }
+    var showPlace by rememberSaveable { mutableStateOf(false) }
+    var placeTouched by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         if (place == null && locateIfEmpty != null) {
@@ -166,3 +168,11 @@ internal fun SightingEditorDialog(
         )
     }
 }
+
+/** Un lugar elegido, guardable en el estado de la pantalla (no es Parcelable). */
+private val PickedPlaceSaver = Saver<PickedPlace?, List<Any>>(
+    save = { place -> place?.let { listOf(it.latitude, it.longitude, it.name) } ?: emptyList() },
+    restore = { saved ->
+        if (saved.size < 3) null else PickedPlace(saved[0] as Double, saved[1] as Double, saved[2] as String)
+    },
+)

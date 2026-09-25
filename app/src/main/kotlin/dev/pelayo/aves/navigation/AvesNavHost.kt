@@ -6,6 +6,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -84,6 +85,9 @@ private const val SESSION_ID_ARG = "sessionId"
  */
 private const val CAMERA_ROUTE = "camera"
 
+/** Lo maximo que espera la camara una ubicacion fresca cuando no hay ninguna conocida. */
+private const val CAMERA_FIX_TIMEOUT_MILLIS = 2_000L
+
 private const val TAG = "AvesNavHost"
 
 /** El idioma de la interfaz, que es castellano fijo: "España" y no "Spain". */
@@ -103,6 +107,25 @@ private fun deviceCountryCode(context: Context): String? {
         ?: runCatching { telephony?.simCountryIso }.getOrNull()?.takeIf { it.length == 2 }
     return fromNetwork?.uppercase()
         ?: Locale.getDefault().country.takeIf { it.length == 2 }?.uppercase()
+}
+
+/**
+ * Titulo de la barra superior de una pantalla que no es una pestana, o null
+ * si [route] es una pestana (esas no llevan barra: la inferior ya dice donde
+ * estas).
+ */
+@StringRes
+internal fun subScreenTitle(route: String?): Int? {
+    val base = route?.substringBefore('/')?.substringBefore('?') ?: return null
+    return when (base) {
+        SPECIES_DETAIL_ROUTE -> R.string.title_species
+        MAP_ROUTE -> R.string.title_map
+        ACHIEVEMENTS_ROUTE -> R.string.title_achievements
+        SESSIONS_ROUTE -> R.string.title_sessions
+        SESSION_DETAIL_ROUTE -> R.string.title_session
+        CAMERA_ROUTE -> R.string.title_camera
+        else -> null
+    }
 }
 
 /**
@@ -162,6 +185,18 @@ fun AvesNavHost(
     // modo sin ubicacion.
     val currentLocation: suspend () -> dev.pelayo.aves.core.model.Coordinates? = {
         if (settings.locationDisabled) null else container.locationProvider.current()
+    }
+
+    // La camara no puede esperar: el obturador esperaba hasta 8 s una lectura
+    // fresca antes de clasificar. Para una celda de 40 km sobra la ultima
+    // conocida; solo si no hay ninguna se pide una, con poco margen.
+    val cameraLocation: suspend () -> dev.pelayo.aves.core.model.Coordinates? = {
+        if (settings.locationDisabled) {
+            null
+        } else {
+            container.locationProvider.lastKnown()
+                ?: container.locationProvider.current(timeoutMillis = CAMERA_FIX_TIMEOUT_MILLIS)
+        }
     }
 
     // La foto identificada que esta esperando a que el usuario la confirme
@@ -266,7 +301,7 @@ fun AvesNavHost(
         composable(CAMERA_ROUTE) {
             CameraScreen(
                 classifierProvider = { createImageClassifier(appContext, contextPrior) },
-                locationProvider = currentLocation,
+                locationProvider = cameraLocation,
                 contextInfluence = settings.contextInfluence,
                 placePicker = placePicker,
                 nameCandidates = container.imageCandidateNamer::name,
@@ -394,6 +429,7 @@ fun AvesNavHost(
                             ) ?: RarityTier.UNKNOWN
                         },
                         savePhoto = container.galleryPhotoSaver::save,
+                        currentPlaceName = container.currentPlaceName,
                     )
                 },
             )
