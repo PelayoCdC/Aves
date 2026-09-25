@@ -49,5 +49,8 @@
     <string name="settings_data_title">Datos</string>
     <string name="settings_data_subtitle">Tu colección, y cómo llevártela.</string>
     <string name="settings_export">Exportar mis datos</string>
+    <string name="settings_backup_export">Guardar copia</string>
+    <string name="settings_backup_restore">Restaurar copia</string>
+    <string name="settings_backup_help">La copia es un .zip con toda la colección, sus fotos y sus cantos. Guárdala donde quieras (Drive, el ordenador…) y restáurala en otro móvil. Restaurar sustituye la colección de este móvil.</string>
     <string name="settings_export_help">Se guarda un fichero CSV con todas tus observaciones. Es tuyo: no hace falta una cuenta para recuperarlo.</string>
 </resources>

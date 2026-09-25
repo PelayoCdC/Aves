@@ -431,7 +431,20 @@ y *Noche* (la paleta oscura). Se guarda por nombre en DataStore y
 
 ## Copia de seguridad
 
-`clips/` y `photos/full/` quedan fuera de la copia en la nube (`res/xml/backup_rules.xml` y
+**La copia propia** (Ajustes → Datos → *Guardar copia* / *Restaurar copia*) es un
+`.zip` con la base de datos, los recortes, las fotos en sus dos tamaños y un
+manifiesto (`BackupArchive`). Se guarda donde diga el usuario (el selector del
+sistema: Drive, el ordenador…) y no depende de la copia de Google, que puede
+estar apagada. La base se saca coherente con `VACUUM INTO` (Android 11+; antes,
+volcando el diario y copiando). Restaurar **sustituye** la colección (mezclar
+dos bases con sus sesiones y claves no compensa para el caso real, cambiar de
+móvil), pregunta antes enseñando la fecha y cuántas observaciones trae, rechaza
+copias de una versión más nueva y cualquier `.zip` que intente escribir fuera
+de su carpeta, aparta lo actual hasta que lo nuevo está en su sitio y reinicia
+la app. Al arrancar, Room migra si la copia era de una versión anterior y
+`MediaHousekeeping` reescribe las rutas del otro móvil.
+
+**La copia automática de Google.** `clips/` y `photos/full/` quedan fuera de la copia en la nube (`res/xml/backup_rules.xml` y
 `data_extraction_rules.xml`): Auto Backup tiene una cuota de 25 MB y con los
 recortes dentro fallaba **entera**, colección incluida. La base de datos, las
 miniaturas de las fotos (224 px, ~15 KB) y los ajustes caben de sobra. Los modelos copiados a disco viven

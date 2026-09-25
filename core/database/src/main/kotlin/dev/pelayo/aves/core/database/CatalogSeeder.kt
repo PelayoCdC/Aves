@@ -203,8 +203,12 @@ class CatalogSeeder(
         private const val MODEL_LABELS_PREFIX = "model_labels_"
         private const val TSV_SUFFIX = ".tsv"
 
-        /** Huellas de lo ya importado. Van con la base en la copia: si se restaura una, se restaura la otra. */
-        private const val PREFS_NAME = "catalog_seed"
+        /**
+         * Huellas de lo ya importado. Van con la base en la copia automatica: si
+         * se restaura una, se restaura la otra. Restaurar una copia propia las
+         * borra, para que el catalogo se vuelva a comparar.
+         */
+        const val PREFS_NAME = "catalog_seed"
         private const val BUFFER_SIZE = 64 * 1024
     }
 }

@@ -1,16 +1,10 @@
 package dev.pelayo.aves.feature.settings
 
-import dev.pelayo.aves.core.designsystem.theme.AvesSkin
-import androidx.compose.material3.Icon
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.Icons
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,10 +13,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -39,6 +39,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.pelayo.aves.core.designsystem.theme.AvesSkin
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
 import dev.pelayo.aves.core.ml.api.ModelDescriptor
 import kotlin.math.roundToInt
@@ -66,6 +67,10 @@ fun SettingsScreen(
     modelDescriptors: List<ModelDescriptor> = emptyList(),
     onExportData: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    /** Guardar la coleccion entera en un .zip. Null esconde el boton. */
+    onBackupExport: (() -> Unit)? = null,
+    /** Elegir un .zip y sustituir la coleccion por el. Null esconde el boton. */
+    onBackupRestore: (() -> Unit)? = null,
 ) {
     val viewModel: SettingsViewModel = viewModel { viewModelFactory() }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -80,6 +85,8 @@ fun SettingsScreen(
         onSkinChange = viewModel::setSkin,
         onShowConfidenceChange = viewModel::setShowConfidence,
         onExportData = onExportData,
+        onBackupExport = onBackupExport,
+        onBackupRestore = onBackupRestore,
         modifier = modifier,
     )
 }
@@ -99,6 +106,8 @@ internal fun SettingsContent(
     modifier: Modifier = Modifier,
     onSkinChange: (AvesSkin) -> Unit = {},
     onShowConfidenceChange: (Boolean) -> Unit = {},
+    onBackupExport: (() -> Unit)? = null,
+    onBackupRestore: (() -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
@@ -140,6 +149,8 @@ internal fun SettingsContent(
             collectedSpecies = state.collectedSpecies,
             collectionBytes = state.collectionBytes,
             onExportData = onExportData,
+            onBackupExport = onBackupExport,
+            onBackupRestore = onBackupRestore,
         )
     }
 }
@@ -413,6 +424,8 @@ private fun DataSection(
     collectedSpecies: Int?,
     collectionBytes: Long?,
     onExportData: (() -> Unit)?,
+    onBackupExport: (() -> Unit)? = null,
+    onBackupRestore: (() -> Unit)? = null,
 ) {
     SettingsSection(
         title = stringResource(R.string.settings_data_title),
@@ -433,6 +446,26 @@ private fun DataSection(
             Spacer(Modifier.size(8.dp))
             Text(
                 text = stringResource(R.string.settings_export_help),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        // La copia entera: lo que hace falta para cambiar de movil sin perder
+        // nada, con o sin la copia automatica de Google.
+        if (onBackupExport != null || onBackupRestore != null) {
+            Spacer(Modifier.size(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                onBackupExport?.let { export ->
+                    Button(onClick = export) { Text(stringResource(R.string.settings_backup_export)) }
+                }
+                onBackupRestore?.let { restore ->
+                    OutlinedButton(onClick = restore) { Text(stringResource(R.string.settings_backup_restore)) }
+                }
+            }
+            Spacer(Modifier.size(8.dp))
+            Text(
+                text = stringResource(R.string.settings_backup_help),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

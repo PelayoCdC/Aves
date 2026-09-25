@@ -7,12 +7,19 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -21,9 +28,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import dev.pelayo.aves.R
+import dev.pelayo.aves.core.common.BackupArchive
+import dev.pelayo.aves.core.common.InvalidBackupException
 import dev.pelayo.aves.core.data.RegionRepository
+import dev.pelayo.aves.core.listening.ListeningService
 import dev.pelayo.aves.core.model.RarityTier
 import dev.pelayo.aves.di.AppContainer
+import dev.pelayo.aves.di.BackupManager
 import dev.pelayo.aves.di.ObservationExporter
 import dev.pelayo.aves.di.toListeningSettings
 import dev.pelayo.aves.feature.camera.CameraScreen
@@ -87,6 +98,37 @@ private const val CAMERA_ROUTE = "camera"
 
 /** Lo maximo que espera la camara una ubicacion fresca cuando no hay ninguna conocida. */
 private const val CAMERA_FIX_TIMEOUT_MILLIS = 2_000L
+
+private const val BACKUP_MIME_TYPE = "application/zip"
+
+/** Algunos gestores de ficheros etiquetan los .zip como binario generico. */
+private val BACKUP_OPEN_TYPES = arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")
+
+private fun backupFileName(nowMillis: Long): String =
+    "aves-copia-" + java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm").format(
+        java.time.Instant.ofEpochMilli(nowMillis).atZone(java.time.ZoneId.systemDefault()),
+    ) + ".zip"
+
+/** "¿Sustituir la coleccion por la de la copia?", con lo que trae la copia. */
+@Composable
+private fun RestoreBackupDialog(
+    manifest: BackupArchive.Manifest,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val date = remember(manifest.createdAtMillis) {
+        java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Locale.getDefault()).format(
+            java.time.Instant.ofEpochMilli(manifest.createdAtMillis).atZone(java.time.ZoneId.systemDefault()),
+        )
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.backup_restore_title)) },
+        text = { Text(stringResource(R.string.backup_restore_body, date, manifest.observations)) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.backup_restore_confirm)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.backup_restore_cancel)) } },
+    )
+}
 
 private const val TAG = "AvesNavHost"
 
@@ -179,6 +221,70 @@ fun AvesNavHost(
                 Toast.makeText(context, R.string.export_failed, Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    val resources = LocalResources.current
+
+    // Copia de seguridad: guardar la coleccion entera en un .zip del usuario, o
+    // sustituirla por la de uno. Restaurar pregunta antes, con lo que trae.
+    val backupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(BACKUP_MIME_TYPE),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching { container.backupManager.export(uri) }
+                .onSuccess { result ->
+                    Toast.makeText(
+                        context,
+                        resources.getString(R.string.backup_saved, result.observations, result.mediaFiles),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+                .onFailure {
+                    Log.e(TAG, "No se pudo guardar la copia", it)
+                    Toast.makeText(context, R.string.backup_save_failed, Toast.LENGTH_LONG).show()
+                }
+        }
+    }
+    var stagedBackup by remember { mutableStateOf<BackupManager.StagedBackup?>(null) }
+    val restoreLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching { container.backupManager.stage(uri) }
+                .onSuccess { stagedBackup = it }
+                .onFailure {
+                    Log.e(TAG, "La copia no se puede restaurar", it)
+                    val message = (it as? InvalidBackupException)?.message
+                        ?: resources.getString(R.string.backup_invalid)
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                }
+        }
+    }
+    stagedBackup?.let { staged ->
+        RestoreBackupDialog(
+            manifest = staged.manifest,
+            onConfirm = {
+                stagedBackup = null
+                if (ListeningService.state.value.isRunning) {
+                    container.backupManager.discard(staged)
+                    Toast.makeText(context, R.string.backup_stop_listening, Toast.LENGTH_LONG).show()
+                } else {
+                    scope.launch {
+                        runCatching { container.backupManager.restoreAndRestart(staged) }
+                            .onFailure {
+                                Log.e(TAG, "No se pudo restaurar la copia", it)
+                                Toast.makeText(context, R.string.backup_restore_failed, Toast.LENGTH_LONG).show()
+                            }
+                    }
+                }
+            },
+            onDismiss = {
+                stagedBackup = null
+                container.backupManager.discard(staged)
+            },
+        )
     }
 
     // La ubicacion de la camara y de las observaciones a mano, respetando el
@@ -341,6 +447,8 @@ fun AvesNavHost(
                 onExportData = {
                     exportLauncher.launch(ObservationExporter.suggestedFileName(System.currentTimeMillis()))
                 },
+                onBackupExport = { backupLauncher.launch(backupFileName(System.currentTimeMillis())) },
+                onBackupRestore = { restoreLauncher.launch(BACKUP_OPEN_TYPES) },
             )
         }
 

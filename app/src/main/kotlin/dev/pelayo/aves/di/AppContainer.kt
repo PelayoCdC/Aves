@@ -196,6 +196,16 @@ class AppContainer(
         },
     )
 
+    /** Exportar y restaurar la coleccion entera. Ver [BackupManager]. */
+    val backupManager: BackupManager by lazy {
+        BackupManager(
+            context = context,
+            database = { database },
+            clipsDirectory = clipsDirectory,
+            photosDirectory = photosDirectory,
+        )
+    }
+
     /** Rutas de otro perfil y ficheros huerfanos. Ver [MediaHousekeeping]. */
     val mediaHousekeeping: MediaHousekeeping by lazy {
         MediaHousekeeping(
