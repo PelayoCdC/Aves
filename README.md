@@ -403,7 +403,11 @@ pide ningún permiso**. Se respeta la orientación EXIF y la fecha es la de la
 foto, no la de hoy. Como una foto de la galería puede ser de cualquier sitio,
 va sin ubicación hasta que el usuario dice dónde fue (chip "¿Dónde fue?" junto
 a los candidatos); entonces se vuelve a clasificar la misma imagen con ese
-contexto. Se analiza el cuadrado central. Los candidatos salen con su nombre
+contexto. Se analiza el cuadrado central; si el ave era pequeña o estaba a un
+lado, **"Encuadrar el ave"** abre la foto con un marco que se arrastra y se
+agranda con dos dedos, y se vuelve a clasificar solo lo de dentro, con el mismo
+lugar y fecha (`FramingDialog`; la geometría, en `transformSquareCrop`, con
+tests). Ese recorte es la miniatura que se guarda. Los candidatos salen con su nombre
 en castellano (`ImageCandidateNamer`, vía `model_labels` y el catálogo) y
 **tocar uno no guarda nada**: abre la ficha con la foto al lado de la de
 Wikipedia y pregunta "¿es esta?"; solo al confirmar se anota el avistamiento.

@@ -199,4 +199,30 @@ class ImageConversionTest {
             assertEquals(once, normalizeRotationDegrees(once))
         }
     }
+
+    @Test
+    fun `el recorte a mano no se sale de la imagen`() {
+        // Un gesto que empuja el marco mas alla del borde lo deja pegado a el.
+        assertEquals(SquareCrop(left = 1_000, top = 0, size = 280), clampSquareCrop(1_200f, -50f, 280f, 1_280, 960, 112))
+    }
+
+    @Test
+    fun `el recorte a mano no pasa del lado corto ni baja del minimo`() {
+        assertEquals(960, clampSquareCrop(0f, 0f, 5_000f, 1_280, 960, 112).size)
+        assertEquals(112, clampSquareCrop(0f, 0f, 10f, 1_280, 960, 112).size)
+    }
+
+    @Test
+    fun `separar los dedos agranda el marco alrededor de su centro`() {
+        val start = SquareCrop(left = 400, top = 300, size = 200) // centro en (500, 400)
+        val zoomed = transformSquareCrop(start, panX = 0f, panY = 0f, zoom = 2f, width = 1_280, height = 960, minSize = 112)
+        assertEquals(SquareCrop(left = 300, top = 200, size = 400), zoomed)
+    }
+
+    @Test
+    fun `arrastrar mueve el marco`() {
+        val start = SquareCrop(left = 400, top = 300, size = 200)
+        val moved = transformSquareCrop(start, panX = -100f, panY = 50f, zoom = 1f, width = 1_280, height = 960, minSize = 112)
+        assertEquals(SquareCrop(left = 300, top = 350, size = 200), moved)
+    }
 }

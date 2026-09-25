@@ -143,11 +143,15 @@ suspend fun Context.loadGalleryImage(uri: Uri, inputSize: Int): GalleryImage =
     }
 
 /**
- * El recorte cuadrado central de [source] a [targetSize], SIN reciclar el
- * original: a diferencia de la foto de la camara, esta se sigue ensenando.
+ * El recorte cuadrado [crop] de [source] (el central si no se dice otro) a
+ * [targetSize], SIN reciclar el original: se sigue ensenando, y se puede
+ * volver a encuadrar.
  */
-private fun squareModelInput(source: Bitmap, targetSize: Int): Bitmap {
-    val crop = centerSquareCrop(source.width, source.height)
+internal fun squareModelInput(
+    source: Bitmap,
+    targetSize: Int,
+    crop: SquareCrop = centerSquareCrop(source.width, source.height),
+): Bitmap {
     val cropped = Bitmap.createBitmap(source, crop.left, crop.top, crop.size, crop.size)
     val scaled = Bitmap.createScaledBitmap(cropped, targetSize, targetSize, true)
     if (cropped !== source && cropped !== scaled) cropped.recycle()

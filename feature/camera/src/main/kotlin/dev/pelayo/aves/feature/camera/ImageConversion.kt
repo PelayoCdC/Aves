@@ -106,3 +106,46 @@ fun normalizeRotationDegrees(degrees: Int): Int = quarterTurnsOf(degrees) * 90
  * no es gratis: copia el bitmap entero igual.
  */
 fun isRotationNeeded(degrees: Int): Boolean = quarterTurnsOf(degrees) != 0
+
+/**
+ * El recorte que el usuario encuadra a mano, metido en la imagen.
+ *
+ * El centro fijo falla justo con las fotos dificiles: un ave pequena en una
+ * esquina, o posada en el borde de la rama, llega al modelo de 224 px como un
+ * punto entre hojas. Encuadrarla multiplica los pixeles que son ave. Aqui solo
+ * se garantiza que el cuadrado es valido: dentro de la imagen, ni mayor que su
+ * lado corto ni menor que [minSize].
+ *
+ * @param left, top, size en pixeles de la imagen, sin redondear: vienen de un
+ *   gesto.
+ */
+fun clampSquareCrop(left: Float, top: Float, size: Float, width: Int, height: Int, minSize: Int): SquareCrop {
+    require(width > 0 && height > 0) { "La imagen no puede medir ${width}x$height" }
+    val maxSide = minOf(width, height)
+    val side = size.roundToInt().coerceIn(minOf(minSize, maxSide), maxSide)
+    return SquareCrop(
+        left = left.roundToInt().coerceIn(0, width - side),
+        top = top.roundToInt().coerceIn(0, height - side),
+        size = side,
+    )
+}
+
+/**
+ * Mueve y escala [crop] con un gesto: [panX]/[panY] en pixeles de la imagen y
+ * [zoom] como factor (separar los dedos agranda el marco). Se escala alrededor
+ * del centro del marco, que es donde el usuario esta mirando.
+ */
+fun transformSquareCrop(
+    crop: SquareCrop,
+    panX: Float,
+    panY: Float,
+    zoom: Float,
+    width: Int,
+    height: Int,
+    minSize: Int,
+): SquareCrop {
+    val centerX = crop.left + crop.size / 2f + panX
+    val centerY = crop.top + crop.size / 2f + panY
+    val size = crop.size * zoom
+    return clampSquareCrop(centerX - size / 2f, centerY - size / 2f, size, width, height, minSize)
+}

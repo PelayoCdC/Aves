@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -56,6 +57,8 @@ internal fun CaptureOverlay(
     placeChip: (@Composable () -> Unit)? = null,
     /** Abre el buscador del catalogo: "se cual es". Nulo esconde el boton. */
     onSearchSpecies: (() -> Unit)? = null,
+    /** Abre el cuadro de "encuadra el ave" sobre la ultima foto. Nulo esconde el boton. */
+    onReframe: (() -> Unit)? = null,
 ) {
     Column(
         modifier = modifier.padding(horizontal = 16.dp, vertical = 24.dp),
@@ -72,6 +75,15 @@ internal fun CaptureOverlay(
                 shape = RoundedCornerShape(50),
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
             ) { chip() }
+            Spacer(Modifier.size(12.dp))
+        }
+
+        // Si el ave era pequena o no estaba en el centro, el modelo vio sobre
+        // todo ramas: encuadrarla a mano y volver a mirar.
+        if (onReframe != null && state.hasResult && !state.isClassifying) {
+            FilledTonalButton(onClick = onReframe) {
+                Text(stringResource(R.string.camera_framing_open))
+            }
             Spacer(Modifier.size(12.dp))
         }
 

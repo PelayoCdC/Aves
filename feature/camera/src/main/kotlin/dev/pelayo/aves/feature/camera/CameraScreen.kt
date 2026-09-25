@@ -193,6 +193,22 @@ fun CameraScreen(
     }
 
     val picked = state.pickedImage
+    // "Encuadra el ave" sobre la ultima foto, de la camara o de la galeria.
+    var framing by rememberSaveable { mutableStateOf(false) }
+    val framingPhoto = if (framing) viewModel.framingPhoto else null
+    if (framingPhoto != null) {
+        FramingDialog(
+            photo = framingPhoto,
+            minSize = state.inputSize / 2,
+            onAnalyze = { crop ->
+                framing = false
+                viewModel.reclassifyWithCrop(crop)
+            },
+            onDismiss = { framing = false },
+        )
+    }
+    val onReframe: () -> Unit = { framing = true }
+
     if (picked != null) {
         PickedImageContent(
             image = picked,
@@ -205,6 +221,7 @@ fun CameraScreen(
             onPlacePicked = { place -> viewModel.reclassifyWith(place, null, contextInfluence) },
             onDatePicked = { millis -> viewModel.reclassifyWith(state.pickedPlace, millis, contextInfluence) },
             onSearchSpecies = onSearchSpecies,
+            onReframe = onReframe,
         )
         return
     }
@@ -235,6 +252,7 @@ fun CameraScreen(
         onIdentified = { candidate -> onIdentified(viewModel.identification(candidate)) },
         onPickFromGallery = onPickFromGallery,
         onSearchSpecies = onSearchSpecies,
+        onReframe = onReframe,
         modifier = modifier,
     )
 }
@@ -261,6 +279,7 @@ private fun CameraContent(
     onPickFromGallery: () -> Unit,
     modifier: Modifier = Modifier,
     onSearchSpecies: (() -> Unit)? = null,
+    onReframe: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -398,6 +417,7 @@ private fun CameraContent(
             onIdentified = onIdentified,
             onPickFromGallery = onPickFromGallery,
             onSearchSpecies = onSearchSpecies,
+            onReframe = onReframe,
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -422,6 +442,7 @@ private fun PickedImageContent(
     onPlacePicked: (PickedPlace?) -> Unit = {},
     onDatePicked: (Long) -> Unit = {},
     onSearchSpecies: (() -> Unit)? = null,
+    onReframe: (() -> Unit)? = null,
 ) {
     val picture = remember(image) { image.asImageBitmap() }
     var showPlacePicker by remember { mutableStateOf(false) }
@@ -446,6 +467,7 @@ private fun PickedImageContent(
             onDismissResults = onDismissResults,
             onIdentified = onIdentified,
             onPickFromGallery = onPickFromGallery,
+            onReframe = onReframe,
             fromGallery = true,
             // Donde y cuando: las dos cosas que el contexto necesita y que una foto
             // de la galeria no trae (o trae solo la fecha, en el EXIF).

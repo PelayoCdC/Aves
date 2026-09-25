@@ -276,6 +276,26 @@ class CameraViewModel(
         }
     }
 
+    /** La foto entera de la ultima clasificacion, para volver a encuadrarla. Null si no hay. */
+    val framingPhoto: Bitmap?
+        get() = lastFullPhoto?.takeIf { !it.isRecycled }
+
+    /**
+     * Vuelve a clasificar la ultima foto con el recorte que ha encuadrado el
+     * usuario, en el mismo contexto (lugar y fecha).
+     *
+     * El recorte central fallaba con un ave pequena o descentrada: al modelo de
+     * 224 px le llegaba un punto entre hojas. Encuadrarla es darle mas pixeles
+     * de ave. El nuevo recorte pasa a ser el que se guarda como miniatura; la
+     * foto entera sigue siendo la misma, y "¿Donde fue?" reclasifica este.
+     */
+    fun reclassifyWithCrop(crop: SquareCrop) {
+        val full = framingPhoto ?: return
+        val context = lastContext ?: return
+        if (_uiState.value.isClassifying) return
+        classify(squareModelInput(full, _uiState.value.inputSize, crop), context, fullPhoto = full)
+    }
+
     /**
      * Clasifica una foto de la galeria.
      *
