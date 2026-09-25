@@ -7,11 +7,10 @@ import dev.pelayo.aves.core.ml.api.ClassificationResult
 import dev.pelayo.aves.core.ml.api.ContextPriorProvider
 import dev.pelayo.aves.core.ml.api.ImageBirdClassifier
 import dev.pelayo.aves.core.ml.api.ModelDescriptor
+import dev.pelayo.aves.core.ml.api.ModelGate
 import dev.pelayo.aves.core.ml.api.ObservationContext
 import dev.pelayo.aves.core.ml.api.SpeciesPrior
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
@@ -57,7 +56,7 @@ class AiyBirdImageClassifier(
 
     override val inputSize = INPUT_SIZE
 
-    private val mutex = Mutex()
+    private val gate = ModelGate(::releaseModel)
     private var interpreter: Interpreter? = null
     private var labels: List<AiyLabel> = emptyList()
 
@@ -92,8 +91,8 @@ class AiyBirdImageClassifier(
     private var scores = FloatArray(AiyBirdLabels.EXPECTED_COUNT)
 
     override suspend fun warmUp() {
-        mutex.withLock {
-            if (interpreter != null) return@withLock
+        gate.use {
+            if (interpreter != null) return@use
             withContext(Dispatchers.IO) {
                 labels = context.assets.open(LABELS_ASSET).bufferedReader().use { reader ->
                     AiyBirdLabels.parse(reader.lineSequence())
@@ -145,8 +144,8 @@ class AiyBirdImageClassifier(
         warmUp()
         val prior = resolvePrior(context)
 
-        return mutex.withLock {
-            val active = checkNotNull(interpreter) { "El clasificador ya se ha cerrado" }
+        return gate.use {
+            val active = checkNotNull(interpreter)
             withContext(Dispatchers.Default) {
                 writeInput(bitmap)
                 runInference(active)
@@ -254,7 +253,7 @@ class AiyBirdImageClassifier(
         val asset = MODEL_ASSET_CANDIDATES.firstOrNull { it in available }
             ?: available.firstOrNull { it.endsWith(MODEL_EXTENSION, ignoreCase = true) }
             ?: throw FileNotFoundException(
-                "No hay ningun  en los assets del modulo de imagen. " +
+                "No hay ningun modelo .tflite en los assets del modulo de imagen. " +
                     "Descargalo de kaggle.com/models/google/aiy/tfLite/" +
                     "vision-classifier-birds-v1 (variacion 3) y dejalo en " +
                     "core/ml/vision/src/main/assets/.",
@@ -271,7 +270,9 @@ class AiyBirdImageClassifier(
         }
     }
 
-    override fun close() {
+    override fun close() = gate.close()
+
+    private fun releaseModel() {
         interpreter?.close()
         interpreter = null
         labels = emptyList()

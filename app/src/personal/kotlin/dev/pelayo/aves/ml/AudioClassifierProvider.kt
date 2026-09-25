@@ -3,6 +3,7 @@ package dev.pelayo.aves.ml
 import android.content.Context
 import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
 import dev.pelayo.aves.core.ml.api.ContextPriorProvider
+import dev.pelayo.aves.core.ml.api.FallbackPriorProvider
 import dev.pelayo.aves.core.ml.birdnet.BirdNetAudioClassifier
 import dev.pelayo.aves.core.ml.birdnet.BirdNetContextPriorProvider
 
@@ -26,12 +27,14 @@ fun createAudioClassifier(
  * sus probabilidades estan en la misma escala que las predicciones que va a
  * filtrar. El de GBIF es una estimacion externa, buena pero ajena.
  *
- * @param gbifPrior respaldo comun a los dos flavors. Aqui no se usa, pero la
- *   firma se mantiene identica para que el codigo compartido no tenga que saber
- *   cual esta compilado.
+ * @param gbifPrior respaldo comun a los dos flavors, igual que en `open`: si el
+ *   meta-modelo falta o falla al cargar, sin respaldo la excepcion llegaba al
+ *   clasificador y tumbaba la escucha entera en cuanto habia ubicacion.
  */
-@Suppress("UNUSED_PARAMETER")
 fun createContextPrior(
     context: Context,
     gbifPrior: ContextPriorProvider,
-): ContextPriorProvider = BirdNetContextPriorProvider(context.applicationContext)
+): ContextPriorProvider = FallbackPriorProvider(
+    primary = BirdNetContextPriorProvider(context.applicationContext),
+    fallback = gbifPrior,
+)

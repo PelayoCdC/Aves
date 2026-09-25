@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import dev.pelayo.aves.core.common.runSuspendCatching
 import dev.pelayo.aves.core.designsystem.components.DayPickerDialog
 import dev.pelayo.aves.core.designsystem.components.PickedPlace
 import dev.pelayo.aves.core.designsystem.components.PlaceChip
@@ -99,7 +100,7 @@ internal fun SightingEditorDialog(
 
     LaunchedEffect(Unit) {
         if (place == null && locateIfEmpty != null) {
-            val located = runCatching { locateIfEmpty() }.getOrNull()
+            val located = runSuspendCatching { locateIfEmpty() }.getOrNull()
             // Si mientras tanto el usuario ya eligio algo, manda lo suyo.
             if (located != null && !placeTouched && place == null) place = located
         }

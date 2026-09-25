@@ -17,6 +17,7 @@ import android.text.format.DateFormat
 import android.util.Log
 import dev.pelayo.aves.core.audio.AudioSourceSupport
 import dev.pelayo.aves.core.audio.PcmScaling
+import dev.pelayo.aves.core.common.runSuspendCatching
 import dev.pelayo.aves.core.data.ObservationRepository
 import dev.pelayo.aves.core.data.RegionRepository
 import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
@@ -35,6 +36,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.Date
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 
 /**
  * El corte automatico por tiempo.
@@ -221,8 +225,10 @@ class ListeningService : Service() {
      */
     private val scope = CoroutineScope(
         SupervisorJob() + Dispatchers.Default +
-            CoroutineExceptionHandler { _, error ->
+            CoroutineExceptionHandler { context, error ->
                 Log.e(TAG, "Fallo no controlado en la escucha", error)
+                // El fallo de una escucha vieja no puede parar la nueva.
+                if (!isCurrent(context[ListeningGeneration])) return@CoroutineExceptionHandler
                 stopEverything(
                     _state.value.copy(
                         isRunning = false,
@@ -298,6 +304,13 @@ class ListeningService : Service() {
             return
         }
 
+        // Cada arranque tiene su numero. El `finally` de una escucha parada
+        // sigue corriendo un rato (cierra la sesion, suelta el modelo) y, si el
+        // usuario vuelve a pulsar escuchar en ese hueco, pisaba el estado de la
+        // nueva con `isRunning = false`: la UI decia "parado" con el microfono
+        // abierto, y `stop()` ya no hacia nada porque se fiaba de ese estado.
+        val myGeneration = ListeningGeneration(generation.incrementAndGet())
+
         val startedAt = System.currentTimeMillis()
         _state.value = ListeningServiceState(
             isRunning = true,
@@ -306,10 +319,10 @@ class ListeningService : Service() {
         )
         refreshNotification()
 
-        listenJob = scope.launch {
+        listenJob = scope.launch(myGeneration) {
             // Los ajustes se leen aqui y no en onStartCommand: vienen de disco
             // y el hilo principal no es sitio para esperar a DataStore.
-            val settings = runCatching { dependencies.currentSettings() }
+            val settings = runSuspendCatching { dependencies.currentSettings() }
                 .onFailure { Log.w(TAG, "No se pudieron leer los ajustes; se usan los de fabrica", it) }
                 .getOrDefault(ListeningSettings())
             val deadline = ListeningDeadline(
@@ -327,7 +340,7 @@ class ListeningService : Service() {
 
             try {
                 val location = if (settings.useLocation) {
-                    runCatching { dependencies.currentLocation() }
+                    runSuspendCatching { dependencies.currentLocation() }
                         .onFailure { Log.w(TAG, "No se pudo obtener la ubicacion", it) }
                         .getOrNull()
                 } else {
@@ -367,7 +380,11 @@ class ListeningService : Service() {
                 // Sin esto se queda vivo un MappedByteBuffer de decenas de MB
                 // hasta que el sistema mate el proceso.
                 runCatching { classifier.close() }
-                stopEverything(_state.value.copy(isRunning = false, isWarmingUp = false))
+                if (isCurrent(myGeneration)) {
+                    stopEverything(_state.value.copy(isRunning = false, isWarmingUp = false))
+                } else {
+                    Log.i(TAG, "Escucha vieja cerrada; ya hay otra en marcha y no se toca su estado")
+                }
             }
         }
     }
@@ -618,6 +635,12 @@ class ListeningService : Service() {
 
         private val _state = MutableStateFlow(ListeningServiceState())
 
+        /** Numero del ultimo arranque. Ver [ListeningGeneration]. */
+        private val generation = AtomicLong()
+
+        private fun isCurrent(owner: ListeningGeneration?): Boolean =
+            owner != null && owner.value == generation.get()
+
         /**
          * Estado de la escucha en segundo plano, valido tambien cuando no hay
          * ninguna en curso (`isRunning = false`).
@@ -648,4 +671,13 @@ class ListeningService : Service() {
             context.startForegroundService(intent)
         }
     }
+}
+
+/**
+ * Marca de a que arranque pertenece una corrutina de escucha. Va en su
+ * contexto para que tambien la vea el manejador de excepciones del servicio,
+ * que no sabe de que `launch` le llega el fallo.
+ */
+private class ListeningGeneration(val value: Long) : AbstractCoroutineContextElement(Key) {
+    companion object Key : CoroutineContext.Key<ListeningGeneration>
 }

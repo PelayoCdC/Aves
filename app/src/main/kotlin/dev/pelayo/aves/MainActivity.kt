@@ -18,23 +18,33 @@ import dev.pelayo.aves.ui.AvesApp
 class MainActivity : ComponentActivity() {
 
     /**
-     * Cuantas veces se ha pedido arrancar la escucha desde fuera (el tile de
-     * ajustes rapidos). Es un contador y no un booleano para que dos peticiones
-     * seguidas se vean como dos cambios de estado.
+     * Peticion pendiente de arrancar la escucha desde fuera (el tile de ajustes
+     * rapidos). Es un contador para que dos peticiones seguidas se vean como
+     * dos cambios de estado, y vuelve a 0 en cuanto la pantalla de identificar
+     * la atiende: si se quedaba en 1, volver a esa pestana tras parar la
+     * escucha la arrancaba otra vez.
      */
     private var startListeningToken by mutableIntStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        consumeStartRequest(intent)
+        // Solo en el primer arranque: al recrear la actividad (girar el movil,
+        // o volver tras morir el proceso) el sistema entrega OTRA VEZ el intent
+        // original, con el extra puesto, y la escucha que el usuario habia
+        // parado volvia a arrancar sola.
+        if (savedInstanceState == null) consumeStartRequest(intent)
         val container = (application as AvesApplication).container
         setContent {
             // La piel la elige el usuario en Ajustes. Hasta la primera lectura
             // del disco, la del sistema: es la que menos desentona un instante.
             val settings by container.settingsStore.settings.collectAsStateWithLifecycle(initialValue = AvesSettings())
             AvesTheme(skin = AvesSkin.fromName(settings.skin)) {
-                AvesApp(container, startListeningToken = startListeningToken)
+                AvesApp(
+                    container,
+                    startListeningToken = startListeningToken,
+                    onStartListeningHandled = { startListeningToken = 0 },
+                )
             }
         }
     }

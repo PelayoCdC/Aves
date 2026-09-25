@@ -96,6 +96,8 @@ fun IdentifyScreen(
     namer: DetectionNamer? = null,
     analysisSaver: FileAnalysisSaver? = null,
     startListeningToken: Int = 0,
+    /** Avisa de que la peticion de [startListeningToken] ya se ha atendido, para que no se repita. */
+    onStartListeningHandled: () -> Unit = {},
     /** Los ajustes del usuario, para que un fichero se mida con el mismo liston que la escucha. */
     settings: suspend () -> ListeningSettings = { ListeningSettings() },
     /** Para decir donde se grabo un fichero. Nulo esconde el selector. */
@@ -123,6 +125,9 @@ fun IdentifyScreen(
         ) {
             viewModel.toggleListening()
         }
+        // Atendida o no (sin permiso no se puede), la peticion se consume: si
+        // no, cada vuelta a esta pestana la repetia.
+        if (startListeningToken > 0) onStartListeningHandled()
     }
 
     // La atribucion es requisito de la licencia CC BY-NC-SA, no cortesia. Se lee
@@ -583,6 +588,10 @@ private fun ErrorCard(
         IdentifyError.UNSUPPORTED_AUDIO ->
             stringResource(R.string.identify_error_audio_title) to
                 stringResource(R.string.identify_error_audio_help, AudioFileDecoder.SUPPORTED_FORMATS)
+
+        IdentifyError.ANALYSIS_FAILED ->
+            stringResource(R.string.identify_error_analysis_title) to
+                stringResource(R.string.identify_error_analysis_help)
     }
 
     Card(

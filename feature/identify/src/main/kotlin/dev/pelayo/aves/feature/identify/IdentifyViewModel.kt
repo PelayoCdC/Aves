@@ -59,6 +59,13 @@ enum class IdentifyError {
 
     /** El fichero elegido no trae audio que este dispositivo sepa decodificar. */
     UNSUPPORTED_AUDIO,
+
+    /**
+     * Fallo el modelo a mitad del analisis por algo que no es el fichero (un
+     * `OrtException` de ONNX Runtime, por ejemplo). Antes escapaba del
+     * `viewModelScope` y cerraba la app entera.
+     */
+    ANALYSIS_FAILED,
 }
 
 /** En que anda el analisis de un fichero. Cada fase tarda lo suyo y se tiene que ver cual es. */
@@ -375,6 +382,8 @@ class IdentifyViewModel(
                 fail(IdentifyError.UNSUPPORTED_AUDIO, e)
             } catch (e: IllegalArgumentException) {
                 fail(IdentifyError.UNSUPPORTED_AUDIO, e)
+            } catch (e: Exception) {
+                fail(IdentifyError.ANALYSIS_FAILED, e)
             } finally {
                 fileState.update { it.copy(isAnalyzingFile = false, isWarmingUp = false, fileStage = null) }
             }

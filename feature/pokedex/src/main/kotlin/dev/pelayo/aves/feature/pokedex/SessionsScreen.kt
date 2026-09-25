@@ -38,6 +38,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.pelayo.aves.core.common.runSuspendCatching
 import dev.pelayo.aves.core.data.ObservationRepository
 import dev.pelayo.aves.core.data.SpeciesRepository
 import dev.pelayo.aves.core.database.dao.SessionWithCounts
@@ -82,7 +83,7 @@ class SessionsViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), SessionsUiState())
 
     fun delete(sessionId: Long) {
-        viewModelScope.launch { runCatching { deleteSession(sessionId) } }
+        viewModelScope.launch { runSuspendCatching { deleteSession(sessionId) } }
     }
 
     private companion object {

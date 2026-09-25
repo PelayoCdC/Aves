@@ -1,7 +1,8 @@
 package dev.pelayo.aves.core.data
 
-import dev.pelayo.aves.core.common.WikipediaImages
 import android.util.Log
+import dev.pelayo.aves.core.common.WikipediaImages
+import dev.pelayo.aves.core.common.runSuspendCatching
 import dev.pelayo.aves.core.model.Species
 import dev.pelayo.aves.core.network.WikipediaClient
 import kotlinx.coroutines.CancellationException
@@ -56,7 +57,7 @@ class SpeciesEncyclopedia(
             )
         }
 
-        runCatching {
+        runSuspendCatching {
             species.saveEncyclopedia(
                 speciesId = enriched.speciesId,
                 imageUrl = enriched.imageUrl,

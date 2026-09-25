@@ -1,6 +1,7 @@
 package dev.pelayo.aves.core.data
 
 import dev.pelayo.aves.core.common.Geohash
+import dev.pelayo.aves.core.common.runSuspendCatching
 import dev.pelayo.aves.core.database.AvesDatabase
 import dev.pelayo.aves.core.database.dao.SessionWithCounts
 import dev.pelayo.aves.core.database.entity.ListeningSessionEntity
@@ -182,7 +183,7 @@ class ObservationRepository(
         rarityOf: suspend (speciesId: String) -> RarityTier,
     ): Pair<Long, String>? {
         val speciesId = speciesResolver.resolve(modelId, detection.labelIndex) ?: return null
-        val rarityTier = runCatching { rarityOf(speciesId) }.getOrDefault(RarityTier.UNKNOWN)
+        val rarityTier = runSuspendCatching { rarityOf(speciesId) }.getOrDefault(RarityTier.UNKNOWN)
         val id = observationDao.insert(
             ObservationEntity(
                 speciesId = speciesId,

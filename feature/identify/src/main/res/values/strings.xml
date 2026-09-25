@@ -41,6 +41,8 @@
     <string name="identify_error_mic_help">Puede que otra aplicación lo tenga ocupado, o que falte el permiso.</string>
     <string name="identify_error_audio_title">Ese fichero no se puede analizar</string>
     <string name="identify_error_audio_help">No se pudo decodificar. Se admiten %1$s. Si es una grabación protegida o de un formato raro, expórtala antes a uno de esos.</string>
+    <string name="identify_error_analysis_title">El análisis se interrumpió</string>
+    <string name="identify_error_analysis_help">El modelo falló a mitad del fichero. Vuelve a intentarlo; si se repite, prueba con otro fichero o reinicia la app.</string>
     <string name="identify_analysis_truncated">El fichero es largo: se han analizado los primeros %1$d minutos.</string>
 
     <string name="identify_meter_no_signal">sin señal</string>

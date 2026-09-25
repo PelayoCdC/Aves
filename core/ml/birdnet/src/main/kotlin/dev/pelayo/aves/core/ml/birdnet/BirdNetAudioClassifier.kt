@@ -6,11 +6,10 @@ import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
 import dev.pelayo.aves.core.ml.api.ClassificationResult
 import dev.pelayo.aves.core.ml.api.ContextPriorProvider
 import dev.pelayo.aves.core.ml.api.ModelDescriptor
+import dev.pelayo.aves.core.ml.api.ModelGate
 import dev.pelayo.aves.core.ml.api.ObservationContext
 import dev.pelayo.aves.core.ml.api.SpeciesPrior
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.tensorflow.lite.Interpreter
 import java.io.FileInputStream
@@ -55,8 +54,9 @@ class BirdNetAudioClassifier(
     override val requiredSampleCount = SAMPLE_COUNT
 
     // El interprete no es thread-safe y ademas se reutilizan los buffers, asi
-    // que una sola inferencia a la vez.
-    private val mutex = Mutex()
+    // que una sola inferencia a la vez. La puerta tambien impide liberarlo con
+    // una inferencia en curso (ver ModelGate).
+    private val gate = ModelGate(::releaseModel)
 
     private var interpreter: Interpreter? = null
     private var labels: List<BirdNetLabel> = emptyList()
@@ -71,8 +71,8 @@ class BirdNetAudioClassifier(
     private val logits = FloatArray(BirdNetLabels.EXPECTED_COUNT)
 
     override suspend fun warmUp() {
-        mutex.withLock {
-            if (interpreter != null) return@withLock
+        gate.use {
+            if (interpreter != null) return@use
             withContext(Dispatchers.IO) {
                 labels = context.assets.open(LABELS_ASSET).bufferedReader().use { labelReader ->
                     context.assets.open(TAXO_CODES_ASSET).bufferedReader().use { codeReader ->
@@ -109,8 +109,8 @@ class BirdNetAudioClassifier(
 
         val prior = resolvePrior(context)
 
-        return mutex.withLock {
-            val active = checkNotNull(interpreter) { "El clasificador ya se ha cerrado" }
+        return gate.use {
+            val active = checkNotNull(interpreter)
             withContext(Dispatchers.Default) {
                 runInference(active, samples)
                 buildResults(prior, context.contextInfluence)
@@ -206,7 +206,9 @@ class BirdNetAudioClassifier(
      * Imprescindible llamarlo: el interprete retiene un MappedByteBuffer de
      * ~25 MB que el recolector de basura no libera solo.
      */
-    override fun close() {
+    override fun close() = gate.close()
+
+    private fun releaseModel() {
         interpreter?.close()
         interpreter = null
         labels = emptyList()

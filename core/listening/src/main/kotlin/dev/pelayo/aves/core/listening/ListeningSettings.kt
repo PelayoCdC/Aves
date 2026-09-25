@@ -1,5 +1,6 @@
 package dev.pelayo.aves.core.listening
 
+import dev.pelayo.aves.core.common.runSuspendCatching
 import dev.pelayo.aves.core.data.SpeciesRepository
 import dev.pelayo.aves.core.data.SpeciesResolver
 import dev.pelayo.aves.core.model.Species
@@ -76,7 +77,7 @@ class DetectionNamer(
     suspend fun speciesFor(modelId: String, labelIndex: Int): Species? {
         val key = modelId to labelIndex
         if (cache.containsKey(key)) return cache[key]
-        val found = runCatching {
+        val found = runSuspendCatching {
             resolver.resolve(modelId, labelIndex)?.let { species.find(it) }
         }.getOrNull()
         cache[key] = found

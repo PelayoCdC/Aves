@@ -1,11 +1,12 @@
 package dev.pelayo.aves.feature.pokedex
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -64,10 +65,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.foundation.Image
 import coil3.compose.AsyncImage
 import dev.pelayo.aves.core.common.PhotoStorage
 import dev.pelayo.aves.core.common.WikipediaImages
+import dev.pelayo.aves.core.common.runSuspendCatching
 import dev.pelayo.aves.core.data.ObservationRepository
 import dev.pelayo.aves.core.data.RangeMapRepository
 import dev.pelayo.aves.core.data.SpeciesEncyclopedia
@@ -217,7 +218,7 @@ class SpeciesDetailViewModel(
             // no espera a la red para ensenar el nombre y la familia.
             if (found != null && !found.hasEncyclopedia && encyclopedia != null) {
                 loadingEncyclopedia.value = true
-                species.value = runCatching { encyclopedia.enrich(found) }.getOrDefault(found)
+                species.value = runSuspendCatching { encyclopedia.enrich(found) }.getOrDefault(found)
                 loadingEncyclopedia.value = false
             }
         }
@@ -298,10 +299,10 @@ class SpeciesDetailViewModel(
 
     /** La ubicacion actual como lugar propuesto para "lo he visto". */
     suspend fun currentPlace(): PickedPlace? =
-        runCatching { currentLocation() }.getOrNull()?.let { PickedPlace(it.latitude, it.longitude, CURRENT_PLACE_NAME) }
+        runSuspendCatching { currentLocation() }.getOrNull()?.let { PickedPlace(it.latitude, it.longitude, CURRENT_PLACE_NAME) }
 
     private suspend fun rarityFor(where: Coordinates?, epochMillis: Long): RarityTier =
-        where?.let { runCatching { rarityAt(speciesId, it, epochMillis) }.getOrNull() } ?: RarityTier.UNKNOWN
+        where?.let { runSuspendCatching { rarityAt(speciesId, it, epochMillis) }.getOrNull() } ?: RarityTier.UNKNOWN
 
     /**
      * Borra el avistamiento Y lo que capturo. Antes solo se borraba la fila y la

@@ -10,6 +10,7 @@ import dev.pelayo.aves.core.audio.EnergyGate
 import dev.pelayo.aves.core.audio.PcmScaling
 import dev.pelayo.aves.core.audio.PlaybackSignal
 import dev.pelayo.aves.core.audio.SpectrogramComputer
+import dev.pelayo.aves.core.common.runSuspendCatching
 import dev.pelayo.aves.core.data.ObservationRepository
 import dev.pelayo.aves.core.data.RegionRepository
 import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
@@ -400,7 +401,7 @@ class ListeningEngine(
     ): RarityTier {
         val where = location ?: return RarityTier.UNKNOWN
         val repository = regionRepository ?: return RarityTier.UNKNOWN
-        return runCatching {
+        return runSuspendCatching {
             repository.rarityOf(
                 speciesId = speciesId,
                 latitude = where.latitude,

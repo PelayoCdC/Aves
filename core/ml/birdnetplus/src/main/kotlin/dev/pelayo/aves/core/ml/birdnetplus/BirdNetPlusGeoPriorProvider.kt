@@ -6,11 +6,10 @@ import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.util.Log
 import dev.pelayo.aves.core.ml.api.ContextPriorProvider
+import dev.pelayo.aves.core.ml.api.ModelGate
 import dev.pelayo.aves.core.ml.api.ObservationContext
 import dev.pelayo.aves.core.ml.api.SpeciesPrior
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.Closeable
 import java.io.File
@@ -51,7 +50,7 @@ class BirdNetPlusGeoPriorProvider(
     private val zoneId: ZoneId = ZoneId.systemDefault(),
 ) : ContextPriorProvider, Closeable {
 
-    private val mutex = Mutex()
+    private val gate = ModelGate(::releaseModel)
 
     private var session: OrtSession? = null
     private var inputName: String = "x"
@@ -67,8 +66,8 @@ class BirdNetPlusGeoPriorProvider(
     private var cachedPrior: SpeciesPrior? = null
 
     suspend fun warmUp() {
-        mutex.withLock {
-            if (session != null) return@withLock
+        gate.use {
+            if (session != null) return@use
             withContext(Dispatchers.IO) {
                 speciesIds = context.assets.open(LABELS_ASSET).bufferedReader().use { reader ->
                     reader.lineSequence()
@@ -83,8 +82,10 @@ class BirdNetPlusGeoPriorProvider(
                 }
 
                 val env = OrtEnvironment.getEnvironment()
-                val options = OrtSession.SessionOptions().apply { setIntraOpNumThreads(1) }
-                val created = env.createSession(modelPath(), options)
+                val created = OrtSession.SessionOptions().use { options ->
+                    options.setIntraOpNumThreads(1)
+                    env.createSession(modelPath(), options)
+                }
                 inputName = created.inputNames.firstOrNull() ?: inputName
                 outputName = created.outputNames.firstOrNull { it == outputName } ?: created.outputNames.first()
                 session = created
@@ -102,8 +103,8 @@ class BirdNetPlusGeoPriorProvider(
         val week = weekOfYear(context.epochMillis, zoneId)
         warmUp()
 
-        return mutex.withLock {
-            val active = checkNotNull(session) { "El geomodelo ya se ha cerrado" }
+        return gate.use {
+            val active = checkNotNull(session)
             withContext(Dispatchers.Default) { resolvePrior(active, latitude, longitude, week) }
         }
     }
@@ -176,7 +177,9 @@ class BirdNetPlusGeoPriorProvider(
                 "Falta $MODEL_ASSET en los assets. Ejecuta scripts/fetch-models.ps1.",
             )
 
-    override fun close() {
+    override fun close() = gate.close()
+
+    private fun releaseModel() {
         session?.close()
         session = null
         speciesIds = emptyList()

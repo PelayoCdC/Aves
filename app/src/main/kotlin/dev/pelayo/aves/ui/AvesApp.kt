@@ -26,7 +26,11 @@ import dev.pelayo.aves.navigation.AvesNavHost
 import kotlinx.coroutines.flow.map
 
 @Composable
-fun AvesApp(container: AppContainer, startListeningToken: Int = 0) {
+fun AvesApp(
+    container: AppContainer,
+    startListeningToken: Int = 0,
+    onStartListeningHandled: () -> Unit = {},
+) {
     val navController = rememberNavController()
 
     // Una peticion de escucha desde fuera lleva a la pantalla de identificar,
@@ -100,6 +104,7 @@ fun AvesApp(container: AppContainer, startListeningToken: Int = 0) {
                 .fillMaxSize()
                 .padding(innerPadding),
             startListeningToken = startListeningToken,
+            onStartListeningHandled = onStartListeningHandled,
         )
     }
 }

@@ -9,11 +9,10 @@ import dev.pelayo.aves.core.ml.api.AudioBirdClassifier
 import dev.pelayo.aves.core.ml.api.ClassificationResult
 import dev.pelayo.aves.core.ml.api.ContextPriorProvider
 import dev.pelayo.aves.core.ml.api.ModelDescriptor
+import dev.pelayo.aves.core.ml.api.ModelGate
 import dev.pelayo.aves.core.ml.api.ObservationContext
 import dev.pelayo.aves.core.ml.api.SpeciesPrior
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.FileNotFoundException
 import java.nio.FloatBuffer
@@ -59,7 +58,8 @@ class BirdNetPlusAudioClassifier(
     override val requiredSampleRate = SAMPLE_RATE
     override val requiredSampleCount = SAMPLE_COUNT
 
-    private val mutex = Mutex()
+    // Una inferencia a la vez, y la sesion no se cierra con una a medias.
+    private val gate = ModelGate(::releaseModel)
 
     private var environment: OrtEnvironment? = null
     private var session: OrtSession? = null
@@ -70,18 +70,20 @@ class BirdNetPlusAudioClassifier(
     private val scores = FloatArray(BirdNetPlusLabels.EXPECTED_COUNT)
 
     override suspend fun warmUp() {
-        mutex.withLock {
-            if (session != null) return@withLock
+        gate.use {
+            if (session != null) return@use
             withContext(Dispatchers.IO) {
                 labels = context.assets.open(LABELS_ASSET).bufferedReader().use { reader ->
                     BirdNetPlusLabels.parse(reader.lineSequence())
                 }
 
                 val env = OrtEnvironment.getEnvironment()
-                val options = OrtSession.SessionOptions().apply {
-                    setIntraOpNumThreads(threadCount)
+                // Las opciones reservan memoria nativa: se cierran en cuanto la
+                // sesion esta creada, que ya no las necesita.
+                val created = OrtSession.SessionOptions().use { options ->
+                    options.setIntraOpNumThreads(threadCount)
+                    env.createSession(modelPath(), options)
                 }
-                val created = env.createSession(modelPath(), options)
 
                 // Los nombres de entrada y salida se leen de la sesion en vez de
                 // fijarlos: si el modelo se actualiza y los renombra, esto falla
@@ -115,8 +117,8 @@ class BirdNetPlusAudioClassifier(
 
         val prior = resolvePrior(context)
 
-        return mutex.withLock {
-            val active = checkNotNull(session) { "El clasificador ya se ha cerrado" }
+        return gate.use {
+            val active = checkNotNull(session)
             val env = checkNotNull(environment)
             withContext(Dispatchers.Default) {
                 runInference(env, active, samples)
@@ -192,7 +194,9 @@ class BirdNetPlusAudioClassifier(
                     "descarga los pesos Apache 2.0 desde birdnet-team/birdnet-live-app.",
             )
 
-    override fun close() {
+    override fun close() = gate.close()
+
+    private fun releaseModel() {
         session?.close()
         session = null
         // El OrtEnvironment es un singleton del proceso: cerrarlo dejaria sin

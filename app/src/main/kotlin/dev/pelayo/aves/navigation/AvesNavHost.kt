@@ -3,30 +3,29 @@ package dev.pelayo.aves.navigation
 import android.content.Context
 import android.telephony.TelephonyManager
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import dev.pelayo.aves.R
 import dev.pelayo.aves.core.data.RegionRepository
 import dev.pelayo.aves.core.model.RarityTier
 import dev.pelayo.aves.di.AppContainer
 import dev.pelayo.aves.di.ObservationExporter
 import dev.pelayo.aves.di.toListeningSettings
 import dev.pelayo.aves.feature.camera.CameraScreen
-import dev.pelayo.aves.feature.camera.ImageIdentification
 import dev.pelayo.aves.feature.identify.IdentifyScreen
 import dev.pelayo.aves.feature.pokedex.AchievementsScreen
 import dev.pelayo.aves.feature.pokedex.AchievementsViewModel
@@ -117,6 +116,7 @@ fun AvesNavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier,
     startListeningToken: Int = 0,
+    onStartListeningHandled: () -> Unit = {},
 ) {
     // :app es el unico que sabe que flavor se ha compilado y quien tiene los
     // repositorios, asi que es quien inyecta hacia abajo. Las features reciben
@@ -151,7 +151,10 @@ fun AvesNavHost(
                         out.write(csv.toByteArray(Charsets.UTF_8))
                     } ?: error("No se pudo abrir el destino")
                 }
-            }.onFailure { Log.e(TAG, "No se pudo exportar", it) }
+            }.onFailure {
+                Log.e(TAG, "No se pudo exportar", it)
+                Toast.makeText(context, R.string.export_failed, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -165,8 +168,8 @@ fun AvesNavHost(
     // desde la ficha. Antes se guardaba al tocar el candidato y la ficha se
     // abria con el avistamiento ya dentro; ahora la ficha se abre para
     // COMPROBAR, y solo se guarda si el usuario dice que si.
-    var photoToken by remember { mutableIntStateOf(0) }
-    var pendingPhoto by remember { mutableStateOf<Pair<Int, ImageIdentification>?>(null) }
+    val photoHolder: PendingPhotoHolder = viewModel()
+    val pendingPhoto by photoHolder.pending.collectAsStateWithLifecycle()
 
     // "¿Donde fue?" para las fotos de la galeria y las grabaciones: lo que no se
     // hizo ahora y aqui necesita que alguien diga donde.
@@ -188,6 +191,7 @@ fun AvesNavHost(
                 placePicker = placePicker,
                 onOpenCamera = { navController.navigate(CAMERA_ROUTE) },
                 startListeningToken = startListeningToken,
+                onStartListeningHandled = onStartListeningHandled,
             )
         }
 
@@ -273,9 +277,8 @@ fun AvesNavHost(
                     // usuario compare la foto con la especie y decida.
                     scope.launch {
                         val speciesId = container.imageCandidateNamer.speciesIdOf(identification) ?: return@launch
-                        photoToken += 1
-                        pendingPhoto = photoToken to identification
-                        navController.navigate("$SPECIES_DETAIL_ROUTE/$speciesId?$PHOTO_TOKEN_ARG=$photoToken")
+                        val token = photoHolder.hold(identification)
+                        navController.navigate("$SPECIES_DETAIL_ROUTE/$speciesId?$PHOTO_TOKEN_ARG=$token")
                     }
                 },
             )
@@ -341,7 +344,7 @@ fun AvesNavHost(
         ) { entry ->
             val speciesId = entry.arguments?.getString(SPECIES_ID_ARG).orEmpty()
             val token = entry.arguments?.getInt(PHOTO_TOKEN_ARG) ?: 0
-            val awaiting = pendingPhoto?.takeIf { token != 0 && it.first == token }?.second
+            val awaiting = pendingPhoto?.takeIf { token != 0 && it.token == token }?.identification
             SpeciesDetailScreen(
                 speciesId = speciesId,
                 onOpenMap = { navController.navigate("$MAP_ROUTE?$SPECIES_ID_ARG=$speciesId") },
@@ -350,14 +353,22 @@ fun AvesNavHost(
                     PendingPhotoConfirmation(
                         preview = identification.fullPhoto ?: identification.photo,
                         onConfirm = {
-                            scope.launch {
-                                runCatching { container.imageObservationRecorder.record(identification) }
-                                    .onFailure { Log.e(TAG, "No se pudo guardar la foto", it) }
-                                pendingPhoto = null
+                            // Se saca de la espera ANTES de guardar: la tarjeta
+                            // desaparece al primer toque y un segundo no encuentra
+                            // nada que guardar.
+                            val confirmed = photoHolder.take(token)
+                            if (confirmed != null) {
+                                scope.launch {
+                                    runCatching { container.imageObservationRecorder.record(confirmed) }
+                                        .onFailure {
+                                            Log.e(TAG, "No se pudo guardar la foto", it)
+                                            Toast.makeText(context, R.string.photo_save_failed, Toast.LENGTH_LONG).show()
+                                        }
+                                }
                             }
                         },
                         onReject = {
-                            pendingPhoto = null
+                            photoHolder.discard()
                             navController.popBackStack()
                         },
                     )

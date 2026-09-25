@@ -7,6 +7,7 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -292,6 +293,10 @@ object AudioFileDecoder {
                 originalChannels = channels,
                 truncated = truncated,
             )
+        } catch (e: CancellationException) {
+            // Va antes que IllegalStateException porque ES una: sin esto, salir
+            // de la pantalla a mitad se contaba como "fichero danado".
+            throw e
         } catch (e: IllegalStateException) {
             // MediaCodec.CodecException: el decodificador se atraganto con el fichero.
             throw UnsupportedAudioException("El fichero esta danado o usa una variante no soportada", e)
