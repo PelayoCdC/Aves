@@ -1,6 +1,7 @@
 package dev.pelayo.aves.feature.settings
 
 import dev.pelayo.aves.core.designsystem.theme.AvesSkin
+import dev.pelayo.aves.core.ml.api.AudioModelChoice
 
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -87,6 +88,8 @@ class SettingsViewModel(
     fun setSkin(skin: AvesSkin) = edit { it.copy(skin = skin.name) }
 
     fun setShowConfidence(show: Boolean) = edit { it.copy(showConfidence = show) }
+
+    fun setAudioModel(model: AudioModelChoice) = edit { it.copy(audioModel = model.name) }
 
     /**
      * Recorre las carpetas de recortes y de fotos.

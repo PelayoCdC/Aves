@@ -1,6 +1,7 @@
 package dev.pelayo.aves.feature.settings
 
 import dev.pelayo.aves.core.designsystem.theme.AvesSkin
+import dev.pelayo.aves.core.ml.api.AudioModelChoice
 
 import kotlin.math.roundToInt
 
@@ -30,6 +31,11 @@ data class AvesSettings(
      * misma (se sigue filtrando por el umbral) con el numero al lado.
      */
     val showConfidence: Boolean = false,
+    /**
+     * Que modelo escucha los cantos (`AudioModelChoice`), por su nombre. Texto
+     * y no enum por lo mismo que la piel: el DataStore no sabe de modelos.
+     */
+    val audioModel: String = AudioModelChoice.DEFAULT.name,
 ) {
 
     /** Version de este objeto con todos los valores dentro de rango. */
@@ -38,6 +44,7 @@ data class AvesSettings(
         confidenceThreshold = sanitizeConfidenceThreshold(confidenceThreshold),
         listeningCutoffMinutes = sanitizeListeningCutoff(listeningCutoffMinutes),
         skin = AvesSkin.fromName(skin).name,
+        audioModel = AudioModelChoice.fromName(audioModel).name,
     )
 
     companion object {

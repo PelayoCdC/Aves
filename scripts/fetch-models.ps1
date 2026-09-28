@@ -141,7 +141,7 @@ if ($null -eq $visionModel) {
 }
 
 Write-Host ''
-Write-Host "Listo. Construye con: gradlew.bat :app:assemblePersonalDebug"
+Write-Host "Listo. Construye con: gradlew.bat :app:assembleDebug"
 Write-Host ''
 
 # --- BirdNET+ V3, pesos Apache 2.0 (flavor open) ----------------------------

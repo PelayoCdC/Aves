@@ -17,8 +17,8 @@ interface SpeciesPrior {
 
 /**
  * Fuente del prior geo-temporal. Hay dos implementaciones previstas, con la
- * misma interfaz: el meta-modelo MData de BirdNET (flavor `personal`) y un
- * prior derivado de las ocurrencias de GBIF (flavor `open`, y respaldo offline).
+ * misma interfaz: el meta-modelo MData de BirdNET v2.4, el geomodelo de BirdNET+ y un
+ * prior derivado de las ocurrencias de GBIF (el respaldo de los dos).
  *
  * Regla que no se debe romper: **ningun prior puede valer exactamente 0**.
  * Con un cero, una especie deja de ser detectable por construccion, y las

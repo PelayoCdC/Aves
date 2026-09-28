@@ -1,6 +1,7 @@
 package dev.pelayo.aves.core.data
 
 import dev.pelayo.aves.core.database.dao.ModelLabelDao
+import dev.pelayo.aves.core.ml.api.CombinedModel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
@@ -29,8 +30,15 @@ class SpeciesResolver(private val modelLabelDao: ModelLabelDao) {
      *   no-evento (perro, sirena, humano...) y los ~90 animales que BirdNET
      *   incluye pero no lo son (ranas, grillos, sapos).
      */
-    suspend fun resolve(modelId: String, labelIndex: Int): String? =
-        mapping(modelId).getOrNull(labelIndex)
+    suspend fun resolve(modelId: String, labelIndex: Int): String? {
+        // La escucha con los dos modelos lleva el indice de cada uno codificado
+        // (ver CombinedModel): se resuelve con la tabla del que lo detecto.
+        if (modelId == CombinedModel.MODEL_ID) {
+            val (realModel, realIndex) = CombinedModel.decode(labelIndex)
+            return mapping(realModel).getOrNull(realIndex)
+        }
+        return mapping(modelId).getOrNull(labelIndex)
+    }
 
     private suspend fun mapping(modelId: String): Array<String?> {
         cache[modelId]?.let { return it }

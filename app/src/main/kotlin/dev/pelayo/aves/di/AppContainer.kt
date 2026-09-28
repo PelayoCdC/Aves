@@ -25,7 +25,8 @@ import dev.pelayo.aves.feature.settings.SettingsStore
 import dev.pelayo.aves.feature.settings.settingsStore
 import dev.pelayo.aves.location.LocationProvider
 import dev.pelayo.aves.location.PlaceSearch
-import dev.pelayo.aves.ml.createContextPrior
+import dev.pelayo.aves.ml.AudioPriors
+import dev.pelayo.aves.ml.createAudioPriors
 import kotlinx.coroutines.CoroutineScope
 import java.io.File
 
@@ -69,26 +70,27 @@ class AppContainer(
     /**
      * Rareza y prior derivados de ocurrencias reales de GBIF.
      *
-     * Funciona en los dos flavors: GBIF no pide clave ni tiene clausula no
-     * comercial. Cada flavor tiene ademas el geomodelo de su clasificador, que
-     * es mas fino porque se entreno junto a el, pero la rareza de la coleccion
-     * sale siempre de aqui.
+     * GBIF no pide clave. Cada modelo de cantos tiene ademas su propio prior
+     * geo-temporal (ver AudioPriors), que es mas fino porque se entreno junto
+     * a el, pero la rareza de la coleccion sale siempre de aqui.
      */
     val regionRepository: RegionRepository by lazy {
         RegionRepository(database.regionDao(), GbifOccurrenceSource(gbifClient))
     }
 
     /**
-     * UN prior para toda la vida del proceso.
+     * Los priors de los dos modelos de cantos, UNO de cada para toda la vida
+     * del proceso.
      *
-     * Antes se creaba uno por escucha y nadie lo cerraba: en el flavor
-     * `personal` eso era un interprete de 14 MB mapeado en memoria que se
-     * fugaba en cada sesion, mas el barrido anual de 48 inferencias repetido
-     * cada vez. Como singleton, la cache del barrido sobrevive entre escuchas.
+     * Antes se creaba uno por escucha y nadie lo cerraba: con BirdNET v2.4 eso
+     * era un interprete de 14 MB mapeado en memoria que se fugaba en cada
+     * sesion, mas el barrido anual de 48 inferencias repetido cada vez. Como
+     * singleton, la cache del barrido sobrevive entre escuchas.
      */
-    val contextPrior: ContextPriorProvider by lazy {
-        createContextPrior(context, regionRepository)
-    }
+    val audioPriors: AudioPriors by lazy { createAudioPriors(context, regionRepository) }
+
+    /** El prior de la camara: el meta-modelo de BirdNET, con GBIF de respaldo. */
+    val contextPrior: ContextPriorProvider get() = audioPriors.birdnet
 
     val locationProvider: LocationProvider by lazy { LocationProvider(context) }
 

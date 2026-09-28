@@ -3,6 +3,7 @@ package dev.pelayo.aves.core.listening
 import dev.pelayo.aves.core.common.runSuspendCatching
 import dev.pelayo.aves.core.data.SpeciesRepository
 import dev.pelayo.aves.core.data.SpeciesResolver
+import dev.pelayo.aves.core.ml.api.AudioModelChoice
 import dev.pelayo.aves.core.model.Species
 import java.util.concurrent.ConcurrentHashMap
 
@@ -23,6 +24,8 @@ data class ListeningSettings(
     val maxDurationMillis: Long = ListeningDeadline.DEFAULT_DURATION_MILLIS,
     /** false = ni se consulta la ubicacion ni se guardan coordenadas. */
     val useLocation: Boolean = true,
+    /** Que modelo escucha: BirdNET v2.4, BirdNET+ o los dos. */
+    val audioModel: AudioModelChoice = AudioModelChoice.DEFAULT,
 ) {
     /**
      * El umbral para MANTENERSE en la lista baja con el de entrada en la misma

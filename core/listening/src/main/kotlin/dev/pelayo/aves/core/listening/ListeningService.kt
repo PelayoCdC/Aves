@@ -163,11 +163,12 @@ data class ListeningServiceState(
  */
 interface ListeningDependencies {
     /**
-     * Crea un clasificador nuevo para esta escucha, o null si el flavor
-     * compilado no incluye ninguno. El servicio lo cierra al terminar: retiene
-     * un modelo de decenas de MB mapeado en memoria.
+     * Crea un clasificador nuevo para esta escucha (el que diga
+     * [ListeningSettings.audioModel]), o null si el build no incluye ninguno.
+     * El servicio lo cierra al terminar: retiene un modelo de decenas de MB
+     * mapeado en memoria.
      */
-    fun createClassifier(): AudioBirdClassifier?
+    fun createClassifier(settings: ListeningSettings): AudioBirdClassifier?
 
     val observationRepository: ObservationRepository?
 
@@ -334,7 +335,7 @@ class ListeningService : Service() {
             _state.update { it.copy(stopsAtMillis = deadline.expiresAtMillis) }
             refreshNotification()
 
-            val classifier = dependencies.createClassifier()
+            val classifier = dependencies.createClassifier(settings)
             if (classifier == null) {
                 stopEverything(ListeningServiceState(failure = ListeningFailure.NO_MODEL_IN_BUILD))
                 return@launch

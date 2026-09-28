@@ -20,23 +20,10 @@ extensions.configure<ApplicationExtension> {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // --- Estrategia de licencias ---
-    // Un solo codigo fuente, dos APKs:
-    //   personal -> BirdNET (CC BY-NC-SA 4.0): 6.522 especies, NO publicable.
-    //   open     -> solo modelos Apache 2.0: publicable, menos cobertura.
-    // Existe desde el dia 1 para que la decision "publicar o no" nunca obligue
-    // a reescribir nada. Las fases 0-6 solo construyen `personal`.
-    flavorDimensions += "license"
-    productFlavors {
-        create("personal") {
-            dimension = "license"
-            applicationIdSuffix = ".personal"
-            versionNameSuffix = "-personal"
-        }
-        create("open") {
-            dimension = "license"
-        }
-    }
+    // Una sola version. Hubo dos flavors (`personal` con BirdNET v2.4, no
+    // comercial; `open` solo con modelos Apache 2.0, publicable), y se juntaron
+    // en una que lleva los dos modelos de cantos y deja elegir en Ajustes. Con
+    // BirdNET v2.4 dentro la app NO se puede publicar ni vender.
 }
 
 dependencies {

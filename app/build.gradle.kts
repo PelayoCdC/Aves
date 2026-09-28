@@ -7,7 +7,11 @@ android {
     namespace = "dev.pelayo.aves"
 
     defaultConfig {
-        applicationId = "dev.pelayo.aves"
+        // ".personal" porque es el identificador con el que estaba instalada la
+        // version que se usa de verdad (el antiguo flavor `personal`): con otro,
+        // Android la instalaria como una app distinta y la coleccion se quedaria
+        // en la vieja.
+        applicationId = "dev.pelayo.aves.personal"
         versionCode = 1
         versionName = "0.1.0"
     }
@@ -50,21 +54,17 @@ dependencies {
     implementation(projects.core.listening)
     implementation(projects.core.map)
     // :app es el punto de composicion: conocer las implementaciones concretas es
-    // literalmente su trabajo, igual que conoce BirdNetAudioClassifier en el
-    // flavor personal.
+    // literalmente su trabajo.
     implementation(projects.core.network)
     implementation(projects.core.ml.api)
-    // Apache 2.0: entra en los DOS flavors, a diferencia de BirdNET.
     implementation(projects.core.ml.vision)
 
-    // Solo el flavor `personal` enlaza BirdNET. El flavor `open` se compila sin
-    // el, y por eso puede publicarse: el modelo CC BY-NC-SA ni siquiera esta en
-    // el APK. Es la diferencia entre "no lo usamos" y "no esta".
-    "personalImplementation"(projects.core.ml.birdnet)
-
-    // Y el flavor publicable enlaza BirdNET+, cuyos pesos SI son Apache 2.0.
-    // Cubre mas especies que el otro: 8.923 aves frente a 6.421.
-    "openImplementation"(projects.core.ml.birdnetplus)
+    // Los dos modelos de cantos; el usuario elige en Ajustes (o los dos a la
+    // vez). BirdNET v2.4 es CC BY-NC-SA 4.0: por el, esta app no se puede
+    // publicar ni vender. BirdNET+ es Apache 2.0. Para una version publicable
+    // bastaria con quitar esta primera linea y su opcion en createAudioClassifier.
+    implementation(projects.core.ml.birdnet)
+    implementation(projects.core.ml.birdnetplus)
 
     implementation(projects.feature.identify)
     implementation(projects.feature.pokedex)

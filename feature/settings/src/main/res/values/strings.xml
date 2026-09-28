@@ -24,6 +24,13 @@
 
     <string name="settings_privacy_title">Privacidad</string>
     <string name="settings_privacy_subtitle">Qué recoge la app y qué sale de tu móvil.</string>
+    <string name="settings_audio_model">Modelo de cantos</string>
+    <string name="settings_audio_model_birdnet">BirdNET v2.4</string>
+    <string name="settings_audio_model_birdnet_plus">BirdNET+</string>
+    <string name="settings_audio_model_both">Los dos</string>
+    <string name="settings_audio_model_birdnet_help">El de siempre. Reconoce unas 6.400 especies por su canto.</string>
+    <string name="settings_audio_model_birdnet_plus_help">Más nuevo. Reconoce unas 8.900 especies por su canto.</string>
+    <string name="settings_audio_model_both_help">Los dos escuchan a la vez y de cada especie cuenta el que la oye mejor. Es lo que más detecta, pero gasta casi el doble de batería.</string>
     <string name="settings_show_confidence">Mostrar confianza</string>
     <string name="settings_show_confidence_off">Solo se ven los nombres de las especies seguras, sin números, al estilo de Merlin.</string>
     <string name="settings_show_confidence_on">Junto a cada especie se ve lo seguro que está el modelo, en porcentaje. La lista es la misma: solo entra lo que pasa el umbral.</string>

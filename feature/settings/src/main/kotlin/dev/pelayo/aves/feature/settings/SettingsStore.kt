@@ -73,6 +73,7 @@ internal class DataStoreSettingsStore(
             preferences[KEY_LISTENING_CUTOFF] = next.listeningCutoffMinutes
             preferences[KEY_SKIN] = next.skin
             preferences[KEY_SHOW_CONFIDENCE] = next.showConfidence
+            preferences[KEY_AUDIO_MODEL] = next.audioModel
         }
     }
 
@@ -85,6 +86,7 @@ internal class DataStoreSettingsStore(
             ?: AvesSettings.DEFAULT_LISTENING_CUTOFF_MINUTES,
         skin = this[KEY_SKIN] ?: AvesSettings().skin,
         showConfidence = this[KEY_SHOW_CONFIDENCE] ?: false,
+        audioModel = this[KEY_AUDIO_MODEL] ?: AvesSettings().audioModel,
     ).sanitized()
 
     private companion object {
@@ -94,6 +96,7 @@ internal class DataStoreSettingsStore(
         val KEY_LISTENING_CUTOFF = intPreferencesKey("listening_cutoff_minutes")
         val KEY_SKIN = stringPreferencesKey("skin")
         val KEY_SHOW_CONFIDENCE = booleanPreferencesKey("show_confidence")
+        val KEY_AUDIO_MODEL = stringPreferencesKey("audio_model")
     }
 }
 

@@ -32,6 +32,7 @@ import dev.pelayo.aves.core.common.BackupArchive
 import dev.pelayo.aves.core.common.InvalidBackupException
 import dev.pelayo.aves.core.data.RegionRepository
 import dev.pelayo.aves.core.listening.ListeningService
+import dev.pelayo.aves.core.ml.api.AudioModelChoice
 import dev.pelayo.aves.core.model.RarityTier
 import dev.pelayo.aves.di.AppContainer
 import dev.pelayo.aves.di.BackupManager
@@ -204,8 +205,17 @@ fun AvesNavHost(
     // El prior es el singleton del contenedor: su cache (el barrido anual del
     // geomodelo) tiene que sobrevivir entre pantallas y entre escuchas.
     val contextPrior = container.contextPrior
-    val classifierProvider = remember(appContext, contextPrior) {
-        { createAudioClassifier(appContext, contextPrior) }
+    // Se lee el ajuste al crear el clasificador, no al componer: un fichero
+    // analizado despues de cambiar de modelo usa el nuevo.
+    val classifierProvider = remember(appContext, container) {
+        {
+            createAudioClassifier(
+                appContext,
+                AudioModelChoice.fromName(settings.audioModel),
+                container.audioPriors,
+                container.speciesResolver::resolve,
+            )
+        }
     }
 
     // Exportar: el sistema pide donde guardar y nosotros escribimos. Sin cuenta,
@@ -462,12 +472,15 @@ fun AvesNavHost(
                         photosDirectory = container.photosDirectory,
                     )
                 },
-                // Los descriptores salen del flavor compilado: :app es el unico
-                // que sabe que modelos estan enlazados. La atribucion no es
-                // decorativa, es requisito de las licencias.
+                // Los tres modelos que lleva la app, se use el que se use: la
+                // atribucion no es decorativa, es requisito de las licencias.
                 modelDescriptors = remember(appContext, contextPrior) {
-                    listOfNotNull(
-                        createAudioClassifier(appContext, contextPrior)?.use { it.descriptor },
+                    val resolve = container.speciesResolver::resolve
+                    listOf(
+                        createAudioClassifier(appContext, AudioModelChoice.BIRDNET, container.audioPriors, resolve)
+                            .use { it.descriptor },
+                        createAudioClassifier(appContext, AudioModelChoice.BIRDNET_PLUS, container.audioPriors, resolve)
+                            .use { it.descriptor },
                         createImageClassifier(appContext, contextPrior).use { it.descriptor },
                     )
                 },

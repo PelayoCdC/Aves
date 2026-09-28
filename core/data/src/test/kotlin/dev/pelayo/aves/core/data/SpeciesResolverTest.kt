@@ -2,6 +2,7 @@ package dev.pelayo.aves.core.data
 
 import dev.pelayo.aves.core.database.dao.ModelLabelDao
 import dev.pelayo.aves.core.database.entity.ModelLabelEntity
+import dev.pelayo.aves.core.ml.api.CombinedModel
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -126,6 +127,23 @@ class SpeciesResolverTest {
 
         assertTrue(error is IllegalStateException)
         assertTrue(error!!.message!!.contains("modelo-inexistente"))
+    }
+
+    @Test
+    fun `con los dos modelos cada indice se resuelve con la tabla del suyo`() = runTest {
+        val resolver = SpeciesResolver(
+            FakeModelLabelDao(
+                mapOf(
+                    CombinedModel.FIRST_MODEL_ID to listOf(label(0, "turdus_merula")),
+                    CombinedModel.SECOND_MODEL_ID to listOf(
+                        ModelLabelEntity(CombinedModel.SECOND_MODEL_ID, 0, "curruca_communis", "raw"),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals("turdus_merula", resolver.resolve(CombinedModel.MODEL_ID, CombinedModel.encodeFirst(0)))
+        assertEquals("curruca_communis", resolver.resolve(CombinedModel.MODEL_ID, CombinedModel.encodeSecond(0)))
     }
 
     private companion object {

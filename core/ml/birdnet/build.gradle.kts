@@ -15,7 +15,7 @@ android {
 // ATENCION - LICENCIA
 // Este modulo carga los modelos de BirdNET, que son CC BY-NC-SA 4.0: NO se
 // pueden usar comercialmente sin permiso expreso de Cornell
-// (ccb-birdnet@cornell.edu). Por eso solo se enlaza desde el flavor `personal`.
+// (ccb-birdnet@cornell.edu). Por eso la app que lo lleva no se publica.
 // El codigo de este modulo es nuestro; lo que no es libre es el .tflite.
 dependencies {
     api(projects.core.ml.api)

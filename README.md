@@ -3,8 +3,8 @@
 App Android de identificación de aves por **canto** y por **foto**, con una
 **Pokédex** cuyas rarezas se calculan a partir de datos reales de ocurrencia.
 
-Estado: **funcional en los dos flavors.** Escucha en segundo plano con
-BirdNET v2.4 (`personal`) o BirdNET+ V3 (`open`, publicable), identificación
+Estado: **funcional, en una sola versión.** Escucha en segundo plano con
+BirdNET v2.4, BirdNET+ V3 o los dos a la vez (se elige en Ajustes), identificación
 por foto (cámara o galería), análisis de grabaciones en cualquier formato que
 decodifique el móvil, catálogo de 11.167 especies, prior geo-temporal, rarezas
 sobre GBIF, Pokédex filtrada por tu provincia, comunidad o país (o cualquier
@@ -27,7 +27,7 @@ powershell -File scripts/build-catalog.ps1
 ```
 
 ```bash
-gradlew.bat :app:installPersonalDebug
+gradlew.bat :app:installDebug
 ```
 
 Ni los modelos ni el catálogo están en el repositorio, y no es solo por tamaño:
@@ -49,17 +49,17 @@ hay que ejecutar.
 Este proyecto mezcla código propio con modelos de terceros que **no** comparten
 su licencia. Es la restricción que más condiciona el diseño.
 
-| Componente | Licencia | ¿Comercial? | Flavor |
-|---|---|---|---|
-| Código de este repositorio | (a elegir) | Sí | ambos |
-| BirdNET GLOBAL 6K v2.4 (audio + meta-modelo) | CC BY-NC-SA 4.0 | **No** | `personal` |
-| BirdNET+ V3.0 (audio + geomodelo) | Apache 2.0 | Sí | `open` |
-| Google AIY birds_V1 **v3** (imagen) | Apache 2.0 | Sí | ambos |
-| GBIF API | sin restricción NC | Sí | ambos |
-| eBird taxonomía (`ref/taxonomy`) | sin key; el resto de eBird es NC | — | catálogo |
-| Wikipedia (REST summary) | CC BY-SA (texto), varía (imágenes) | Sí, citando | ambos |
-| Mapa base (OpenMapTiles / OpenStreetMap, vía GBIF) | ODbL, atribución | Sí | ambos |
-| osmdroid | Apache 2.0 | Sí | ambos |
+| Componente | Licencia | ¿Comercial? |
+|---|---|---|
+| Código de este repositorio | (a elegir) | Sí |
+| BirdNET GLOBAL 6K v2.4 (audio + meta-modelo) | CC BY-NC-SA 4.0 | **No** |
+| BirdNET+ V3.0 (audio + geomodelo) | Apache 2.0 | Sí |
+| Google AIY birds_V1 **v3** (imagen) | Apache 2.0 | Sí |
+| GBIF API | los datos llevan su licencia: CC0, CC BY y **CC BY-NC** | Solo filtrando |
+| eBird taxonomía (`ref/taxonomy`) | sin key; el resto de eBird es NC | — |
+| Wikipedia (REST summary) | CC BY-SA (texto), varía (imágenes) | Sí, citando |
+| Mapa base (OpenMapTiles / OpenStreetMap, vía GBIF) | ODbL, atribución | Sí |
+| osmdroid | Apache 2.0 | Sí |
 
 > **Trampa del modelo de imagen.** Hay que usar la **variación 3** de
 > `google/aiy/tfLite/vision-classifier-birds-v1` y solo esa. Su changelog dice
@@ -70,34 +70,39 @@ BirdNET es de la K. Lisa Yang Center for Conservation Bioacoustics (Cornell Lab
 of Ornithology). **La atribución es requisito de licencia**, por eso las
 pantallas de identificación y los ajustes la muestran siempre y no es ocultable.
 
-### Cómo se sostiene esto en el build
+### Una sola versión, no comercial
 
-Dos *product flavors*, un solo código fuente:
+Hubo dos *product flavors*: `personal`, con BirdNET v2.4, y `open`, solo con
+modelos Apache 2.0 y publicable. Se juntaron en **una versión que lo lleva
+todo**: los dos modelos de cantos, elegibles en Ajustes → *Modelo de cantos*
+(BirdNET v2.4, BirdNET+ o **los dos a la vez**), y todos los datos de GBIF sin
+filtrar por licencia. Con BirdNET v2.4 dentro, **la app no se puede publicar
+ni vender**.
 
-- **`personal`** — enlaza `:core:ml:birdnet` (CC BY-NC-SA). No publicable.
-- **`open`** — enlaza `:core:ml:birdnetplus` (Apache 2.0). Publicable, y cubre
-  más especies (8.923 frente a 6.419).
+El identificador sigue siendo `dev.pelayo.aves.personal`, el del antiguo flavor
+`personal`, para que la actualización se instale encima sin perder la
+colección.
 
-```bash
-gradlew.bat :app:assemblePersonalDebug
-```
+**Los dos a la vez** (`CombinedAudioClassifier`): la escucha captura en el
+formato de v2.4 (3 s a 48 kHz) y remuestrea una copia a 32 kHz para BirdNET+;
+los dos se ejecutan en paralelo y los resultados se juntan por especie
+**canónica** (v2.4 aún dice *Sylvia communis* donde BirdNET+ dice *Curruca*),
+quedándose con la puntuación más alta. El índice de clase lleva codificado de
+qué modelo salió (`CombinedModel`), y `SpeciesResolver` lo resuelve con la
+tabla de ese modelo. Cada modelo usa su propio prior (MData y geomodelo), con
+GBIF de respaldo. Cuesta casi el doble de batería.
 
-```bash
-gradlew.bat :app:assembleOpenDebug
-```
-
-Cada flavor compila su propio `AudioClassifierProvider.kt`; la elección no
-cuesta ni una comprobación en runtime. Y la CI ejecuta
-`OpenFlavorLicenseTest`, que comprueba por reflexión que las clases del modelo
-no comercial **no están en el classpath** de `open`. No basta con no usarlas:
-no deben estar.
+**Para hacer una versión publicable** bastaría con quitar `:core:ml:birdnet`
+del build y su opción en `createAudioClassifier`, y filtrar GBIF por licencia
+(`license=CC0_1_0&license=CC_BY_4_0`). Medido: en una celda de 50 km se pierde
+~1/5 de los registros pero solo ~5 % de las especies (las más escasas).
 
 ---
 
 ## Arquitectura
 
 ```
-app/                    ensamblaje, navegación, flavors, AppContainer
+app/                    ensamblaje, navegación, modelos, AppContainer
 build-logic/            convention plugins (aves.android.library, .compose, ...)
 core/
   common/  model/       Kotlin puro, cero Android
@@ -125,8 +130,8 @@ nunca *cómo*. Tres decisiones concretas lo hacen funcionar:
    clasificador. BirdNET+ trabaja a 32 kHz y en ONNX, y meterlo no tocó una
    línea de `:core:audio` ni de las pantallas.
 2. **`ModelDescriptor.allowsCommercialUse` es un dato en runtime**, no un
-   comentario. Permite el test que falla el build de `open` si se cuela un
-   modelo no comercial.
+   comentario. La pantalla de ajustes lo enseña, y es lo que permitiría una
+   guardia de licencias si algún día hay una versión publicable.
 3. **Fuera de `:core:ml` nadie ve un índice de tensor.** La tabla
    `model_labels` traduce (modelo, índice) → especie canónica, y cada modelo
    es una tabla de mapeo más.
@@ -144,7 +149,7 @@ micrófono; ver el KDoc de la clase). Corte automático configurable, con tope
 de 8 h. Nunca `START_STICKY`: grabar sin que el usuario lo pidiera es lo peor
 que podría hacer esta app.
 
-Lo que el servicio no puede construir solo (clasificador del flavor,
+Lo que el servicio no puede construir solo (el clasificador elegido,
 repositorios, ajustes, ubicación) se lo da la `Application` por
 `ListeningDependencies`.
 
@@ -158,7 +163,7 @@ AudioRecord(UNPROCESSED si el sistema lo declara; si no, VOICE_RECOGNITION)
   → ventana cada 800 ms (solape del 73%)
   → se descarta si la propia app está reproduciendo un recorte
   → gate de energía en la banda del canto (1–10 kHz, -66 dBFS)
-  → clasificador (el del flavor) + prior geo-temporal (peso ajustable)
+  → clasificador (el elegido en Ajustes, o los dos) + prior geo-temporal (peso ajustable)
   → histéresis: 3 ventanas consecutivas por encima de 0,35 para confirmar
   → persistencia: una fila por (especie, sesión), la mejor puntuación, con el
     recorte de ESA ventana y 2,4 s de preámbulo (~5,4 s)
@@ -185,7 +190,7 @@ Cosas que no son obvias y conviene no "arreglar":
 - **Top-K 8, no 3.** El estabilizador necesita ver a una especie en ventanas
   consecutivas; con dos aves fuertes, la tercera se caía del top-3.
 - **Remuestrear hacia abajo filtra antes de decimar.** Todo fichero normal
-  (44,1/48 kHz) baja a 32 kHz en `open`; sin paso-bajo, lo que hay por encima
+  (44,1/48 kHz) baja a 32 kHz con BirdNET+; sin paso-bajo, lo que hay por encima
   de 16 kHz se pliega sobre la banda donde cantan las aves.
 - **`noCompress` para `tflite` y `onnx`.** Los modelos se mapean en memoria.
   El ONNX se copia una vez a `noBackupFilesDir` (con el tamaño y la fecha de
@@ -253,11 +258,11 @@ candidato mirando al ave.
 
 ## Contexto, rarezas y ubicación
 
-Hay **dos priors** por flavor tras la misma interfaz `ContextPriorProvider`,
-con GBIF de respaldo:
+Cada modelo de cantos tiene su prior tras la misma interfaz
+`ContextPriorProvider`, con GBIF de respaldo (`AudioPriors`):
 
-- **`personal`**: el meta-modelo `MData` de BirdNET v2.4.
-- **`open`**: el geomodelo de BirdNET+ V3, también Apache 2.0.
+- **BirdNET v2.4**: el meta-modelo `MData`. Es también el de la cámara.
+- **BirdNET+**: su geomodelo, también Apache 2.0.
 
 Se prefieren a GBIF porque se entrenaron *junto* a su clasificador. Ambos
 combinan la semana actual con el máximo anual (para no perder migratorias
@@ -532,8 +537,8 @@ primera inferencia.
   (API `Interpreter`), 2.1.6 es la V2 (API `CompiledModel`). Se usa la V1.
 - **Coil 3 no trae red.** Sin `coil-network-okhttp` una URL https no carga nada,
   en silencio.
-- ABI splits activados: un APK por arquitectura más el universal. Con solo el
-  FP16 de BirdNET en assets, el `personal` arm64 ronda los 70 MB.
+- ABI splits activados: un APK por arquitectura más el universal. Con los dos
+  modelos de cantos dentro, el arm64 ronda los 150 MB (BirdNET+ solo pesa ~65).
 
 ---
 

@@ -64,13 +64,13 @@ include(":core:data")
 // intercambiables los modelos. NO depende de LiteRT.
 include(":core:ml:api")
 
-// Implementacion CC BY-NC-SA. Solo entra en el flavor `personal`.
+// BirdNET v2.4, CC BY-NC-SA: por el, la app no se puede publicar ni vender.
 include(":core:ml:birdnet")
 
-// Clasificador de imagen. Apache 2.0, asi que entra en los DOS flavors.
+// Clasificador de imagen. Apache 2.0.
 include(":core:ml:vision")
 
-// BirdNET+ V3 con pesos Apache 2.0: es lo que permite publicar el flavor `open`.
+// BirdNET+ V3 con pesos Apache 2.0. Va junto a BirdNET v2.4; se elige en Ajustes.
 include(":core:ml:birdnetplus")
 
 include(":feature:identify")

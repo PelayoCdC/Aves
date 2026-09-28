@@ -41,6 +41,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.pelayo.aves.core.designsystem.theme.AvesSkin
 import dev.pelayo.aves.core.designsystem.theme.AvesTheme
+import dev.pelayo.aves.core.ml.api.AudioModelChoice
 import dev.pelayo.aves.core.ml.api.ModelDescriptor
 import kotlin.math.roundToInt
 
@@ -84,6 +85,7 @@ fun SettingsScreen(
         onListeningCutoffChange = viewModel::setListeningCutoff,
         onSkinChange = viewModel::setSkin,
         onShowConfidenceChange = viewModel::setShowConfidence,
+        onAudioModelChange = viewModel::setAudioModel,
         onExportData = onExportData,
         onBackupExport = onBackupExport,
         onBackupRestore = onBackupRestore,
@@ -108,6 +110,7 @@ internal fun SettingsContent(
     onShowConfidenceChange: (Boolean) -> Unit = {},
     onBackupExport: (() -> Unit)? = null,
     onBackupRestore: (() -> Unit)? = null,
+    onAudioModelChange: (AudioModelChoice) -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -132,6 +135,7 @@ internal fun SettingsContent(
                 onContextInfluenceChange = onContextInfluenceChange,
                 onConfidenceThresholdChange = onConfidenceThresholdChange,
                 onShowConfidenceChange = onShowConfidenceChange,
+                onAudioModelChange = onAudioModelChange,
             )
 
             PrivacySection(
@@ -197,6 +201,55 @@ private fun AppearanceSection(
     }
 }
 
+/**
+ * Que modelo escucha: BirdNET v2.4, BirdNET+ o los dos. Se aplica en la
+ * siguiente escucha o el siguiente fichero; la que este en marcha sigue con el
+ * suyo.
+ */
+@Composable
+private fun AudioModelSetting(
+    selected: AudioModelChoice,
+    onChange: (AudioModelChoice) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(text = stringResource(R.string.settings_audio_model), style = MaterialTheme.typography.titleSmall)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            for (model in AudioModelChoice.entries) {
+                FilterChip(
+                    selected = model == selected,
+                    onClick = { onChange(model) },
+                    label = { Text(stringResource(audioModelName(model))) },
+                    leadingIcon = if (model == selected) {
+                        { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
+                    } else {
+                        null
+                    },
+                )
+            }
+        }
+        Text(
+            text = stringResource(audioModelDescription(selected)),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun audioModelName(model: AudioModelChoice): Int = when (model) {
+    AudioModelChoice.BIRDNET -> R.string.settings_audio_model_birdnet
+    AudioModelChoice.BIRDNET_PLUS -> R.string.settings_audio_model_birdnet_plus
+    AudioModelChoice.BOTH -> R.string.settings_audio_model_both
+}
+
+private fun audioModelDescription(model: AudioModelChoice): Int = when (model) {
+    AudioModelChoice.BIRDNET -> R.string.settings_audio_model_birdnet_help
+    AudioModelChoice.BIRDNET_PLUS -> R.string.settings_audio_model_birdnet_plus_help
+    AudioModelChoice.BOTH -> R.string.settings_audio_model_both_help
+}
+
 private fun skinName(skin: AvesSkin): Int = when (skin) {
     AvesSkin.SYSTEM -> R.string.settings_skin_system
     AvesSkin.FOREST -> R.string.settings_skin_forest
@@ -219,11 +272,19 @@ private fun IdentificationSection(
     onContextInfluenceChange: (Float) -> Unit,
     onConfidenceThresholdChange: (Float) -> Unit,
     onShowConfidenceChange: (Boolean) -> Unit,
+    onAudioModelChange: (AudioModelChoice) -> Unit,
 ) {
     SettingsSection(
         title = stringResource(R.string.settings_identification_title),
         subtitle = stringResource(R.string.settings_identification_subtitle),
     ) {
+        AudioModelSetting(
+            selected = AudioModelChoice.fromName(settings.audioModel),
+            onChange = onAudioModelChange,
+        )
+
+        Spacer(Modifier.size(16.dp))
+
         SliderSetting(
             label = stringResource(R.string.settings_context_influence),
             value = settings.contextInfluence,
