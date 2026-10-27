@@ -12,6 +12,10 @@ otra zona, o Doñana) con las especies que te faltan, medallas de logros,
 bandeja de revisión con alternativas, historial de escuchas, fichas con foto y
 descripción de Wikipedia, exportación a CSV y tile de ajustes rápidos.
 
+| Identificar | Pokédex | Ficha | Ajustes |
+|---|---|---|---|
+| ![Pantalla de identificación por canto, fichero de audio o foto](docs/capturas/identificar.jpg) | ![Pokédex agrupada por familias](docs/capturas/pokedex.jpg) | ![Ficha del petirrojo europeo con foto y texto de Wikipedia](docs/capturas/ficha.jpg) | ![Ajustes del modelo de cantos, contexto y umbral de confianza](docs/capturas/ajustes.jpg) |
+
 ---
 
 ## Arranque rápido
@@ -51,7 +55,7 @@ su licencia. Es la restricción que más condiciona el diseño.
 
 | Componente | Licencia | ¿Comercial? |
 |---|---|---|
-| Código de este repositorio | (a elegir) | Sí |
+| Código de este repositorio | Todos los derechos reservados | No, sin permiso del autor |
 | BirdNET GLOBAL 6K v2.4 (audio + meta-modelo) | CC BY-NC-SA 4.0 | **No** |
 | BirdNET+ V3.0 (audio + geomodelo) | Apache 2.0 | Sí |
 | Google AIY birds_V1 **v3** (imagen) | Apache 2.0 | Sí |
